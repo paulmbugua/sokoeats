@@ -726,11 +726,17 @@ useEffect(() => {
 }, []);
 
 const deviceLocale = useMemo(() => {
-  const tag = Localization.getLocales?.()[0]?.languageTag;
-  return tag || Localization.locale || 'en-US';
+  // expo-localization modern API
+  const tag = Localization.getLocales?.()?.[0]?.languageTag;
+  return tag || 'en-US';
 }, []);
 
-const deviceTimeZone = useMemo(() => Localization.timezone || '', []);
+const deviceTimeZone = useMemo(() => {
+  // Prefer calendar timeZone if available
+  const tz = Localization.getCalendars?.()?.[0]?.timeZone;
+  return String(tz || '').trim();
+}, []);
+
 
 const profileLanguage = useMemo(
   () =>
@@ -1844,7 +1850,7 @@ const startLanguageFlow = useCallback(
 
       if (!intent && isLanguageIntentText(custom)) {
         let msg =
-          'Which language do you want to learn? We currently support English (ESL), German, French, Spanish, Arabic, Hindi, Urdu, Turkish, Russian, Swahili, Tagalog, and Malayalam.';
+          'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
         try {
           await startLanguageCourse(backendUrl, languageToken as string, custom, {
             orgId: activeOrgId ?? null,
