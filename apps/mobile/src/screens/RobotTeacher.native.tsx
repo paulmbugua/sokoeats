@@ -1844,7 +1844,7 @@ const startLanguageFlow = useCallback(
 
       if (!intent && isLanguageIntentText(custom)) {
         let msg =
-          'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
+          'Which language do you want to learn? We currently support English (ESL), German, French, Spanish, Arabic, Hindi, Urdu, Turkish, Russian, Swahili, Tagalog, and Malayalam.';
         try {
           await startLanguageCourse(backendUrl, languageToken as string, custom, {
             orgId: activeOrgId ?? null,
