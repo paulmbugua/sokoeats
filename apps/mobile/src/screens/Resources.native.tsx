@@ -7,7 +7,6 @@ import {
   TextInput,
   Pressable,
   SectionList,
-  ActivityIndicator,
   Dimensions,
   Platform,
   Modal,
@@ -28,6 +27,7 @@ import type { Course, RecordedVideo } from '@mytutorapp/shared/types';
 import type { OerBookItem } from '@mytutorapp/shared/api/resourcesApi';
 import type { MainStackParamList } from '../navigation/types';
 import tw from '../../tailwind';
+import Skeleton from '../components/Skeleton.native';
 
 // Optional WebView for PDF preview (graceful fallback if not installed)
 let WebView: any = null;
@@ -422,9 +422,8 @@ const SectionFooter: React.FC<{
 }> = ({ loading, error, empty, emptyMessage, hasMore, onLoadMore }) => (
   <View style={tw`px-4 pb-4`}>
     {loading && !error && empty ? (
-      <View style={tw`flex-row items-center`}>
-        <ActivityIndicator />
-        <Text style={tw`ml-2 text-sm text-slate-500 dark:text-white/60`}>Loading…</Text>
+      <View style={tw`mt-2`}>
+        <Skeleton rows={3} height={80} radius={14} gap={12} />
       </View>
     ) : null}
 

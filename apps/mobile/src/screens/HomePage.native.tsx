@@ -7,7 +7,6 @@ import {
   Text,
   Image,
   TouchableOpacity,
-  ActivityIndicator,
   Alert,
   RefreshControl,
 } from 'react-native';
@@ -36,6 +35,7 @@ import type { Profile, Course, RecordedVideo } from '@mytutorapp/shared/types';
 
 import tw from '../../tailwind';
 import { useThemePref } from '../theme/ThemeContext';
+import Skeleton from '../components/Skeleton.native';
 
 /* ------------------------------------------------------------------ */
 /* Constants & helpers                                                */
@@ -522,7 +522,7 @@ const HomePageNative: React.FC = () => {
   const FOOTER_OVERLAY_PX = 84;
   const bottomPad = Math.max(FOOTER_OVERLAY_PX, FOOTER_OVERLAY_PX + insets.bottom);
 
-  const { filteredProfiles, loading } = useHomePage();
+  const { filteredProfiles, loading, searchMeta } = useHomePage();
   const {
     featuredCourses = [],
     featuredVideos = [],
@@ -875,23 +875,6 @@ const HomePageNative: React.FC = () => {
 
   const { resolvedScheme } = useThemePref();
 
-  if (loading) {
-    return (
-      <SafeAreaView
-        edges={['top', 'left', 'right']}
-        style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}
-      >
-        <View style={tw`flex-1 justify-center items-center`}>
-          <ActivityIndicator
-            size="large"
-            color={resolvedScheme === 'dark' ? '#ffffff' : '#0d141c'}
-          />
-          <Text style={tw`mt-2 text-[#0d141c] dark:text-white/90`}>Loading tutor profiles...</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView edges={['top', 'left', 'right']} style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`}>
       <Animated.ScrollView
@@ -918,7 +901,21 @@ const HomePageNative: React.FC = () => {
             </TouchableOpacity>
           </View>
 
-          {featuredTutors.length === 0 ? (
+          {searchMeta?.serverError ? (
+            <Text style={tw`text-sm text-red-500 mt-2`}>
+              {searchMeta.serverError || 'Unable to load tutors right now.'}
+            </Text>
+          ) : null}
+
+          {loading ? (
+            <View style={tw`mt-3 flex-row flex-wrap -mx-1`}>
+              {Array.from({ length: VISIBLE_LIMIT }).map((_, idx) => (
+                <View key={`tutor-skeleton-${idx}`} style={tw`w-1/2 px-1 mb-3`}>
+                  <Skeleton rows={1} height={160} radius={16} />
+                </View>
+              ))}
+            </View>
+          ) : featuredTutors.length === 0 ? (
             <Text style={tw`text-slate-600 dark:text-slate-300 mt-2`}>No featured tutors yet.</Text>
           ) : (
             <View style={tw`mt-3 flex-row flex-wrap -mx-1`}>

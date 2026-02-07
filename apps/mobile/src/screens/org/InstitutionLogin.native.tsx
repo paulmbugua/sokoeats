@@ -11,6 +11,7 @@ import {
   ScrollView,
   Linking,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import {
   useNavigation,
@@ -687,7 +688,12 @@ const InstitutionLoginNative: React.FC = () => {
                         style={[palette.primaryBtn, tw`flex-1`, busy && tw`opacity-60`]}
                         disabled={busy}
                       >
-                        <Text style={tw`text-white font-semibold`}>Reset Password</Text>
+                        <View style={tw`flex-row items-center justify-center`}>
+                          {busy ? (
+                            <ActivityIndicator size="small" color="#fff" style={tw`mr-2`} />
+                          ) : null}
+                          <Text style={tw`text-white font-semibold`}>Reset Password</Text>
+                        </View>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -717,7 +723,12 @@ const InstitutionLoginNative: React.FC = () => {
                         style={[palette.primaryBtn, tw`flex-1`, busy && tw`opacity-60`]}
                         disabled={busy}
                       >
-                        <Text style={tw`text-white font-semibold`}>Send OTP</Text>
+                        <View style={tw`flex-row items-center justify-center`}>
+                          {busy ? (
+                            <ActivityIndicator size="small" color="#fff" style={tw`mr-2`} />
+                          ) : null}
+                          <Text style={tw`text-white font-semibold`}>Send OTP</Text>
+                        </View>
                       </TouchableOpacity>
                     </View>
                   </View>
@@ -770,9 +781,14 @@ const InstitutionLoginNative: React.FC = () => {
                     style={[palette.primaryBtn, tw`w-full`, busy && tw`opacity-60`]}
                     accessibilityRole="button"
                   >
-                    <Text style={tw`text-white font-semibold`}>
-                      {authMode === 'Login' ? (isFeesReauth ? 'Unlock fees' : 'Login') : 'Sign Up'}
-                    </Text>
+                    <View style={tw`flex-row items-center justify-center`}>
+                      {busy ? (
+                        <ActivityIndicator size="small" color="#fff" style={tw`mr-2`} />
+                      ) : null}
+                      <Text style={tw`text-white font-semibold`}>
+                        {authMode === 'Login' ? (isFeesReauth ? 'Unlock fees' : 'Login') : 'Sign Up'}
+                      </Text>
+                    </View>
                   </TouchableOpacity>
 
                   {/* Links row (hidden during fees reauth) */}

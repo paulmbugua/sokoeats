@@ -9,6 +9,7 @@ import {
   Image,
   Alert,
   Modal,
+  ActivityIndicator,
 } from 'react-native';
 import { useNavigation, StackActions, useRoute, type RouteProp } from '@react-navigation/native';
 import type { StackNavigationProp } from '@react-navigation/stack';
@@ -517,7 +518,12 @@ const handleSwitchSignOut = async () => {
                         busy ? 'opacity-60' : ''
                       }`}
                     >
-                      <Text style={tw`text-white font-semibold`}>Reset Password</Text>
+                      <View style={tw`flex-row items-center justify-center`}>
+                        {busy ? (
+                          <ActivityIndicator size="small" color="#fff" style={tw`mr-2`} />
+                        ) : null}
+                        <Text style={tw`text-white font-semibold`}>Reset Password</Text>
+                      </View>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -558,7 +564,12 @@ const handleSwitchSignOut = async () => {
                         busy ? 'opacity-60' : ''
                       }`}
                     >
-                      <Text style={tw`text-white font-semibold`}>Send OTP</Text>
+                      <View style={tw`flex-row items-center justify-center`}>
+                        {busy ? (
+                          <ActivityIndicator size="small" color="#fff" style={tw`mr-2`} />
+                        ) : null}
+                        <Text style={tw`text-white font-semibold`}>Send OTP</Text>
+                      </View>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -711,9 +722,14 @@ const handleSwitchSignOut = async () => {
                   disabled={busy}
                   style={tw`bg-pink-600 py-3 rounded-xl mb-4 ${busy ? 'opacity-60' : ''}`}
                 >
-                  <Text style={tw`text-center text-white font-bold`}>
-                    {authMode === 'Login' ? 'Login' : 'Sign Up'}
-                  </Text>
+                  <View style={tw`flex-row items-center justify-center`}>
+                    {busy ? (
+                      <ActivityIndicator size="small" color="#fff" style={tw`mr-2`} />
+                    ) : null}
+                    <Text style={tw`text-center text-white font-bold`}>
+                      {authMode === 'Login' ? 'Login' : 'Sign Up'}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
 
                 <View style={tw`flex-row justify-between mb-4`}>
@@ -892,7 +908,12 @@ const handleSwitchSignOut = async () => {
                     busy || !canContinue ? 'opacity-60' : ''
                   }`}
                 >
-                  <Text style={tw`text-white font-semibold`}>{busy ? 'Saving…' : ctaText}</Text>
+                  <View style={tw`flex-row items-center justify-center`}>
+                    {busy ? (
+                      <ActivityIndicator size="small" color="#fff" style={tw`mr-2`} />
+                    ) : null}
+                    <Text style={tw`text-white font-semibold`}>{busy ? 'Saving…' : ctaText}</Text>
+                  </View>
                 </TouchableOpacity>
               </View>
             </View>

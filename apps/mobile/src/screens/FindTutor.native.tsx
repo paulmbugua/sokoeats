@@ -7,7 +7,6 @@ import {
   TextInput,
   Image,
   Pressable,
-  ActivityIndicator,
   ScrollView,
   Modal,
 } from 'react-native';
@@ -15,6 +14,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { useNavigation, useRoute, NavigationProp } from '@react-navigation/native';
 import type { MainStackParamList } from '../navigation/types';
 import tw from '../../tailwind';
+import Skeleton from '../components/Skeleton.native';
 
 import { useHomePage } from '@mytutorapp/shared/hooks';
 import type { Profile, TutorFilters } from '@mytutorapp/shared/types';
@@ -561,17 +561,6 @@ const FindTutorScreen: React.FC = () => {
     navigation.navigate('Profile', { id: String(userId) });
   };
 
-  if (loading) {
-    return (
-      <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
-        <View style={tw`flex-1 items-center justify-center`}>
-          <ActivityIndicator />
-          <Text style={tw`mt-2 text-[#49739c] dark:text-white/70`}>Loading tutors…</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
   return (
     <SafeAreaView style={tw`flex-1 bg-slate-50 dark:bg-[#0b1016]`} edges={['top', 'bottom']}>
       {/* Soft background orbs */}
@@ -675,13 +664,21 @@ const FindTutorScreen: React.FC = () => {
         <View style={tw`px-4 pt-3 pb-1 flex-row items-center justify-between`}>
           <Text style={tw`text-[18px] font-bold text-[#0d141c] dark:text-white`}>Tutors</Text>
           <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
-            {tutors.length} result{tutors.length === 1 ? '' : 's'}
+            {loading ? 'Loading…' : `${tutors.length} result${tutors.length === 1 ? '' : 's'}`}
           </Text>
         </View>
 
         {/* Results */}
         <View style={tw`px-4`}>
-          {pageItems.length === 0 ? (
+          {searchMeta?.serverError ? (
+            <Text style={tw`text-red-500 mb-2`}>
+              {searchMeta.serverError || 'Unable to load tutors right now.'}
+            </Text>
+          ) : null}
+
+          {loading ? (
+            <Skeleton rows={6} height={110} radius={16} gap={14} />
+          ) : pageItems.length === 0 ? (
             <Text style={tw`text-[#49739c] dark:text-white/70`}>No tutors match your filters.</Text>
           ) : (
             pageItems.map((item: any) => (
