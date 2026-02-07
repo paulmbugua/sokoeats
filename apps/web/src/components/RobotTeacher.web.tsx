@@ -72,6 +72,7 @@ const LANGUAGE_CARDS = [
   { key: 'ru', language: 'Russian', emoji: '🇷🇺', subtitle: 'Build confidence' },
   { key: 'tl', language: 'Tagalog', emoji: '🇵🇭', subtitle: 'Start a lesson' },
   { key: 'ml', language: 'Malayalam', emoji: '🇮🇳', subtitle: 'Daily life' },
+  { key: 'sw', language: 'Swahili', emoji: '🇰🇪', subtitle: 'Daily life' },
 ] as const;
 
 type SupportLanguageOption = 'auto' | 'ar' | 'hi' | 'ur' | 'en';
@@ -110,6 +111,7 @@ function inferSupportedLanguageLabel(text: string): string | null {
   if (tok === 'russian') return 'Russian';
   if (tok === 'tagalog' || tok === 'filipino') return 'Tagalog';
   if (tok === 'malayalam') return 'Malayalam';
+  if (tok === 'swahili' || tok === 'kiswahili') return 'Swahili';
   return null;
 }
 
@@ -1767,7 +1769,7 @@ useEffect(() => {
       // User typed "Teach me Italian" etc. -> friendly prompt (no start)
       if (!intent && !inferred && isLanguageIntentText(custom)) {
         let msg =
-          'Which language do you want to learn? We currently support English (ESL), German, French, Spanish, Arabic, Hindi, Urdu, Turkish, Russian, Tagalog, and Malayalam.';
+          'Which language do you want to learn? We currently support English (ESL), German, French, Spanish, Arabic, Hindi, Urdu, Turkish, Russian, Tagalog, Malayalam, and Swahili.';
         try {
           // keep this call if you want backend to return a nicer message
           await startLanguageCourse(backendUrl, authToken as string, custom, {

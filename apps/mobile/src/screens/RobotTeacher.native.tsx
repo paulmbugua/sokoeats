@@ -98,6 +98,7 @@ const LANGUAGE_CARDS = [
   { key: 'ru', language: 'Russian', emoji: '🇷🇺', subtitle: 'Build confidence' },
   { key: 'tl', language: 'Tagalog', emoji: '🇵🇭', subtitle: 'Start a lesson' },
   { key: 'ml', language: 'Malayalam', emoji: '🇮🇳', subtitle: 'Daily life' },
+  { key: 'sw', language: 'Swahili', emoji: '🇰🇪', subtitle: 'Daily life' },
 ] as const;
 
 type SupportLanguageOption = 'auto' | 'ar' | 'hi' | 'ur' | 'en';
@@ -784,6 +785,7 @@ const normalizeLangKey = (s?: string | null) => {
   if (t.includes('russian') || t.includes('рус')) return 'russian';
   if (t.includes('tagalog') || t.includes('filipino')) return 'tagalog';
   if (t.includes('malayalam') || t.includes('മലയാളം')) return 'malayalam';
+  if (t.includes('swahili') || t.includes('kiswahili')) return 'swahili';
   return t;
 };
 
@@ -839,6 +841,7 @@ const inferLanguageLabelFromPrompt = (prompt: string) => {
   if (p.includes('russian') || p.includes('рус')) return 'Russian';
   if (p.includes('tagalog') || p.includes('filipino')) return 'Tagalog';
   if (p.includes('malayalam') || p.includes('മലയാളം')) return 'Malayalam';
+  if (p.includes('swahili') || p.includes('kiswahili')) return 'Swahili';
   return '';
 };
 
@@ -1850,7 +1853,7 @@ const startLanguageFlow = useCallback(
 
       if (!intent && isLanguageIntentText(custom)) {
         let msg =
-          'Which language do you want to learn? We currently support German, French, Spanish, and Arabic.';
+          'Which language do you want to learn? We currently support German, French, Spanish, Arabic, and Swahili.';
         try {
           await startLanguageCourse(backendUrl, languageToken as string, custom, {
             orgId: activeOrgId ?? null,

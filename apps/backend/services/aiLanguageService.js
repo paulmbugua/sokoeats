@@ -36,6 +36,7 @@ const LANGUAGE_CONFIG = {
   ru: { label: 'Russian', locale: 'ru-RU', native: 'Русский' },
   tl: { label: 'Tagalog', locale: 'fil-PH', native: 'Tagalog' },
   ml: { label: 'Malayalam', locale: 'ml-IN', native: 'മലയാളം' },
+  sw: { label: 'Swahili', locale: 'sw-KE', native: 'Kiswahili' },
 };
 
 const asIntId = (v) => {
@@ -188,6 +189,7 @@ export function detectTargetLanguage(prompt) {
     { code: 'ru', re: /(russian|русский|русская|рус)/i },
     { code: 'tl', re: /(tagalog|filipino|filipina)/i },
     { code: 'ml', re: /(malayalam|മലയാളം)/i },
+    { code: 'sw', re: /(swahili|kiswahili)/i },
   ];
 
   for (const { code, re } of matches) {
