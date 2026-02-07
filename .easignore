@@ -7,12 +7,17 @@
 **/.expo/
 **/.expo-shared/
 **/.cache/
-**/dist/
-**/build/
 **/.cxx/
 **/*.log
 **/*.tsbuildinfo
 **/web-build/
+**/dist/
+**/build/
+
+# local env files (use EAS env vars instead)
+**/.env
+**/.env.*
+!**/.env.example
 
 # prebuild outputs (you don't commit them anyway)
 apps/mobile/android/
@@ -22,15 +27,13 @@ apps/mobile/ios/
 apps/backend/uploads/
 apps/backend/secrets/
 
-# --- DO NOT exclude workspace manifests ---
-# (Do NOT ignore apps/web, apps/backend, etc. at all.)
-# You can ignore only their heavy outputs, which we already do above.
-
 # --- MUST be included for Yarn 4 workspace installs ---
 !package.json
 !yarn.lock
 !.yarnrc.yml
 !.yarn/**
+!.pnp.cjs
+!.pnp.loader.mjs
 
 # --- MUST be included for mobile build ---
 !apps/mobile/**
