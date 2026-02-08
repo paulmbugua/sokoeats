@@ -15,7 +15,6 @@ export function IconButton(
 }
 
 export default function TopBar({
-  title,
   voice,
   setVoice,
   voices,
@@ -30,13 +29,13 @@ export default function TopBar({
   templateId,
   setTemplateId,
 }: {
-  title: string;
   voice: string;
   setVoice: (v: string) => void;
   voices: string[];
   voicesLoading?: boolean;
   voicesError?: string | null;
 
+  // intentionally kept for parent compatibility (even if unused here)
   onPlayPause: () => void;
   playing: boolean;
   loading: boolean;
@@ -82,10 +81,7 @@ export default function TopBar({
             />
           </div>
 
-          {/* Title: hidden on mobile to avoid overlap; shown from sm+ */}
-          <div className="hidden sm:block mx-1 text-sm text-white/90 truncate max-w-[38vw]">
-            {title}
-          </div>
+          {/* Course title removed */}
         </div>
 
         {/* Right cluster: wrap safely on tiny widths */}
