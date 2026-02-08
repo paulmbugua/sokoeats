@@ -1,10 +1,14 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { trackPageView } from '../analytics/ga4';
 
 export default function ScrollToTop() {
   const { pathname, search, hash } = useLocation();
 
   useEffect(() => {
+    // Vite is mounted at /app behind the web-next proxy; GA4 must treat /app routes as normal pages.
+    trackPageView(`${pathname}${search}${hash}`);
+
     // If there's a hash (#section), let the browser handle anchor scrolling instead
     if (hash) return;
 

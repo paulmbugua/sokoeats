@@ -3,7 +3,7 @@ import Script from 'next/script';
 import { Suspense } from 'react';
 
 import Providers from './providers';
-import AnalyticsClient from './AnalyticsClient';
+import GaRouteTracker from './_components/GaRouteTracker';
 
 import { publicEnv } from '@/lib/env';
 import { SITE_URL, siteUrl } from '@/lib/site';
@@ -38,6 +38,7 @@ export const viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const gaId = publicEnv.ga4MeasurementId;
+  const isDev = process.env.NODE_ENV !== 'production';
 
   return (
     <html lang="en">
@@ -55,7 +56,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                 function gtag(){window.dataLayer.push(arguments);}
                 window.gtag = gtag;
                 gtag('js', new Date());
-                gtag('config', '${gaId}', { send_page_view: false });
+                var gaDebug = ${isDev ? 'true' : 'false'} || new URLSearchParams(window.location.search).has('ga_debug');
+                gtag('config', '${gaId}', { send_page_view: false, debug_mode: gaDebug });
               `}
             </Script>
           </>
@@ -64,7 +66,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <Providers>
           <Suspense fallback={null}>
-            <AnalyticsClient />
+            <GaRouteTracker />
           </Suspense>
 
           <NavbarLegacy />

@@ -36,8 +36,15 @@ const cleanParams = (params: EventParams) => {
   return out;
 };
 
-const isDebug = () =>
-  import.meta.env.DEV || new URLSearchParams(window.location.search).has('ga_debug');
+const hasDebugFlag = () => new URLSearchParams(window.location.search).has('ga_debug');
+const isDebug = () => import.meta.env.DEV || hasDebugFlag();
+
+let warnedMissingId = false;
+const warnIfMissingId = () => {
+  if (!import.meta.env.DEV || GA4_MEASUREMENT_ID || warnedMissingId) return;
+  warnedMissingId = true;
+  console.warn('[ga4] Missing VITE_GA4_MEASUREMENT_ID; GA4 events will be skipped.');
+};
 
 /**
  * Init GA4 once.
@@ -45,14 +52,14 @@ const isDebug = () =>
  * This function simply ensures gtag exists and applies config options safely.
  */
 export const initGA4 = () => {
+  warnIfMissingId();
   if (!GA4_MEASUREMENT_ID || !hasWindow()) return;
   if (initialized) return;
   initialized = true;
 
   ensureGtag();
 
-  // If index.html already ran gtag('js', new Date()) that's fine.
-  // Running it again is harmless; but we can keep it for safety.
+  // Running this is harmless if web-next already initialized gtag.
   window.gtag?.('js', new Date());
 
   // Apply config (and disable automatic page_view so SPA can control it)
@@ -63,6 +70,7 @@ export const initGA4 = () => {
 };
 
 export const trackPageView = (path: string) => {
+  warnIfMissingId();
   if (!GA4_MEASUREMENT_ID || !hasWindow()) return;
   ensureGtag();
   window.gtag?.(
@@ -75,9 +83,15 @@ export const trackPageView = (path: string) => {
       debug_mode: isDebug(),
     })
   );
+
+  if (import.meta.env.DEV && hasDebugFlag()) {
+    const recent = window.dataLayer?.slice(-5) ?? [];
+    console.debug('[ga4] dataLayer (last 5)', recent);
+  }
 };
 
 export const trackEvent = (name: string, params: EventParams = {}) => {
+  warnIfMissingId();
   if (!GA4_MEASUREMENT_ID || !hasWindow()) return;
   ensureGtag();
   window.gtag?.('event', name, cleanParams({ ...params, debug_mode: isDebug() }));
