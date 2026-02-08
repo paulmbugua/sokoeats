@@ -108,7 +108,7 @@ const routerBase =
     : undefined;
 if (backendUrl) axios.defaults.baseURL = backendUrl;
 
-// ✅ Initialize GA4 once (loads gtag.js + config)
+// ✅ Initialize GA4 once (config only; gtag.js is loaded by web-next layout)
 initGA4();
 
 // ✅ Ensure Firebase uses browser local persistence (safe no-op outside browser)

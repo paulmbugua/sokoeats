@@ -7,6 +7,7 @@ import { useCourses, useEnrollments, useOerMeta } from '@mytutorapp/shared/hooks
 import { useCourseReviews } from '@mytutorapp/shared/hooks/useCourseReviews';
 import type { Course } from '@mytutorapp/shared/types';
 import SeoHead from '../components/seo/SeoHead';
+import { trackStartCourse } from '../analytics/ga4';
 
 interface MaybeInstructor {
   tutorName?: string;
@@ -126,6 +127,12 @@ const CourseDetails: React.FC = () => {
 
     try {
       await purchaseCourseAndEnroll(courseId, priceTokens);
+      trackStartCourse({
+        course_id: courseId,
+        course_title: c.title,
+        source: 'course_details',
+        is_ai: (c as Course & { is_ai?: boolean }).is_ai,
+      });
       navigate(`/progress/${courseId}`);
     } catch (e: any) {
       const msg: string = e?.message || '';
@@ -139,6 +146,12 @@ const CourseDetails: React.FC = () => {
 
   const onContinue = () => {
     if (!courseId) return;
+    trackStartCourse({
+      course_id: courseId,
+      course_title: c?.title,
+      source: 'course_details',
+      is_ai: (c as Course & { is_ai?: boolean } | null | undefined)?.is_ai,
+    });
     navigate(`/progress/${courseId}`);
   };
 
