@@ -119,3 +119,5 @@ apps/mobile/GoogleService-Info.plist
 # apps/**/uploads/
 # apps/**/exports/
 # packages/**/exports/
+
+.yarn/install-state.gz

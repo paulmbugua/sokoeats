@@ -281,6 +281,53 @@ const ProfileDetailPage: React.FC = () => {
         <h1 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white">
           Tutor Profile{profile.name ? `: ${profile.name}` : ''}
         </h1>
+{/* Session Flow (compact) */}
+<motion.section
+  variants={fadeInScale}
+  initial="hidden"
+  animate="show"
+  className="rounded-lg bg-white dark:bg-darkCard p-4 sm:p-5 shadow-lg
+             ring-1 ring-gray-200 dark:ring-darkCard"
+>
+  <div className="flex items-start justify-between gap-3">
+    <div className="min-w-0">
+      <h2 className="text-sm sm:text-base font-semibold text-slate-900 dark:text-white">
+        How sessions work
+      </h2>
+
+      {/* ✅ Theme-aware summary line */}
+      <p className="mt-0.5 text-xs sm:text-sm text-slate-600 dark:text-slate-300">
+        Book → Tutor accepts + shares Zoom → Learn → You confirm → Tutor gets paid.
+      </p>
+    </div>
+
+    <span className="shrink-0 inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold
+                     bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200
+                     dark:bg-emerald-900/15 dark:text-emerald-200 dark:ring-emerald-800/40">
+      Pay protected
+    </span>
+  </div>
+
+  <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] sm:text-xs">
+    {['Request', 'Accept + Zoom', 'Tutor confirm', 'Student confirm + payout'].map((t, i) => (
+      <React.Fragment key={t}>
+        <span
+          className="inline-flex items-center rounded-full px-2.5 py-1
+                     bg-slate-50 text-slate-700 ring-1 ring-slate-200
+                     dark:bg-darkBg dark:text-slate-100 dark:ring-darkCard"
+        >
+          <span className="mr-1.5 inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-white text-[10px] font-bold">
+            {i + 1}
+          </span>
+          {t}
+        </span>
+        {i !== 3 && <span className="text-slate-300 dark:text-slate-600">→</span>}
+      </React.Fragment>
+    ))}
+  </div>
+</motion.section>
+
+        
         {/* Top Section */}
         <motion.section
           className="flex flex-col md:flex-row gap-8"

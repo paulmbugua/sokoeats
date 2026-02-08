@@ -6,6 +6,7 @@ import {
   purchaseLanguageBundle,
   completeLanguageCourse,
    getLanguagePlayback,
+   getLanguageCourseState,
 } from '../services/aiLanguageService.js';
 import {
   languageStartSchema,
@@ -13,6 +14,7 @@ import {
   languagePurchaseSchema,
   languageCompleteSchema,
   languagePlaybackSchema,
+  languageStateSchema,
 } from '../validators/aiCoursesValidator.js';
 
 function pickUserId(req) {
@@ -149,6 +151,28 @@ export async function playbackLanguage(req, res) {
     messageId: value.messageId ?? null,
     messageIndex: Number.isFinite(value.messageIndex) ? value.messageIndex : null,
     voiceId: value.voiceId,
+  });
+
+  return res.status(result.status).json(result.data);
+}
+
+export async function stateLanguage(req, res) {
+  const userId = pickUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { value, error } = languageStateSchema.validate(req.body, {
+    abortEarly: false,
+    allowUnknown: true,
+  });
+  if (error) return res.status(400).json({ error: 'VALIDATION_FAILED', message: error.message });
+
+  const profileId = await ensureProfileIdForUser(userId, { role: req.user?.role });
+
+  const result = await getLanguageCourseState({
+    userId,
+    profileId,
+    courseId: value.courseId,
+    orgId: value.orgId,
   });
 
   return res.status(result.status).json(result.data);

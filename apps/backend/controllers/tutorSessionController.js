@@ -1145,7 +1145,7 @@ export const fetchDataByType = async (req, res) => {
          
          p1.role AS "tutorRole",
          p1.user_id AS "tutorUser",
-         p2.name AS "studentName",
+         p2.name AS "student_name",
          p2.role AS "studentRole",
          p2.user_id AS "studentUser"
        FROM tutor_sessions ts

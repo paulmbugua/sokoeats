@@ -459,7 +459,7 @@ async function ensureLanguageCourse({
 
   );
 
-  if (existing.rowCount) return existing.rows[0];
+  if (existing.rowCount) return { ...existing.rows[0], __existing: true };
 
   const metadata = {
     mode: 'language',
@@ -510,6 +510,7 @@ const courseQ = await client.query(
   );
 
   return {
+    __existing: false,
     course_id: courseId,
     profile_id: profileId,
     user_id: userId,
@@ -776,6 +777,37 @@ export async function startLanguageCourse({ userId, profileId, prompt, orgId }) 
     entitlement = await resetDailyPromptsIfNeeded(client, entitlement, {
       paid: promptLimitMeta.paid,
     });
+
+    // ✅ Bulletproof guard:
+// If the course already exists AND we already have at least one assistant message,
+// return current state only (no prompt consumption, no "welcome" regeneration).
+if (entitlementRow.__existing) {
+  const hasAssistantQ = await client.query(
+    `
+    SELECT 1
+      FROM ai_language_messages
+     WHERE course_id = $1::uuid
+       AND role = 'assistant'
+     LIMIT 1
+    `,
+    [courseId],
+  );
+
+  if (hasAssistantQ.rowCount) {
+    await client.query('COMMIT');
+    endTxTimer('commit');
+    client.release();
+    client = null;
+
+    // Return state only (no playback generation here)
+    return await getLanguageCourseState({
+      userId,
+      profileId,
+      courseId,
+      orgId,
+    });
+  }
+}
 
     if (Number(entitlement.prompts_used || 0) >= promptsLimit) {
       await rollbackQuiet(client);
@@ -1385,5 +1417,60 @@ export async function getLanguagePlayback({
   } catch (err) {
     console.error('[aiLanguage] playback failed', err);
     return { status: 500, data: { error: 'LANGUAGE_PLAYBACK_FAILED' } };
+  }
+}
+
+
+export async function getLanguageCourseState({ userId, profileId, courseId, orgId }) {
+  userId = asIntId(userId);
+  profileId = asIntId(profileId);
+
+  if (!courseId) return { status: 400, data: { error: 'COURSE_ID_REQUIRED' } };
+
+  try {
+    // ownership check
+    const entQ = await runQuery(
+      pool,
+      `
+      SELECT e.*, c.metadata
+        FROM ai_language_entitlements e
+        JOIN courses c ON c.id = e.course_id
+       WHERE e.course_id = $1::uuid
+         AND (
+           ($2::int IS NOT NULL AND e.profile_id = $2::int)
+           OR
+           ($3::int IS NOT NULL AND e.user_id = $3::int)
+         )
+       LIMIT 1
+      `,
+      [courseId, profileId ?? null, userId ?? null],
+      { useRetry: true },
+    );
+
+    if (!entQ.rowCount) return { status: 403, data: { error: 'FORBIDDEN' } };
+
+    const entitlement = entQ.rows[0];
+    const targetLanguage = entitlement.target_language;
+
+    const orgLimit = await resolveOrgPromptLimit({ orgId, userId, db: pool });
+    const promptLimitMeta = buildPromptLimit({ entitlementRow: entitlement, orgLimit });
+
+    const messages = await loadRecentMessages(pool, courseId, PROMPT_HISTORY_LIMIT, { useRetry: true });
+
+    return {
+      status: 200,
+      data: {
+        courseId,
+        targetLanguage,
+        entitlement: formatEntitlement(entitlement, {
+          promptsLimit: promptLimitMeta.promptsLimit,
+          resetsAt: promptLimitMeta.resetsAt,
+        }),
+        messagesPreview: formatMessagesPreview(messages),
+      },
+    };
+  } catch (err) {
+    console.error('[aiLanguage] state failed', err);
+    return { status: 500, data: { error: 'LANGUAGE_STATE_FAILED' } };
   }
 }

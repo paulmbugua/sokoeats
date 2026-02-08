@@ -306,6 +306,7 @@ const LanguageLearningScreen: React.FC = () => {
   const [activeLineKey, setActiveLineKey] = useState<string | null>(null);
   const [activeLineIsTarget, setActiveLineIsTarget] = useState(false);
   const [footerHeight, setFooterHeight] = useState(0);
+  const [hydrating, setHydrating] = useState(false);
   const scrollRef = useRef<ScrollView | null>(null);
   const lineRefs = useRef(new Map<string, any>());
 const inputRef = useRef<TextInput>(null);
@@ -318,6 +319,7 @@ const inputRef = useRef<TextInput>(null);
   const playOpRef = useRef<Promise<void>>(Promise.resolve());
   const inlineIndexRef = useRef(0);
   const inlineItemsRef = useRef<PlaybackQueueItem[]>([]);
+  const hydratedRef = useRef<string | null>(null);
 type RepeatSheetState = {
   messageKey: string;
   msg: any;
@@ -353,6 +355,8 @@ useEffect(() => {
   const timer = setInterval(() => setNowTs(Date.now()), 1000);
   return () => clearInterval(timer);
 }, [resetAt]);
+
+
 
 const [keyboardHeight, setKeyboardHeight] = useState(0);
 const kbAnim = useRef(new Animated.Value(0)).current;
@@ -912,6 +916,54 @@ const ensurePlaybackFor = useCallback(
   [voiceSettings.voiceId, playbackByKey, fetchPlaybackForMessage]
 );
 
+const loadLanguageState = useCallback(
+  async (cid: string) => {
+    const base = String(backendUrl || '').replace(/\/$/, '');
+    const url = `${base}/api/ai/courses/language/state`;
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token || ''}`,
+      },
+      body: JSON.stringify({ courseId: cid, orgId: activeOrgId ?? null }),
+    });
+
+    const json = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      console.error('[LL state] request failed', { status: res.status, url, response: json });
+      throw new Error(json?.error || json?.message || 'LL_STATE_FETCH_FAILED');
+    }
+
+    // Expecting: { messages, entitlement, targetLanguage, playback? }
+// Expecting backend: { courseId, targetLanguage, entitlement, messagesPreview }
+const preview = (json?.messagesPreview ?? []) as LanguageLearningMessage[];
+const entitlement = json?.entitlement ?? null;
+const targetLanguage = json?.targetLanguage ?? null;
+
+// If backend ever adds playback later, support it without breaking:
+const playback = (json?.playback ?? null) as PlaybackPayload | null;
+
+// ✅ Normalize into hook's expected state shape
+const messages = extractInitMessages(preview, playback);
+
+// ✅ Apply state
+setInitialState({ messages, entitlement, targetLanguage });
+
+// Optional: set global player queue if present
+if (playback?.items?.length) {
+  setPlaybackQueue(playback);
+}
+
+return json;
+
+  },
+  [backendUrl, token, activeOrgId, setInitialState, setPlaybackQueue]
+);
+
+
 
 const startPlaybackAt = useCallback(
   async (messageKey: string, msg: any, idx: number, segmentIdx: number, kind: 'en' | 'tr') => {
@@ -1022,6 +1074,31 @@ const applyPrompt = useCallback(
   [headerLabel, targetLanguage]
 );
 
+useEffect(() => {
+  const cid = String(courseId || '').trim();
+  if (!cid) return;
+
+  if (hydratedRef.current === cid) return;
+  hydratedRef.current = cid;
+
+  // If navigation provided preview, use it (no API call)
+  if (languageStart?.messagesPreview?.length) return;
+
+  // Otherwise call resume endpoint once
+  (async () => {
+    try {
+      setHydrating(true);
+      await loadLanguageState(cid);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setHydrating(false);
+    }
+  })();
+}, [courseId, languageStart, loadLanguageState]);
+
+
+
 
 useEffect(() => {
   const cid = String(courseId || '').trim();
@@ -1126,9 +1203,16 @@ const bottomPadding = footerHeight + footerSafePad + keyboardHeight + 10;
             Messages
         ───────────────────────────────────────────── */}
         <View style={[tw`rounded-3xl p-4 gap-4 border`, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          {messages.length === 0 && (
-            <Text style={[tw`text-sm`, { color: theme.subtext }]}>Start chatting to build your course.</Text>
-          )}
+         {hydrating && (
+    <View style={tw`flex-row items-center gap-2`}>
+      <ActivityIndicator color={theme.accent} />
+      <Text style={[tw`text-xs`, { color: theme.subtext }]}>Resuming your course…</Text>
+    </View>
+  )}
+
+          {messages.length === 0 && !hydrating && (
+  <Text style={[tw`text-sm`, { color: theme.subtext }]}>Start chatting to build your course.</Text>
+)}
 
           {messages.map((msg, idx) => {
             const messageKey = `${msg.role}-${idx}`;

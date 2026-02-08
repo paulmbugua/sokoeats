@@ -1,5 +1,5 @@
-/// <reference path="../declarations.d.ts" />
-/* eslint-disable prettier/prettier */
+
+
 import axios, { AxiosError } from 'axios';
 import {
   useFocusEffect,
@@ -25,7 +25,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { getTutorProfile } from '@mytutorapp/shared/api/profileDetailApi';
 
 import Spinner from './Spinner.native';
-import useAccountSection from '@mytutorapp/shared/hooks/useAccountSection';
+import { useAccountSection } from '@mytutorapp/shared/hooks';
 import { Coachmark, useCoachmark } from './Coachmark.native';
 import { useWithdrawal } from '@mytutorapp/shared/hooks';
 import debounce from 'lodash.debounce';
@@ -121,9 +121,10 @@ type HookResult = ReturnType<typeof useAccountSection> & {
   earnings?: EarningsSummary | null;
   payoutCurrency: PayoutCurrency;
 
-  refetchTransactions: () => Promise<void>;
-  refetchAccount: () => Promise<void>;
-  refetchEarnings: () => Promise<void>;
+   refetchTransactions: () => Promise<unknown>;
+  refetchAccount: () => Promise<unknown>;
+  refetchEarnings: () => Promise<unknown>;
+
 
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
@@ -308,14 +309,6 @@ const sessionTypeOptions: SelectOption[] = useMemo(() => {
 const hasSessionTypes = sessionTypeOptions.length > 0;
 
 
-  useEffect(() => {
-  console.log('[Account] params.pricing =', params?.pricing);
-  console.log('[Account] formData.pricing =', (formData as any)?.pricing);
-  console.log('[Account] pricingObj =', pricingObj);
-  console.log('[Account] sessionTypeOptions =', sessionTypeOptions);
-}, [params?.pricing, (formData as any)?.pricing, pricingObj, sessionTypeOptions]);
-
-
   const { lifetimeByCurrency, pendingWithdrawalsByCurrency, completedEarnings } = useMemo(() => {
     const sums: Record<string, number> = {};
     const pending: Record<string, number> = {};
@@ -356,56 +349,52 @@ useEffect(() => {
   const wantsSession = params.action === 'createSession';
   if (!wantsSession) return;
 
-  // already have pricing? stop.
   if (!isEmptyObj(pricingObj)) return;
 
   let cancelled = false;
 
   (async () => {
-  try {
-    const base = backendUrl.replace(/\/$/, '');
-
-    let data: any = null;
-
     try {
-      // 1) try user endpoint
-      data = await getTutorProfile(base, token || '', tutorId);
-    } catch (e) {
-      const ae = e as AxiosError;
+      const base = backendUrl.replace(/\/$/, '');
+      let data: any = null;
 
-      // 2) fallback to /api/profile/:id if 404
-      if (ae.response?.status === 404) {
-        const resp = await axios.get(`${base}/api/profile/${encodeURIComponent(tutorId)}`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-          timeout: 10000,
-        });
-        data = resp.data;
-      } else {
-        throw e;
+      try {
+        data = await getTutorProfile(base, token || '', tutorId);
+      } catch (e) {
+        const ae = e as AxiosError;
+        if (ae.response?.status === 404) {
+          const resp = await axios.get(`${base}/api/profile/${encodeURIComponent(tutorId)}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+            timeout: 10000,
+          });
+          data = resp.data;
+        } else {
+          throw e;
+        }
       }
-    }
 
-    const p = data?.pricing || data?.profile?.pricing || data?.tutorProfile?.pricing || null;
-    if (!p || typeof p !== 'object') return;
+      const p = data?.pricing || data?.profile?.pricing || data?.tutorProfile?.pricing || null;
+      if (!p || typeof p !== 'object') return;
 
-    const pricing = Object.fromEntries(
-      Object.entries(p).map(([k, v]) => [k, String(v ?? '0')])
-    );
+      const pricing = Object.fromEntries(Object.entries(p).map(([k, v]) => [k, String(v ?? '0')]));
 
-    setFormData((prev: any) => ({ ...prev, tutorId, pricing }));
+      if (cancelled) return;
 
-    setFormData((prev: any) => {
-      if (prev.sessionType) return prev;
-      const [firstKey] = Object.keys(pricing);
-      if (!firstKey) return prev;
-      return {
-        ...prev,
-        sessionType: firstKey,
-        sessionCost: String(pricing[firstKey] ?? '0'),
-        pricing,
-      };
-    });
-  } catch (e) {
+      setFormData((prev: any) => ({ ...prev, tutorId, pricing }));
+
+      setFormData((prev: any) => {
+        if (cancelled) return prev;
+        if (prev.sessionType) return prev;
+        const [firstKey] = Object.keys(pricing);
+        if (!firstKey) return prev;
+        return {
+          ...prev,
+          sessionType: firstKey,
+          sessionCost: String(pricing[firstKey] ?? '0'),
+          pricing,
+        };
+      });
+    } catch (e) {
       console.log('[AccountSectionNative] pricing fetch failed', e);
     }
   })();
@@ -415,18 +404,8 @@ useEffect(() => {
   };
 }, [params.action, params.tutorId, formData.tutorId, backendUrl, token, pricingObj, setFormData]);
 
-  useEffect(() => {
-  const p: any = (params as any)?.pricing;
-  const hasP = p && typeof p === 'object' && Object.keys(p).length > 0;
 
-  const fp: any = (formData as any)?.pricing;
-  const hasFP = fp && typeof fp === 'object' && Object.keys(fp).length > 0;
 
-  if (hasP && !hasFP) {
-    setFormData({ ...formData, pricing: p });
-  }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [(params as any)?.pricing]);
 
 // ✅ Ensure navigation params hydrate the session form (especially when Account is already mounted)
 useEffect(() => {

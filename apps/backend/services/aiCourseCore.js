@@ -969,6 +969,7 @@ function mergeDanglingLeadIns(items) {
 }
 
 // Make symbols speak naturally (math + chemistry + programming-ish)
+// Make symbols speak naturally (math + chemistry + programming-ish)
 function speakSpecials(text) {
   let t = String(text || '');
 
@@ -982,11 +983,69 @@ function speakSpecials(text) {
     .replace(/⇌/g, ' is in equilibrium with ')
     .replace(/Δ/g, ' delta ');
 
-  // Basic operator words (be conservative so you don’t ruin normal sentences)
-  // Only when surrounded by spaces or digits/variables
+  // ---------------------------------------------------------------------------
+  // DASH / HYPHEN HANDLING (STRICT)
+  //
+  // Goal:
+  // - Default: treat A - B / 1 - 5 / pre - post / 10 - 3 as "to"
+  // - Only treat "-" as "minus" if:
+  //    (a) math-context cues exist within ~60 chars AND
+  //    (b) either side includes a variable letter (e.g., x - 3, 10 - y)
+  //
+  // Math-context cues:
+  // - operators: = + * / ^
+  // - brackets: ( ) [ ] { }
+  // - math words: solve, calculate, compute, evaluate, simplify, equation,
+  //   expression, formula, derive, integral, derivative, equals
+  // - comparisons: < > ≤ ≥ ≠
+  // - LaTeX-ish markers: $$ \( \) \[ \] \frac \sqrt \times
+  // ---------------------------------------------------------------------------
+
+  const MATH_WORDS_RE =
+    /\b(?:solve|calculate|compute|evaluate|simplify|equation|expression|formula|derive|integral|derivative|equals)\b/i;
+
+  const MATH_OPS_RE = /[=+\/*^]/; // note: '-' intentionally excluded
+  const BRACKETS_RE = /[()[\]{}]/;
+  const COMP_RE = /[<>≤≥≠]/;
+  const LATEX_RE =
+    /(\$\$|\\\(|\\\)|\\\[|\\\]|\\frac\b|\\sqrt\b|\\times\b)/i;
+
+  const hasMathContextNear = (str, idx, window = 60) => {
+    const start = Math.max(0, idx - window);
+    const end = Math.min(str.length, idx + window);
+    const near = str.slice(start, end);
+    return (
+      MATH_OPS_RE.test(near) ||
+      BRACKETS_RE.test(near) ||
+      COMP_RE.test(near) ||
+      LATEX_RE.test(near) ||
+      MATH_WORDS_RE.test(near)
+    );
+  };
+
+  const hasLetter = (s) => /[A-Za-z]/.test(String(s || ''));
+
+  // Replace spaced dash instances one by one so we can inspect context.
+  // Matches: "pre - post", "A - Z", "10 - 3", "x - 3", "10 - y"
+  t = t.replace(
+    /(\b[0-9A-Za-z]+(?:\.[0-9]+)?\b)\s*[-–—]\s*(\b[0-9A-Za-z]+(?:\.[0-9]+)?\b)/g,
+    (m, left, right, offset, full) => {
+      const idx = Number(offset) || 0;
+
+      const isMinus =
+        hasMathContextNear(full, idx, 60) && (hasLetter(left) || hasLetter(right));
+
+      // ✅ "minus" only in math contexts AND with variable letters
+      if (isMinus) return `${left} minus ${right}`;
+
+      // ✅ default: ranges / step spans / prose -> "to"
+      return `${left} to ${right}`;
+    },
+  );
+
+  // Other operators (keep conservative)
   t = t
     .replace(/(\w)\s*\+\s*(\w)/g, '$1 plus $2')
-    .replace(/(\w)\s*-\s*(\w)/g, '$1 minus $2')
     .replace(/(\w)\s*\*\s*(\w)/g, '$1 times $2')
     .replace(/(\w)\s*\/\s*(\w)/g, '$1 divided by $2')
     .replace(/(\w)\s*=\s*(\w)/g, '$1 equals $2');
@@ -1017,6 +1076,7 @@ function speakSpecials(text) {
 
   return t.replace(/\s{2,}/g, ' ').trim();
 }
+
 
 
 /* ─────────────────────────────────────────────────────────

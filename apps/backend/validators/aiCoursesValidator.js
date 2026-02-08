@@ -265,3 +265,8 @@ export const languagePlaybackSchema = Joi.object({
   // Voice style id from the app: calm/bright/deep/storyteller/teacher/kid/sunny/focus
   voiceId: Joi.string().trim().min(1).max(40).required(),
 }).or('messageId', 'messageIndex');
+
+export const languageStateSchema = Joi.object({
+  courseId: Joi.string().uuid().required(),
+  orgId: Joi.string().uuid().optional(),
+});

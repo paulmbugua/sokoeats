@@ -76,9 +76,6 @@ export const useAccountSection = (options?: {
   const { alertFn, confirmFn, navigateFn, queryParams } = options ?? {};
   const { token, backendUrl, setTokens } = useShopContext();
 
-  
-
-
   // ✅ Active tab
   const [activeTab, setActiveTab] = useState<
     'overview' | 'transactions' | 'sessions' | 'reviews' | 'earnings'
@@ -193,7 +190,7 @@ export const useAccountSection = (options?: {
   // - Fall back to derived values from transactions
   const earnings: EarningsSummary | null = isTutor
     ? {
-        currency: payoutCurrency, // align with profile’s payout currency
+        currency: payoutCurrency,
         total: earningsRaw && earningsRaw.total > 0 ? earningsRaw.total : approxLifetime,
         pending: earningsRaw && earningsRaw.pending > 0 ? earningsRaw.pending : approxPending,
         available:
@@ -211,10 +208,8 @@ export const useAccountSection = (options?: {
   const normalizePricingObject = useCallback((pricing: any): Record<string, any> => {
     if (!pricing) return {};
 
-    // already an object (and not an array)
     if (typeof pricing === 'object' && !Array.isArray(pricing)) return pricing;
 
-    // allow stringified JSON
     if (typeof pricing === 'string') {
       try {
         const parsed = JSON.parse(pricing);
@@ -224,7 +219,6 @@ export const useAccountSection = (options?: {
       }
     }
 
-    // anything else becomes empty object
     return {};
   }, []);
 
@@ -249,7 +243,6 @@ export const useAccountSection = (options?: {
     (next) => {
       _setFormData((prev) => {
         const resolved = typeof next === 'function' ? (next as any)(prev) : next;
-
         return {
           ...resolved,
           pricing: normalizePricingObject((resolved as any)?.pricing),
@@ -271,7 +264,6 @@ export const useAccountSection = (options?: {
 
   const [cancelReasons, setCancelReasons] = useState<Record<string, string>>({});
   const [showRatingModal, setShowRatingModal] = useState(false);
-
 
   /* 6) Mutations ------------------------------------------------------------ */
   const cancelSessionM = useMutation<void, Error, { sessionId: string; reason: string }>({
@@ -310,37 +302,26 @@ export const useAccountSection = (options?: {
   });
 
   const completePendingM = useMutation<any, any, string>({
-  mutationFn: (sessionId) =>
-    accountApi.completePendingSession(backendUrl, token!, sessionId),
+    mutationFn: (sessionId) => accountApi.completePendingSession(backendUrl, token!, sessionId),
 
-  onSuccess: () => {
-    alertFn?.('Session marked as complete-pending.');
-    refetchSessions();
-  },
+    onSuccess: () => {
+      alertFn?.('Session marked as complete-pending.');
+      refetchSessions();
+    },
 
-  onError: (err) => {
-    // Prefer API-provided message (from your improved controller)
-    if (axios.isAxiosError(err)) {
-      const msg =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        err.message;
+    onError: (err) => {
+      if (axios.isAxiosError(err)) {
+        const msg = err.response?.data?.message || err.response?.data?.error || err.message;
+        const code = err.response?.data?.code;
+        const finalMsg = code && typeof code === 'string' ? `${msg} (${code})` : msg;
 
-      // Optional: include code for debugging in dev
-      const code = err.response?.data?.code;
-      const finalMsg =
-        code && typeof code === 'string'
-          ? `${msg} (${code})`
-          : msg;
+        alertFn?.(finalMsg || 'Failed to mark complete-pending.');
+        return;
+      }
 
-      alertFn?.(finalMsg || 'Failed to mark complete-pending.');
-      return;
-    }
-
-    alertFn?.(err?.message || 'Failed to mark complete-pending.');
-  },
-});
-
+      alertFn?.(err?.message || 'Failed to mark complete-pending.');
+    },
+  });
 
   const confirmCompleteM = useMutation<void, Error, string>({
     mutationFn: (sessionId) => accountApi.confirmSessionCompletion(backendUrl, token!, sessionId),
@@ -349,10 +330,12 @@ export const useAccountSection = (options?: {
       refetchSessions();
       refetchTransactions();
       refetchAccount();
+
       const done = sessions.find((s) => String(s.id) === sessionId);
       if (done) {
         const tutorIdForRating =
           (done as any).tutor_id != null ? String((done as any).tutor_id) : '';
+
         setRatingData({
           id: '',
           tutorId: tutorIdForRating,
@@ -434,21 +417,15 @@ export const useAccountSection = (options?: {
     }
   }, [queryParams, setActiveTab, setFormData, normalizePricingObject]);
 
-
-
   /* 8) When Earnings tab is open, refresh related data on focus ------------ */
   useEffect(() => {
     if (activeTab !== 'earnings') return;
 
-    // Always refresh once when Earnings tab is opened
     refetchTransactions();
     refetchAccount();
     refetchEarnings();
 
-    // ✅ Only attach window focus listener on web
-    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') {
-      return;
-    }
+    if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
 
     const onFocus = () => {
       refetchTransactions();
@@ -470,6 +447,7 @@ export const useAccountSection = (options?: {
       const ok = await (confirmFn
         ? confirmFn('Are you sure you want to cancel this session?')
         : Promise.resolve(false));
+
       if (ok) {
         cancelSessionM.mutate({ sessionId, reason: cancelReasons[sessionId] ?? '' });
       }
@@ -487,7 +465,7 @@ export const useAccountSection = (options?: {
     [confirmCancelSession, user.role]
   );
 
-   const handleSessionCreation = useCallback(
+  const handleSessionCreation = useCallback(
     () =>
       createSessionM.mutate({
         ...formData,
@@ -495,8 +473,6 @@ export const useAccountSection = (options?: {
       }),
     [createSessionM, formData, normalizePricingObject]
   );
-
-
 
   const handleCompletePending = useCallback(
     (sessionId: string) => completePendingM.mutate(sessionId),
@@ -509,7 +485,8 @@ export const useAccountSection = (options?: {
   );
 
   const handleCancelReasonChange = useCallback(
-    (sessionId: string, reason: string) => setCancelReasons((p) => ({ ...p, [sessionId]: reason })),
+    (sessionId: string, reason: string) =>
+      setCancelReasons((p) => ({ ...p, [sessionId]: reason })),
     []
   );
 
@@ -566,5 +543,3 @@ export const useAccountSection = (options?: {
     handleCreateZoomLink,
   };
 };
-
-export default useAccountSection;

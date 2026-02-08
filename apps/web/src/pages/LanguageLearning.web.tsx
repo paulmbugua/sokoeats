@@ -254,6 +254,9 @@ const LanguageLearningPage: React.FC = () => {
   const inlineIndexRef = useRef(0);
   const inlineItemsRef = useRef<PlaybackQueueItem[]>([]);
   const composerRef = useRef<HTMLTextAreaElement | null>(null);
+  const hydratedRef = useRef<string | null>(null);
+const [hydrating, setHydrating] = useState(false);
+
 
   type RepeatPanelState = {
   messageKey: string;
@@ -686,6 +689,60 @@ const fetchPlaybackForMessage = useCallback(
 
 
 
+const loadLanguageState = useCallback(
+  async (cid: string) => {
+    const base = String(backendUrl || '').replace(/\/$/, '');
+    const url = `${base}/api/ai/courses/language/state`;
+
+    const body = activeOrgId
+      ? { courseId: cid, orgId: activeOrgId }
+      : { courseId: cid };
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token || ''}`,
+      },
+      body: JSON.stringify(body),
+    });
+
+    const json = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      console.error('[LL state] request failed', { status: res.status, url, response: json });
+      throw new Error(json?.error || json?.message || 'LL_STATE_FETCH_FAILED');
+    }
+
+    // expecting: { messages, entitlement, targetLanguage, playback? }
+    const msgs = json?.messages ?? [];
+    const entitlement = json?.entitlement ?? null;
+    const targetLanguage = json?.targetLanguage ?? null;
+    const playback = json?.playback ?? null;
+
+    setInitialState({ messages: msgs, entitlement, targetLanguage });
+
+    if (playback?.items?.length) {
+      setPlaybackQueue(playback);
+    }
+
+    // ✅ seed default voice playback cache for the last assistant message (matches native)
+    const lastAssistantIdx = [...msgs]
+      .map((m: any, i: number) => ({ m, i }))
+      .reverse()
+      .find((x) => x.m?.role === 'assistant')?.i;
+
+    if (lastAssistantIdx != null && playback?.items?.length) {
+      const mk = `assistant-${lastAssistantIdx}`;
+      const ck = cacheKeyFor(mk, DEFAULT_VOICE.voiceId);
+      setPlaybackByKey((prev) => ({ ...prev, [ck]: playback }));
+    }
+
+    return json;
+  },
+  [backendUrl, token, activeOrgId, setInitialState, setPlaybackQueue]
+);
+
 
 const ensurePlaybackFor = useCallback(
   async (messageKey: string, msg: any, idx: number) => {
@@ -899,6 +956,28 @@ const promptLocked =
   }
 }, [languageStart, initMessages.length]);
 
+useEffect(() => {
+  const cid = String(courseId || '').trim();
+  if (!cid) return;
+
+  if (hydratedRef.current === cid) return;
+  hydratedRef.current = cid;
+
+  // ✅ If navigation gave us a preview, use it. NO API call, NO sample prompt.
+  if (languageStart?.messagesPreview?.length) return;
+
+  // ✅ Otherwise resume from backend state (NO sample prompt ever)
+  (async () => {
+    try {
+      setHydrating(true);
+      await loadLanguageState(cid);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setHydrating(false);
+    }
+  })();
+}, [courseId, languageStart, loadLanguageState]);
 
 
   useEffect(() => {
@@ -973,6 +1052,13 @@ const promptLocked =
               {messages.length === 0 && (
                 <div className="text-sm text-slate-500">Start chatting to build your course.</div>
               )}
+
+              {hydrating && (
+              <div className="text-xs text-slate-500 dark:text-slate-400">
+                Resuming your course…
+              </div>
+            )}
+
               {messages.map((msg, idx) => {
                 const messageKey = `${msg.role}-${idx}`;
                 const isAssistant = msg.role === 'assistant';
@@ -1031,7 +1117,7 @@ const promptLocked =
 <div className="space-y-2">
   {(() => {
     const ck = cacheKeyFor(messageKey, voiceSettings.voiceId);
-    const pb = (msg.playback as PlaybackPayload) || playbackByKey[ck] || null;
+    const pb = playbackByKey[ck] || (msg.playback as PlaybackPayload) || null;
     const hasPb = !!pb?.items?.length;
     const isPbLoading = playbackLoadingKey === ck;
 

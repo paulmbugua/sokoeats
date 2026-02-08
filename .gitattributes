@@ -1,8 +1,0 @@
-# Force LF on lock/config files so Linux CI doesn't "modify" them
-yarn.lock          text eol=lf
-.yarnrc.yml        text eol=lf
-eas.json           text eol=lf
-**/eas.json        text eol=lf
-
-# Yarn release file (optional but good)
-.yarn/releases/*.cjs text eol=lf

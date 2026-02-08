@@ -1,4 +1,5 @@
-export { default as useAccountSection } from './useAccountSection';
+export { useAccountSection } from './useAccountSection';
+export type { UseAccountSectionResult } from './useAccountSection';
 export { default as useAuth } from './useAuth';
 export { default as useCertificationSettings } from './useCertificationSettings';
 export { default as useHomePage } from './useHomePage';

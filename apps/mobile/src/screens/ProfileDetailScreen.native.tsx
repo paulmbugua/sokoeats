@@ -220,22 +220,78 @@ const cursorColor = isDark ? '#60A5FA' : '#2563EB'; // optional: blue cursor
 
   return (
     <SafeAreaView style={[tw`flex-1 bg-white dark:bg-black`, { paddingTop: insets.top }]}>
+      
       <ScrollView contentContainerStyle={tw`px-4 pb-10`}>
+        {/* ✅ How sessions work (compact, theme-aware) */}
+<View style={tw`mt-4 rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 p-4`}>
+  <View style={tw`flex-row items-start justify-between`}>
+    <View style={tw`flex-1 pr-3`}>
+      <Text style={tw`text-sm font-semibold text-gray-900 dark:text-white`}>
+        How sessions work
+      </Text>
+
+      {/* ✅ Theme-aware summary line */}
+      <Text style={tw`mt-1 text-xs text-gray-600 dark:text-gray-300`}>
+        Book → Tutor accepts + shares Zoom → Learn → You confirm → Tutor gets paid.
+      </Text>
+    </View>
+
+    {/* ✅ Pay protected pill */}
+    <View
+      style={tw`px-3 py-1 rounded-full border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/10`}
+    >
+      <Text style={tw`text-[11px] font-semibold text-emerald-800 dark:text-emerald-200`}>
+        Pay protected
+      </Text>
+    </View>
+  </View>
+
+  {/* ✅ Step pills */}
+  <View style={tw`mt-3 flex-row flex-wrap items-center`}>
+    {[
+      'Request',
+      'Accept + Zoom',
+      'Tutor confirm',
+      'Student confirm + payout',
+    ].map((label, idx) => (
+      <React.Fragment key={label}>
+        <View
+          style={tw`flex-row items-center rounded-full px-3 py-1 border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-white/5`}
+        >
+          <View style={tw`w-4 h-4 rounded-full bg-blue-600 items-center justify-center mr-2`}>
+            <Text style={tw`text-[10px] font-bold text-white`}>{idx + 1}</Text>
+          </View>
+          <Text style={tw`text-[11px] text-gray-700 dark:text-gray-100`}>
+            {label}
+          </Text>
+        </View>
+
+        {idx !== 3 && (
+          <Text style={tw`mx-2 text-gray-300 dark:text-gray-600`}>→</Text>
+        )}
+      </React.Fragment>
+    ))}
+  </View>
+</View>
+
         {/* Hero image */}
         <Pressable
-          onPress={() => handleImageClick(profile.gallery?.[0] || '')}
-          style={tw`mt-3 rounded-2xl overflow-hidden border border-gray-200 dark:border-white/10`}
-        >
-          <Image
-            source={{ uri: resolveAsset(profile.gallery?.[0]) || undefined }}
-            style={tw`w-full h-64`}
-            contentFit="cover"
-          />
-        </Pressable>
+  onPress={() => handleImageClick(profile.gallery?.[0] || '')}
+  style={tw`mt-3 rounded-2xl overflow-hidden border border-gray-200 dark:border-white/10 pt-6 bg-white dark:bg-white/5`}
+>
+  <Image
+    source={{ uri: resolveAsset(profile.gallery?.[0]) || undefined }}
+    style={tw`w-full h-64 -mt-6`}
+    contentFit="cover"
+  />
+</Pressable>
+
 
         {/* Card */}
         <View style={tw`mt-4 rounded-2xl border border-gray-200 dark:border-white/10 bg-white dark:bg-white/5 p-4`}>
+          
           <View style={tw`flex-row items-center`}>
+            
             <Image
               source={{ uri: resolveAsset(profile.gallery?.[0]) || undefined }}
               style={tw`w-16 h-16 rounded-full border border-gray-200 dark:border-white/10`}

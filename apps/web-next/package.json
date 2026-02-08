@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "start": "next start",
     "lint": "next lint",
     "check:no-pages-router": "node -e \"const fs=require('fs'); const paths=['pages','src/pages'].map(p=>require('path').join(process.cwd(),p)); const bad=paths.filter(p=>fs.existsSync(p)); if(bad.length){ console.error('❌ Pages Router directories found:', bad.join(', ')); process.exit(1);} console.log('✅ No Pages Router dirs found');\"",
