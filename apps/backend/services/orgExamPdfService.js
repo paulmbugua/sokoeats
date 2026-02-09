@@ -2,16 +2,19 @@ import PDFDocument from 'pdfkit';
 import getStream from 'get-stream';
 import { PassThrough } from 'stream';
 import axios from 'axios';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from './cloudinaryShim.js';
 import crypto from 'node:crypto';
 import crc32 from 'crc-32';
 
 /* ─────────────────────────────────────────────────────────
- * Cloudinary + ID helpers (mirrors certificate service)
+ * Asset helpers (mirrors certificate service)
  * ───────────────────────────────────────────────────────── */
 
 const CLOUDINARY_CLOUD_NAME =
-  process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_NAME || '';
+  process.env.LEGACY_CLOUDINARY_CLOUD_NAME ||
+  process.env.CLOUDINARY_CLOUD_NAME ||
+  process.env.CLOUDINARY_NAME ||
+  '';
 
 const oneline = (v) =>
   String(v ?? '')

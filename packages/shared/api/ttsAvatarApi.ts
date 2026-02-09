@@ -16,7 +16,7 @@ export type SpeakReq = {
 };
 
 export type SpeakResp = {
-  url: string; // Cloudinary URL (or absolute)
+  url: string; // legacy or absolute URL
   streamPath?: string; // e.g. "/api/ttsAvatar/stream/<cacheKey>"
   cacheKey: string;
   cached: boolean;
@@ -179,7 +179,7 @@ export async function speakRobot(
 /**
  * Pick the best audio URL to hand to <audio>, preferring the local proxy stream when available.
  * Falls back to building a stream path from cacheKey if server didn’t include one,
- * and finally to the direct Cloudinary `url`.
+ * and finally to the direct `url`.
  */
 export function bestAudioUrl(backendUrl: string | URL, resp: SpeakResp): string {
   const base = normalizeBase(backendUrl);

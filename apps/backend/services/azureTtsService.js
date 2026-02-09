@@ -2,7 +2,12 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import * as sdk from 'microsoft-cognitiveservices-speech-sdk';
-import { v2 as cloudinary } from 'cloudinary';
+import {
+  getBucketForKind,
+  headObject,
+  putObject,
+  resolvePublicUrl,
+} from './r2UploadService.js';
 import zlib from 'zlib';
 
 // ──────────────────────────────────────────────────────────
@@ -54,39 +59,39 @@ function dumpDebugFile(basename, content) {
 }
 
 // ──────────────────────────────────────────────────────────
-// Cloudinary helpers
+// R2 helpers
 // ──────────────────────────────────────────────────────────
-async function findCloudinary(publicId, resource_type) {
+function ttsAudioBucket() {
+  return getBucketForKind('tts');
+}
+
+function ttsAiBucket() {
+  return getBucketForKind('ai');
+}
+
+async function r2Has(bucket, objectPath) {
   try {
-    const r = await cloudinary.api.resource(publicId, { resource_type });
-    dlog('cache HIT', resource_type, publicId);
-    return r;
+    await headObject({ bucket, objectPath });
+    dlog('cache HIT', bucket, objectPath);
+    return true;
   } catch {
-    dlog('cache MISS', resource_type, publicId);
-    return null;
+    dlog('cache MISS', bucket, objectPath);
+    return false;
   }
 }
-function uploadRawBuffer(buf, publicId, extra = {}) {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { public_id: publicId, resource_type: 'raw', overwrite: true, ...extra },
-      (err, res) => (err ? reject(err) : resolve(res)),
-    );
-    stream.end(buf);
+
+async function uploadBinaryToR2(bucket, objectPath, buf, contentType) {
+  await putObject({
+    bucket,
+    objectPath,
+    body: buf,
+    contentType,
+    cacheControl: 'public, max-age=31536000, immutable',
   });
-}
-function uploadVideoBuffer(buf, publicId, extra = {}) {
-  return new Promise((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      {
-        public_id: publicId,
-        resource_type: 'video',
-        overwrite: true,
-        ...extra,
-      },
-      (err, res) => (err ? reject(err) : resolve(res)),
-    );
-    stream.end(buf);
+  return resolvePublicUrl({
+    bucket,
+    objectPath,
+    kind: bucket === ttsAudioBucket() ? 'tts' : 'ai',
   });
 }
 
@@ -467,13 +472,13 @@ function synthOnceToMemory({ ssml, speechConfig }) {
 // ──────────────────────────────────────────────────────────
 function buildIds(key) {
   return {
-    audioId: `${NS}/${key}`,
-    vttId: `${NS}/${key}.vtt`,
-    srtId: `${NS}/${key}.srt`,
-    visId: `${NS}/${key}.visemes.json`,
-    wordsId: `${NS}/${key}.words.json`,
-    marksId: `${NS}/${key}.bookmarks.json`,
-    gzId: `${NS}/${key}.sidecars.gz`,
+    audioPath: `${NS}/${key}.mp3`,
+    vttPath: `${NS}/${key}.vtt`,
+    srtPath: `${NS}/${key}.srt`,
+    visPath: `${NS}/${key}.visemes.json`,
+    wordsPath: `${NS}/${key}.words.json`,
+    marksPath: `${NS}/${key}.bookmarks.json`,
+    gzPath: `${NS}/${key}.sidecars.gz`,
   };
 }
 
@@ -558,19 +563,38 @@ async function synthesizeCore({
     ssmlHead: (ssml || '').slice(0, 120),
   });
 
-  // 1) Cloudinary cache lookup
+  // 1) R2 cache lookup
   if (!bypassCloudCache) {
-    const [audioHit, vttHit, srtHit, visHit, wordsHit, marksHit] =
-      await Promise.all([
-        findCloudinary(ids.audioId, 'video'),
-        findCloudinary(ids.vttId, 'raw'),
-        findCloudinary(ids.srtId, 'raw'),
-        findCloudinary(ids.visId, 'raw'),
-        findCloudinary(ids.wordsId, 'raw'),
-        findCloudinary(ids.marksId, 'raw'),
-      ]);
+    const [audioHit, vttHit, srtHit, visHit, wordsHit, marksHit] = await Promise.all([
+      r2Has(ttsAudioBucket(), ids.audioPath),
+      r2Has(ttsAiBucket(), ids.vttPath),
+      r2Has(ttsAiBucket(), ids.srtPath),
+      r2Has(ttsAiBucket(), ids.visPath),
+      r2Has(ttsAiBucket(), ids.wordsPath),
+      r2Has(ttsAiBucket(), ids.marksPath),
+    ]);
 
     if (audioHit) {
+      const audioUrl = resolvePublicUrl({
+        bucket: ttsAudioBucket(),
+        objectPath: ids.audioPath,
+        kind: 'tts',
+      });
+      const vttUrl = vttHit
+        ? resolvePublicUrl({
+            bucket: ttsAiBucket(),
+            objectPath: ids.vttPath,
+            kind: 'ai',
+          })
+        : null;
+      const srtUrl = srtHit
+        ? resolvePublicUrl({
+            bucket: ttsAiBucket(),
+            objectPath: ids.srtPath,
+            kind: 'ai',
+          })
+        : null;
+
       let visemesArr = [];
       let wordsArr = [];
       let bookmarksArr = [];
@@ -578,45 +602,63 @@ async function synthesizeCore({
       let srtTxt = '';
       try {
         if (visHit) {
-          const r = await fetch(visHit.secure_url);
+          const r = await fetch(
+            resolvePublicUrl({
+              bucket: ttsAiBucket(),
+              objectPath: ids.visPath,
+              kind: 'ai',
+            }),
+          );
           if (r.ok) visemesArr = await r.json();
         }
       } catch {}
       try {
         if (wordsHit) {
-          const r = await fetch(wordsHit.secure_url);
+          const r = await fetch(
+            resolvePublicUrl({
+              bucket: ttsAiBucket(),
+              objectPath: ids.wordsPath,
+              kind: 'ai',
+            }),
+          );
           if (r.ok) wordsArr = await r.json();
         }
       } catch {}
       try {
         if (marksHit) {
-          const r = await fetch(marksHit.secure_url);
+          const r = await fetch(
+            resolvePublicUrl({
+              bucket: ttsAiBucket(),
+              objectPath: ids.marksPath,
+              kind: 'ai',
+            }),
+          );
           if (r.ok) bookmarksArr = await r.json();
         }
       } catch {}
       try {
-        if (vttHit) {
-          const r = await fetch(vttHit.secure_url);
+        if (vttHit && vttUrl) {
+          const r = await fetch(vttUrl);
           if (r.ok) vttTxt = await r.text();
         }
       } catch {}
       try {
-        if (srtHit) {
-          const r = await fetch(srtHit.secure_url);
+        if (srtHit && srtUrl) {
+          const r = await fetch(srtUrl);
           if (r.ok) srtTxt = await r.text();
         }
       } catch {}
 
-      dlog('serve from cache', { url: audioHit.secure_url });
+      dlog('serve from cache', { url: audioUrl });
       dlog('done (cache)', { ms: Number(process.hrtime.bigint() - t0) / 1e6 });
 
       return {
         kind: 'cache',
         cacheKey: key,
         urls: {
-          audioUrl: audioHit.secure_url,
-          vttUrl: vttHit?.secure_url || null,
-          srtUrl: srtHit?.secure_url || null,
+          audioUrl,
+          vttUrl,
+          srtUrl,
         },
         sidecars: {
           vttText: vttTxt,
@@ -872,16 +914,16 @@ export async function synthesizeTtsWithVisemes({
   // Fresh synth → upload everything (parallel)
   const { audioBuffer, vttText, srtText, visemes, words, bookmarks } =
     core.buffers;
-  const { audioId, vttId, srtId, visId, wordsId, marksId, gzId } = core.ids;
+  const { audioPath, vttPath, srtPath, visPath, wordsPath, marksPath, gzPath } = core.ids;
 
-  dlog('uploading to cloudinary', {
-    audioId,
-    vttId,
-    srtId,
-    visId,
-    wordsId,
-    marksId,
-    gzId,
+  dlog('uploading to r2', {
+    audioPath,
+    vttPath,
+    srtPath,
+    visPath,
+    wordsPath,
+    marksPath,
+    gzPath,
   });
 
   // Optional: also compress into a single sidecar.gz (keeps discrete uploads)
@@ -894,27 +936,27 @@ export async function synthesizeTtsWithVisemes({
     meta: { voiceName, speakingRate, pitch },
   });
 
-  let audioRes, vttRes, srtRes;
+  let audioUrl, vttUrl, srtUrl;
   try {
     // Upload audio + captions in parallel
-    [audioRes, vttRes, srtRes] = await Promise.all([
-      uploadVideoBuffer(audioBuffer, audioId),
-      uploadRawBuffer(Buffer.from(vttText, 'utf8'), vttId),
-      uploadRawBuffer(Buffer.from(srtText, 'utf8'), srtId),
+    [audioUrl, vttUrl, srtUrl] = await Promise.all([
+      uploadBinaryToR2(ttsAudioBucket(), audioPath, audioBuffer, 'audio/mpeg'),
+      uploadBinaryToR2(ttsAiBucket(), vttPath, Buffer.from(vttText, 'utf8'), 'text/vtt'),
+      uploadBinaryToR2(ttsAiBucket(), srtPath, Buffer.from(srtText, 'utf8'), 'text/plain'),
     ]);
 
     // JSON sidecars + gz bundle in parallel (don't block main trio)
     await Promise.allSettled([
-      uploadRawBuffer(Buffer.from(JSON.stringify(visemes), 'utf8'), visId),
-      uploadRawBuffer(Buffer.from(JSON.stringify(words), 'utf8'), wordsId),
-      uploadRawBuffer(Buffer.from(JSON.stringify(bookmarks), 'utf8'), marksId),
-      uploadRawBuffer(gz, gzId),
+      uploadBinaryToR2(ttsAiBucket(), visPath, Buffer.from(JSON.stringify(visemes), 'utf8'), 'application/json'),
+      uploadBinaryToR2(ttsAiBucket(), wordsPath, Buffer.from(JSON.stringify(words), 'utf8'), 'application/json'),
+      uploadBinaryToR2(ttsAiBucket(), marksPath, Buffer.from(JSON.stringify(bookmarks), 'utf8'), 'application/json'),
+      uploadBinaryToR2(ttsAiBucket(), gzPath, gz, 'application/gzip'),
     ]);
 
-    dlog('uploaded ok', { url: audioRes.secure_url });
+    dlog('uploaded ok', { url: audioUrl });
   } catch (e) {
     console.error('[tts/svc] upload failed', {
-      code: e?.http_code,
+      code: e?.code,
       message: e?.message,
     });
     throw Object.assign(new Error('SYNTH_FAILED'), {
@@ -924,9 +966,9 @@ export async function synthesizeTtsWithVisemes({
   }
 
   return {
-    urlPath: audioRes.secure_url,
-    subtitleVttUrl: vttRes.secure_url,
-    subtitleSrtUrl: srtRes.secure_url,
+    urlPath: audioUrl,
+    subtitleVttUrl: vttUrl,
+    subtitleSrtUrl: srtUrl,
     visemes,
     words,
     bookmarks,

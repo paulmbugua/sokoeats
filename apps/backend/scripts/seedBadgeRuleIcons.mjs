@@ -1,6 +1,6 @@
 // apps/backend/scripts/seedBadgeRuleIcons.mjs
 import 'dotenv/config'; // ensure .env is loaded for this one-off script
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../services/cloudinaryShim.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import pool from '../config/db.js'; // your db (already logs connection)

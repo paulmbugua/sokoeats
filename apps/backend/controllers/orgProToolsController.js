@@ -1,5 +1,5 @@
 import pool from '../config/db.js';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../services/cloudinaryShim.js';
 import { requireOrgTier } from '../utils/orgTierGuard.js';
 import { sendNotification } from '../utils/sendNotification.js';
 import {

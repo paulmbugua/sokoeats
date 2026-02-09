@@ -231,7 +231,7 @@ function WatermarkPreview({
       return `${backendUrl.replace(/\/+$/, '')}/api/certificates/${certId}/og`;
     }
 
-    // Fallback to first-page JPG from raw PDF URL (Cloudinary)
+    // Fallback to first-page JPG from raw PDF URL (legacy)
     if (!pdfUrl) return null;
     try {
       const u = new URL(pdfUrl);

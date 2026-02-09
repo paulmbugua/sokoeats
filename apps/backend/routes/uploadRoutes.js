@@ -7,22 +7,58 @@ import {
   deleteObject,
   presignGet,
   isR2Url,
+  resolveKind,
 } from '../services/r2UploadService.js';
 
 const router = express.Router();
 
 const MAX_VIDEO_BYTES = Number(process.env.R2_MAX_VIDEO_BYTES || 300 * 1024 * 1024);
 const MAX_PREVIEW_BYTES = Number(process.env.R2_MAX_PREVIEW_BYTES || 100 * 1024 * 1024);
+const MAX_IMAGE_BYTES = Number(process.env.R2_MAX_IMAGE_BYTES || 10 * 1024 * 1024);
+const MAX_AUDIO_BYTES = Number(process.env.R2_MAX_AUDIO_BYTES || 25 * 1024 * 1024);
+const MAX_DOC_BYTES = Number(process.env.R2_MAX_DOC_BYTES || 50 * 1024 * 1024);
+const MAX_AI_BYTES = Number(process.env.R2_MAX_AI_BYTES || 5 * 1024 * 1024);
 
-const ALLOWED_KINDS = ['video', 'preview', 'avatar', 'thumbnail', 'pdf'];
+const ALLOWED_KINDS = [
+  'video',
+  'preview',
+  'thumbnail',
+  'image',
+  'avatar',
+  'banner',
+  'audio',
+  'tts',
+  'pdf',
+  'doc',
+  'ai',
+  'transcript',
+];
 
 function badRequest(res, message) {
   return res.status(400).json({ message });
 }
 
 function validateContentType(kind, contentType) {
+  if (typeof contentType !== 'string' || !contentType) return false;
   if (kind === 'video' || kind === 'preview') {
-    return typeof contentType === 'string' && contentType.startsWith('video/');
+    return contentType.startsWith('video/');
+  }
+  if (kind === 'thumbnail' || kind === 'image' || kind === 'avatar' || kind === 'banner') {
+    return contentType.startsWith('image/');
+  }
+  if (kind === 'audio' || kind === 'tts') {
+    return contentType.startsWith('audio/');
+  }
+  if (kind === 'pdf') {
+    return contentType === 'application/pdf';
+  }
+  if (kind === 'ai' || kind === 'transcript') {
+    return (
+      contentType.startsWith('text/') ||
+      contentType === 'application/json' ||
+      contentType === 'application/xml' ||
+      contentType === 'application/octet-stream'
+    );
   }
   return true;
 }
@@ -31,24 +67,28 @@ function validateSize(kind, sizeBytes) {
   if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return false;
   if (kind === 'video') return sizeBytes <= MAX_VIDEO_BYTES;
   if (kind === 'preview') return sizeBytes <= MAX_PREVIEW_BYTES;
+  if (kind === 'thumbnail' || kind === 'image' || kind === 'avatar' || kind === 'banner') {
+    return sizeBytes <= MAX_IMAGE_BYTES;
+  }
+  if (kind === 'audio' || kind === 'tts') return sizeBytes <= MAX_AUDIO_BYTES;
+  if (kind === 'pdf' || kind === 'doc') return sizeBytes <= MAX_DOC_BYTES;
+  if (kind === 'ai' || kind === 'transcript') return sizeBytes <= MAX_AI_BYTES;
   return true;
 }
 
 router.post('/api/uploads/presign', authUser, express.json(), async (req, res) => {
   try {
     const userId = req.user?.id;
-    const { kind, filename, contentType, sizeBytes } = req.body || {};
+    const rawKind = req.body?.kind;
+    const kind = resolveKind(rawKind);
+    const { filename, contentType, sizeBytes } = req.body || {};
 
     if (!userId) {
       return res.status(401).json({ message: 'Authentication required.' });
     }
 
     if (!ALLOWED_KINDS.includes(kind)) {
-      return badRequest(res, 'Invalid kind. Use video, preview, avatar, thumbnail, or pdf.');
-    }
-
-    if (kind === 'avatar' || kind === 'thumbnail' || kind === 'pdf') {
-      return res.json({ provider: 'cloudinary', message: 'Use existing Cloudinary upload flow' });
+      return badRequest(res, 'Invalid kind.');
     }
 
     if (!filename || typeof filename !== 'string') {
@@ -56,13 +96,12 @@ router.post('/api/uploads/presign', authUser, express.json(), async (req, res) =
     }
 
     if (!validateContentType(kind, contentType)) {
-      return badRequest(res, 'Invalid contentType. Expected a video/* mime type.');
+      return badRequest(res, 'Invalid contentType for upload kind.');
     }
 
     const sizeNum = Number(sizeBytes);
     if (!validateSize(kind, sizeNum)) {
-      const limit = kind === 'video' ? MAX_VIDEO_BYTES : MAX_PREVIEW_BYTES;
-      return badRequest(res, `sizeBytes must be > 0 and <= ${limit} bytes.`);
+      return badRequest(res, 'sizeBytes must be > 0 and within size limits.');
     }
 
     const presign = await presignPut({
@@ -90,7 +129,7 @@ router.post('/api/uploads/presign', authUser, express.json(), async (req, res) =
 
 router.post('/api/uploads/complete', authUser, express.json(), (req, res) => {
   try {
-    const { provider, bucket, objectPath } = req.body || {};
+    const { provider, bucket, objectPath, kind } = req.body || {};
 
     if (provider !== 'r2') {
       return badRequest(res, 'provider must be r2.');
@@ -100,7 +139,7 @@ router.post('/api/uploads/complete', authUser, express.json(), (req, res) => {
       return badRequest(res, 'bucket and objectPath are required.');
     }
 
-    const result = finalize({ bucket, objectPath });
+    const result = finalize({ bucket, objectPath, kind });
     return res.json(result);
   } catch (err) {
     console.error('[uploads/complete] error', err);

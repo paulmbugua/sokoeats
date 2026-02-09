@@ -15,7 +15,7 @@ import {
   classVaultUpdateValidationSchema, // ✅ needed by updateVideoJson
 } from '../validators/classVaultValidator.js';
 import { sendNotification } from '../utils/sendNotification.js';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../services/cloudinaryShim.js';
 import {
   deleteObject,
   uploadLocalFile,

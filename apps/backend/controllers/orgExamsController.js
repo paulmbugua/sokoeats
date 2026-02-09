@@ -1,6 +1,6 @@
 // apps/backend/controllers/orgExamsController.js
 import 'dotenv/config';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../services/cloudinaryShim.js';
 import path from 'path';
 import multer from 'multer';
 import pool from '../config/db.js';

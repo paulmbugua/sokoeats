@@ -1,8 +1,4 @@
-// Rasterize remote SVGs to PNG via Cloudinary "image/fetch"
-const CLOUD = process.env.CLOUDINARY_CLOUD_NAME; // e.g. daybreak-xyz
-const FETCH_BASE =
-  process.env.CLOUDINARY_FETCH_BASE ||
-  (CLOUD ? `https://res.cloudinary.com/${CLOUD}/image/fetch` : '');
+// Rasterize helper (legacy Cloudinary fetch removed).
 
 function isSvg(u = '') {
   return /\.svg(\?.*)?$/i.test(String(u).trim());
@@ -26,8 +22,8 @@ export function rasterizeIfSvg(url, opts = {}) {
   const enable = opts.enable ?? true;
   const width = Number(opts.w) || 800;
   const force = !!opts.force; // allow callers to force PNG
-  if (!enable || !url || !FETCH_BASE) return url;
+  if (!enable || !url) return url;
   if (!force && !looksProblematic(url)) return url;
-  const trans = `f_png,q_auto:good,w_${width}`;
-  return `${FETCH_BASE}/${trans}/${encodeURIComponent(url)}`;
+  // TODO: add server-side rasterization if SVGs cause rendering issues.
+  return url;
 }

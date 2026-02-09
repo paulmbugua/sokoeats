@@ -211,30 +211,6 @@ function interleave<T, U>(a: readonly T[], b: readonly U[], limit: number): Arra
   return out;
 }
 
-function unwrapCloudinaryFetch(raw?: string | null): string {
-  const s = String(raw ?? '').trim();
-  if (!s) return '';
-
-  const match = s.match(/^https?:\/\/res\.cloudinary\.com\/[^/]+\/image\/fetch\/[^/]+\/(.+)$/i);
-  if (!match?.[1]) return s;
-
-  const encodedPart = match[1];
-  let decoded = '';
-  try {
-    decoded = decodeURIComponent(encodedPart);
-  } catch {
-    decoded = encodedPart;
-  }
-
-  const [beforeQuery = ''] = decoded.split(/[?#]/);
-  const lower = beforeQuery.toLowerCase();
-
-  if (lower.endsWith('.svg')) return s;
-  if (/^https?:\/\//i.test(decoded)) return decoded;
-
-  return s;
-}
-
 /* -------------------- Absolute URL + thumbnail helpers ------------------- */
 
 const toWebBase = (base?: string) => (base || '').replace(/\/+$/, '').replace(/\/api$/i, '');
@@ -266,7 +242,7 @@ function pickThumb(obj: any, backendUrl?: string): string {
     obj?.cover ??
     obj?.cover_url;
 
-  const cand = unwrapCloudinaryFetch(candRaw);
+  const cand = String(candRaw ?? '').trim();
   if (/^https?:\/\//i.test(cand)) return cand;
   return toAbsUrl(backendUrl, cand);
 }

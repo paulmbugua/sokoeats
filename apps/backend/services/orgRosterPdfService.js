@@ -1,100 +1,16 @@
 import PDFDocument from 'pdfkit';
 import getStream from 'get-stream';
 import { PassThrough } from 'stream';
-import axios from 'axios';
-import { v2 as cloudinary } from 'cloudinary';
-
-const CLOUDINARY_CLOUD_NAME =
-  process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_NAME || '';
+import { fetchAssetBuffer } from '../utils/fetchAssetBuffer.js';
 
 const oneline = (v) =>
   String(v ?? '')
     .replace(/\s+/g, ' ')
     .trim();
 
-/* Cloudinary fetching with optional signed retry (same pattern as ExamPdf) */
-async function fetchBufferWithSignedRetry(url, { responseType = 'arraybuffer', timeout = 6000 } = {}) {
-  const tryFetch = async (theUrl) =>
-    axios.get(theUrl, { responseType, timeout, validateStatus: () => true });
-
-  const first = await tryFetch(url);
-  if (first.status === 200) return Buffer.from(first.data);
-
-  if (first.status === 401) {
-    const cfg = cloudinary.config() || {};
-    if (cfg?.api_secret) {
-      const u = new URL(url);
-      const deliveryPath = u.pathname;
-      const token = cloudinary.utils.generate_auth_token({
-        start_time: Math.floor(Date.now() / 1000) - 30,
-        duration: 300,
-        acl: [deliveryPath],
-      });
-      const sep = u.search ? '&' : '?';
-      const signedUrl = `${url}${sep}__cld_token__=${token}`;
-      const second = await tryFetch(signedUrl);
-      if (second.status === 200) return Buffer.from(second.data);
-    }
-  }
-
-  return null;
-}
-
-async function fetchCloudinaryAsPngBuffer(
-  idOrUrl,
-  { w, h, q = 'auto', trim = false, exact = false, dpr = 2 } = {}
-) {
+async function tryLoadImageBuffer(idOrUrl) {
   if (!idOrUrl) return null;
-
-  if (typeof idOrUrl === 'string' && idOrUrl.includes('://')) {
-    try {
-      const buf = await fetchBufferWithSignedRetry(idOrUrl, { responseType: 'arraybuffer', timeout: 6000 });
-      if (buf) return buf;
-    } catch {}
-    return null;
-  }
-
-  if (!CLOUDINARY_CLOUD_NAME) return null;
-
-  const parts = [];
-  if (trim) parts.push('e_trim');
-  if (typeof dpr === 'number' && dpr > 0) parts.push(`dpr_${dpr}`);
-  if (w) parts.push(`w_${w}`);
-  if (h) parts.push(`h_${h}`);
-  parts.push(exact ? 'c_scale' : 'c_limit');
-  parts.push(`q_${q}`, 'f_png');
-
-  const transform = parts.join(',');
-  const url = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${transform}/${idOrUrl}.png`;
-
-  try {
-    const buf = await fetchBufferWithSignedRetry(url, { responseType: 'arraybuffer', timeout: 6000 });
-    return buf;
-  } catch {
-    return null;
-  }
-}
-
-async function tryLoadImageBuffer(idOrUrl, { w, h, trim = false, exact = false, dpr = 2 } = {}) {
-  if (!idOrUrl) return null;
-
-  const looksLikePublicId = typeof idOrUrl === 'string' && !idOrUrl.includes('://');
-  const looksLikeCloudinaryUrl = typeof idOrUrl === 'string' && idOrUrl.includes('res.cloudinary.com');
-
-  if (looksLikePublicId || looksLikeCloudinaryUrl) {
-    const buf = await fetchCloudinaryAsPngBuffer(idOrUrl, { w, h, trim, exact, dpr });
-    if (buf) return buf;
-  }
-
-  try {
-    if (typeof fetch !== 'function') return null;
-    const res = await fetch(idOrUrl);
-    if (!res.ok) return null;
-    const ab = await res.arrayBuffer();
-    return Buffer.from(ab);
-  } catch {
-    return null;
-  }
+  return fetchAssetBuffer(idOrUrl, { resourceType: 'image' });
 }
 
 function drawSignatures(doc, { pageWidth, pageHeight, leftMargin, rightMargin, innerWidth, teacherSigBuf, principalSigBuf }) {

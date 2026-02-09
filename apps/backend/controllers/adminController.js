@@ -4,8 +4,9 @@ import pool from '../config/db.js';
 import jwt from 'jsonwebtoken';
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode'; // NEW (for QR verification block)
-import { v2 as cloudinary } from 'cloudinary'; // NEW (for signed token retry)
+import cloudinary from '../services/cloudinaryShim.js';
 import fetch from 'node-fetch';
+import { fetchAssetBuffer } from '../utils/fetchAssetBuffer.js';
 import { sendOTP } from '../config/emailService.js';
 
 const createToken = (id) =>
@@ -26,7 +27,8 @@ const _pick = (v) => (v ?? '').toString().trim();
 
 // Resolve & TRIM cloud name (fixes 'dc2saanpb ' bug)
 const CLOUDINARY_CLOUD_NAME = _pick(
-  process.env.CLOUDINARY_CLOUD_NAME ||
+  process.env.LEGACY_CLOUDINARY_CLOUD_NAME ||
+    process.env.CLOUDINARY_CLOUD_NAME ||
     process.env.CLOUDINARY_NAME ||
     (cloudinary.config() || {}).cloud_name ||
     '',
@@ -76,50 +78,10 @@ async function fetchBufferWithSignedRetry(
   return null;
 }
 
-/** Fetch Cloudinary image as PNG buffer for embedding into PDF (optional resize) */
-// update helper
-async function fetchCloudinaryAsPngBuffer(
-  publicId,
-  { w, h, q = 'auto', trim = false } = {},
-) {
+/** Fetch asset image buffer for embedding into PDF */
+async function fetchCloudinaryAsPngBuffer(publicId) {
   if (!publicId) return null;
-
-  if (!CLOUDINARY_CLOUD_NAME) {
-    console.warn(
-      '[receipt] No cloud name available. Set CLOUDINARY_URL or CLOUDINARY_CLOUD_NAME.',
-    );
-    return null;
-  }
-
-  // Sanitize the public ID: trim, remove leading slashes and trailing file extensions
-  const cleanPublicId = String(publicId)
-    .trim()
-    .replace(/^\/+/, '')
-    .replace(/\.(png|jpg|jpeg|gif|svg|webp)$/i, '');
-
-  const parts = [];
-  if (trim) parts.push('e_trim'); // trim first
-  if (w) parts.push(`w_${w}`);
-  if (h) parts.push(`h_${h}`);
-  parts.push('c_limit', `q_${q}`, 'f_png'); // force PNG output
-  const transform = parts.join(',');
-
-  // NOTE: do NOT append ".png" to the public ID; 'f_png' handles output format
-  const url = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${transform}/${cleanPublicId}`;
-
-  try {
-    return await fetchBufferWithSignedRetry(url, {
-      responseType: 'arraybuffer',
-      timeout: 6000,
-    });
-  } catch (e) {
-    console.warn('[receipt] Cloudinary fetch failed:', {
-      status: e?.response?.status,
-      msg: e?.message,
-      url,
-    });
-    return null;
-  }
+  return fetchAssetBuffer(publicId, { resourceType: 'image' });
 }
 
 /** Soft background + border */

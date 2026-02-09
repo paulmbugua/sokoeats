@@ -1,5 +1,5 @@
 // scripts/seedBrandingAssets.js
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../services/cloudinaryShim.js';
 import 'dotenv/config';
 
 cloudinary.config({

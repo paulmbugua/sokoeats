@@ -2,7 +2,7 @@
 
 import express from 'express';
 import pool from '../config/db.js';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../services/cloudinaryShim.js';
 import { v4 as uuid } from 'uuid';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

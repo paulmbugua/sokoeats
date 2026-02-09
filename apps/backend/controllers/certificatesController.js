@@ -1,7 +1,7 @@
 // apps/backend/controllers/certificatesController.js
 import crypto from 'node:crypto';
 import Joi from 'joi';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../services/cloudinaryShim.js';
 import { Readable } from 'stream';
 import axios from 'axios';
 import pool from '../config/db.js'; // PG pool
@@ -651,35 +651,16 @@ const timeOrder = timeCol ? `ORDER BY "${timeCol}" DESC` : `ORDER BY id DESC`;
   return { attempted: false, passed: false, scorePct: null, passMark: fallbackPassMark };
 }
 
-// Build a crawler-friendly OG image URL (no client Cloudinary logic).
-function buildOgRedirectUrl({
-  cloudName,
-  certificateId,
-  brandPublicId,
-  student,
-  course,
-}) {
-  const safeBrand = (brandPublicId || 'branding/logo').replace(/\//g, ':');
-  const transforms = [
-    'pg_1',
-    'w_1200,h_630,c_fill',
-    `l_${safeBrand},w_180,g_north_west,x_40,y_40`,
-  ];
-
-  if (student) {
-    const s = encodeURIComponent(student);
-    transforms.push(
-      `l_text:Arial_48_bold:${s},g_south_west,x_40,y_120,co_rgb:0D141C`,
-    );
-  }
-  if (course) {
-    const c = encodeURIComponent(course);
-    transforms.push(
-      `l_text:Arial_36:${c},g_south_west,x_40,y_60,co_rgb:49739C`,
-    );
-  }
-
-  return `https://res.cloudinary.com/${cloudName}/image/upload/${transforms.join('/')}/certificates:${certificateId}.pdf.jpg`;
+// Build a crawler-friendly OG image URL (stored preview image preferred).
+function buildOgRedirectUrl({ certificateId }) {
+  const base =
+    process.env.R2_PUBLIC_BASE_URL_IMAGES ||
+    process.env.R2_PUBLIC_BASE_URL_PREVIEWS ||
+    '';
+  const trimmed = String(base).replace(/\/+$/, '');
+  if (!trimmed || !certificateId) return '';
+  // TODO: pre-render certificate OG images on upload for richer overlays.
+  return `${trimmed}/certificates/${certificateId}.jpg`;
 }
 
 // Get the most recent org (name, logo_url, signature_url, certificate_title) that covered this user/course
@@ -842,16 +823,6 @@ export async function ogPreview(req, res) {
   try {
     const { id } = req.params;
     if (!isUuid(id)) return res.status(400).send('Invalid id');
-    const cloudName =
-      process.env.CLOUDINARY_NAME || process.env.CLOUDINARY_CLOUD_NAME;
-
-    if (!cloudName) {
-      console.error(
-        '[cert] ogPreview missing CLOUDINARY_NAME/CLOUDINARY_CLOUD_NAME',
-      );
-      return res.status(500).send('Missing Cloudinary cloud name in env');
-    }
-
     // Default fallbacks
     let student = '';
     let course = '';
@@ -859,7 +830,6 @@ export async function ogPreview(req, res) {
 
     console.log('[cert] ogPreview start', {
       id,
-      cloudName,
       defaultBrandPublicId: brandPublicId,
     });
 
@@ -893,13 +863,7 @@ export async function ogPreview(req, res) {
       // return res.status(404).send('Certificate not found');
     }
 
-    const url = buildOgRedirectUrl({
-      cloudName,
-      certificateId: id,
-      brandPublicId,
-      student,
-      course,
-    });
+    const url = buildOgRedirectUrl({ certificateId: id });
 
     console.log('[cert] ogPreview redirect', { url, brandPublicId });
     return res.redirect(302, url);

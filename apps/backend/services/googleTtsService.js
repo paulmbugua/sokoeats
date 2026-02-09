@@ -1,7 +1,12 @@
 // apps/backend/services/googleTtsService.js
 import crypto from 'node:crypto';
 import textToSpeech from '@google-cloud/text-to-speech';
-import { v2 as cloudinary } from 'cloudinary';
+import {
+  getBucketForKind,
+  headObject,
+  putObject,
+  resolvePublicUrl,
+} from './r2UploadService.js';
 import { fileURLToPath } from 'node:url';
 import { basename } from 'node:path';
 import { simpleAlign } from './simpleAlignerService.js';
@@ -121,10 +126,15 @@ function deriveLang(voiceName) {
   return DEFAULT_LANG;
 }
 
-async function cloudinaryHas(publicId) {
+function ttsObjectPath(cacheKey, ext = 'mp3') {
+  return `tts/${cacheKey}.${ext}`;
+}
+
+async function r2Has(objectPath) {
   try {
-    await cloudinary.api.resource(`tts/${publicId}`, {
-      resource_type: 'video',
+    await headObject({
+      bucket: getBucketForKind('tts'),
+      objectPath,
     });
     return true;
   } catch {
@@ -352,11 +362,13 @@ export async function synthesizeTtsLocalFirst({
     keyHead: cacheKey.slice(0, 8),
   });
 
-  const already = await cloudinaryHas(cacheKey);
+  const audioObjectPath = ttsObjectPath(cacheKey, 'mp3');
+  const already = await r2Has(audioObjectPath);
   const cdnUrlCached = already
-    ? cloudinary.url(`tts/${cacheKey}.mp3`, {
-        resource_type: 'video',
-        secure: true,
+    ? resolvePublicUrl({
+        bucket: getBucketForKind('tts'),
+        objectPath: audioObjectPath,
+        kind: 'tts',
       })
     : null;
 
@@ -516,26 +528,25 @@ export async function synthesizeTtsLocalFirst({
   // Upload → if success, return URL; if fail, keep mp3Buffer
   let finalCdnUrl = null;
   try {
-    const uploadedUrl = await new Promise((resolve, reject) => {
-      const up = cloudinary.uploader.upload_stream(
-        {
-          public_id: `tts/${cacheKey}`,
-          resource_type: 'video',
-          format: 'mp3',
-          overwrite: true,
-        },
-        (err, res) => (err ? reject(err) : resolve(res?.secure_url || null)),
-      );
-      up.end(mp3Buffer);
+    await putObject({
+      bucket: getBucketForKind('tts'),
+      objectPath: audioObjectPath,
+      body: mp3Buffer,
+      contentType: 'audio/mpeg',
+      cacheControl: 'public, max-age=31536000, immutable',
     });
-    if (uploadedUrl) {
-      finalCdnUrl = uploadedUrl;
+    finalCdnUrl = resolvePublicUrl({
+      bucket: getBucketForKind('tts'),
+      objectPath: audioObjectPath,
+      kind: 'tts',
+    });
+    if (finalCdnUrl) {
       console.log('[ttsSvc] upload OK', { key: cacheKey.slice(0, 8) });
     } else {
-      console.warn('[ttsSvc] upload returned no secure_url');
+      console.warn('[ttsSvc] upload returned no URL');
     }
   } catch (e) {
-    console.error('[ttsSvc] Cloudinary upload failed', e?.message || e);
+    console.error('[ttsSvc] R2 upload failed', e?.message || e);
   }
 
   // 1) Google timepoints (marks)

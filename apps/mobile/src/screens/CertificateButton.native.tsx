@@ -25,7 +25,7 @@ const FS: any = FileSystem;
 
 /**
  * STRICTLY NATIVE CertificateButton
- * - Prefers certificate.download_url / certificate.url (Cloudinary).
+ * - Prefers certificate.download_url / certificate.url (legacy URLs).
  * - Downloads via expo-file-system when possible.
  * - Gracefully falls back to Linking.openURL(url) if anything fails.
  * - No document/window/localStorage usage here.
@@ -67,7 +67,7 @@ const CertificateButton: React.FC<Props> = ({ courseId, justPassed }) => {
       return anyCert.download_url as string;
     }
 
-    // 2) Then Cloudinary file URL saved on the row
+    // 2) Then legacy file URL saved on the row
     if (anyCert?.url && typeof anyCert.url === 'string') {
       return anyCert.url as string;
     }

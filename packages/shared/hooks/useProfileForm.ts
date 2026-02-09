@@ -12,10 +12,7 @@ import {
 } from '@mytutorapp/shared/types';
 import { fetchUserRole, createProfileJson } from '@mytutorapp/shared/api/profileApi';
 import { uploadAsset } from '@mytutorapp/shared/api/uploadAsset';
-import {
-  getDirectSignature,
-  directUploadToCloudinary,
-} from '@mytutorapp/shared/api/cloudinaryDirect';
+import { requestUploadPresign, completeUpload } from '@mytutorapp/shared/api/uploadApi';
 import { useShopContext } from '@mytutorapp/shared/context';
 
 export interface UseProfileFormOptions {
@@ -300,18 +297,28 @@ const useProfileForm = (options?: UseProfileFormOptions) => {
             }
             if (!blobOrFile) return;
 
-            const sig = await getDirectSignature(backendUrl, token, {
-              resourceType: 'video',
-              folder: 'class_vault',
+            const sizeBytes =
+              blobOrFile instanceof File ? blobOrFile.size : (blobOrFile as Blob).size;
+            const presign = await requestUploadPresign(backendUrl, token, 'video', {
+              filename: blobOrFile instanceof File ? blobOrFile.name : 'intro.mp4',
+              contentType: blobOrFile instanceof File ? blobOrFile.type : 'video/mp4',
+              sizeBytes,
             });
 
-            const videoUrl = await directUploadToCloudinary(blobOrFile, {
-              cloudName: sig.cloudName,
-              apiKey: sig.apiKey,
-              signature: sig.signature,
-              timestamp: sig.timestamp,
-              folder: sig.folder,
-              resourceType: 'video',
+            const putRes = await fetch(presign.uploadUrl, {
+              method: 'PUT',
+              headers: { ...(presign.headers || {}) },
+              body: blobOrFile,
+            });
+            if (!putRes.ok) {
+              throw new Error(`Upload failed (${putRes.status})`);
+            }
+
+            const { url: videoUrl } = await completeUpload(backendUrl, token, {
+              provider: 'r2',
+              bucket: presign.bucket,
+              objectPath: presign.objectPath,
+              kind: 'video',
             });
 
             await axios.patch(

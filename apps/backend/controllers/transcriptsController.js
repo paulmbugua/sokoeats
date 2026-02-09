@@ -1,6 +1,6 @@
 // apps/backend/controllers/transcriptsController.js
 import Joi from 'joi';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../services/cloudinaryShim.js';
 import { Readable } from 'stream';
 import axios from 'axios';
 import pool from '../config/db.js';

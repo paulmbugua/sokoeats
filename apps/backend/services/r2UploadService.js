@@ -6,27 +6,74 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
   GetObjectCommand,
+  HeadObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
-// Full videos are private (R2_BUCKET_VIDEOS)
-// Previews/thumbs are public (R2_BUCKET_PREVIEWS + R2_PUBLIC_BASE_URL_PREVIEWS)
-const REQUIRED_ENVS = [
-  'R2_ENDPOINT',
-  'R2_ACCESS_KEY_ID',
-  'R2_SECRET_ACCESS_KEY',
-  'R2_BUCKET_VIDEOS',
-  'R2_BUCKET_PREVIEWS',
-  'R2_PUBLIC_BASE_URL_PREVIEWS',
-];
-
-const R2_PUBLIC_BASE_URL_PREVIEWS = String(
-  process.env.R2_PUBLIC_BASE_URL_PREVIEWS || ''
-).replace(/\/+$/, '');
+const REQUIRED_ENVS = ['R2_ENDPOINT', 'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY'];
 
 const BACKEND_PUBLIC_BASE_URL = String(
   process.env.BACKEND_PUBLIC_BASE_URL || process.env.BACKEND_URL || ''
 ).replace(/\/+$/, '');
+
+const ASSET_CONFIG = {
+  video: { bucketEnv: 'R2_BUCKET_VIDEOS', public: false },
+  preview: {
+    bucketEnv: 'R2_BUCKET_PREVIEWS',
+    public: true,
+    publicBaseEnv: 'R2_PUBLIC_BASE_URL_PREVIEWS',
+  },
+  thumbnail: {
+    bucketEnv: 'R2_BUCKET_PREVIEWS',
+    public: true,
+    publicBaseEnv: 'R2_PUBLIC_BASE_URL_PREVIEWS',
+  },
+  image: {
+    bucketEnv: 'R2_BUCKET_IMAGES',
+    public: true,
+    publicBaseEnv: 'R2_PUBLIC_BASE_URL_IMAGES',
+  },
+  avatar: {
+    bucketEnv: 'R2_BUCKET_IMAGES',
+    public: true,
+    publicBaseEnv: 'R2_PUBLIC_BASE_URL_IMAGES',
+  },
+  banner: {
+    bucketEnv: 'R2_BUCKET_IMAGES',
+    public: true,
+    publicBaseEnv: 'R2_PUBLIC_BASE_URL_IMAGES',
+  },
+  audio: {
+    bucketEnv: 'R2_BUCKET_AUDIO',
+    public: false,
+    publicBaseEnv: 'R2_PUBLIC_BASE_URL_AUDIO',
+  },
+  tts: {
+    bucketEnv: 'R2_BUCKET_AUDIO',
+    public: false,
+    publicBaseEnv: 'R2_PUBLIC_BASE_URL_AUDIO',
+  },
+  doc: {
+    bucketEnv: 'R2_BUCKET_DOCS',
+    public: false,
+    publicBaseEnv: 'R2_PUBLIC_BASE_URL_DOCS',
+  },
+  pdf: {
+    bucketEnv: 'R2_BUCKET_DOCS',
+    public: false,
+    publicBaseEnv: 'R2_PUBLIC_BASE_URL_DOCS',
+  },
+  ai: {
+    bucketEnv: 'R2_BUCKET_AI',
+    public: false,
+    publicBaseEnv: 'R2_PUBLIC_BASE_URL_AI',
+  },
+  transcript: {
+    bucketEnv: 'R2_BUCKET_AI',
+    public: false,
+    publicBaseEnv: 'R2_PUBLIC_BASE_URL_AI',
+  },
+};
 
 function requireEnv(name) {
   const value = process.env[name];
@@ -59,43 +106,52 @@ function sanitizeFilename(input = 'upload.bin') {
   return `${safeBase}${ext}`;
 }
 
+function resolveKind(kind = 'video') {
+  const k = String(kind || '').toLowerCase();
+  if (k === 'thumb') return 'thumbnail';
+  return k;
+}
+
+function getConfigForKind(kind) {
+  const key = resolveKind(kind);
+  const config = ASSET_CONFIG[key] || ASSET_CONFIG.video;
+  return { key, config };
+}
+
 function buildObjectPath({ kind, ownerId, filename, now = new Date() }) {
+  const { key } = getConfigForKind(kind);
   const year = String(now.getUTCFullYear());
   const month = String(now.getUTCMonth() + 1).padStart(2, '0');
   const safeName = sanitizeFilename(filename);
   const unique = uuid();
-  return `${kind}/${ownerId}/${year}/${month}/${unique}-${safeName}`;
+  const safeOwner = ownerId || 'system';
+  return `${key}/${safeOwner}/${year}/${month}/${unique}-${safeName}`;
 }
 
 // Decide bucket by kind
 function getBucketForKind(kind) {
-  const k = String(kind || '').toLowerCase();
-  if (k === 'preview' || k === 'thumb' || k === 'thumbnail') {
-    return requireEnv('R2_BUCKET_PREVIEWS');
-  }
-  return requireEnv('R2_BUCKET_VIDEOS');
+  const { config } = getConfigForKind(kind);
+  return requireEnv(config.bucketEnv);
 }
 
 // Only previews/thumbs get a direct public URL
 function resolvePublicUrl({ bucket, objectPath, kind }) {
-  const k = String(kind || '').toLowerCase();
+  const { key, config } = getConfigForKind(kind);
+  const baseUrl = String(process.env[config.publicBaseEnv || ''] || '').replace(/\/+$/, '');
 
-  if (k === 'preview' || k === 'thumb' || k === 'thumbnail') {
-    if (!R2_PUBLIC_BASE_URL_PREVIEWS) {
-      throw new Error('Missing R2_PUBLIC_BASE_URL_PREVIEWS');
-    }
-    return `${R2_PUBLIC_BASE_URL_PREVIEWS}/${objectPath}`;
+  if (config.public && baseUrl) {
+    return `${baseUrl}/${objectPath}`;
   }
 
-  // Private assets: store a backend proxy URL if you want
-  // (your download endpoint should presign and return the real signed URL)
+  if (config.public && !baseUrl && BACKEND_PUBLIC_BASE_URL) {
+    return `${BACKEND_PUBLIC_BASE_URL}/media/${bucket}/${objectPath}`;
+  }
+
   if (BACKEND_PUBLIC_BASE_URL) {
     return `${BACKEND_PUBLIC_BASE_URL}/media/${bucket}/${objectPath}`;
   }
 
-  throw new Error(
-    'Full videos are private: no public URL. Use presignGet via download endpoint.'
-  );
+  throw new Error(`Asset ${key} is private: no public URL configured.`);
 }
 
 // Detect if url is from R2 (preview public domain or backend proxy)
@@ -103,8 +159,10 @@ function detectUploadProvider(url) {
   if (!url || typeof url !== 'string') return null;
   if (/cloudinary\.com/i.test(url)) return 'cloudinary';
 
-  const previewBase = R2_PUBLIC_BASE_URL_PREVIEWS;
-  if (previewBase && url.startsWith(`${previewBase}/`)) return 'r2';
+  for (const cfg of Object.values(ASSET_CONFIG)) {
+    const base = String(process.env[cfg.publicBaseEnv || ''] || '').replace(/\/+$/, '');
+    if (base && url.startsWith(`${base}/`)) return 'r2';
+  }
 
   if (BACKEND_PUBLIC_BASE_URL && url.startsWith(`${BACKEND_PUBLIC_BASE_URL}/media/`)) return 'r2';
 
@@ -117,11 +175,13 @@ function detectUploadProvider(url) {
 function parseR2Url(url) {
   if (!url || typeof url !== 'string') return null;
 
-  const previewBase = R2_PUBLIC_BASE_URL_PREVIEWS;
-  if (previewBase && url.startsWith(`${previewBase}/`)) {
-    const objectPath = url.slice(previewBase.length + 1);
-    const bucket = process.env.R2_BUCKET_PREVIEWS || '';
-    return { bucket, objectPath };
+  for (const cfg of Object.values(ASSET_CONFIG)) {
+    const base = String(process.env[cfg.publicBaseEnv || ''] || '').replace(/\/+$/, '');
+    if (base && url.startsWith(`${base}/`)) {
+      const objectPath = url.slice(base.length + 1);
+      const bucket = process.env[cfg.bucketEnv] || '';
+      return { bucket, objectPath };
+    }
   }
 
   const backendBase = BACKEND_PUBLIC_BASE_URL;
@@ -206,7 +266,7 @@ export async function deleteObject({ bucket, objectPath, url }) {
   return { deleted: true };
 }
 
-export async function uploadLocalFile({ kind, ownerId, filePath, filename, contentType }) {
+export async function uploadLocalFile({ kind, ownerId, filePath, filename, contentType, cacheControl }) {
   REQUIRED_ENVS.forEach(requireEnv);
 
   const bucket = getBucketForKind(kind);
@@ -222,6 +282,7 @@ export async function uploadLocalFile({ kind, ownerId, filePath, filename, conte
     Key: objectPath,
     Body: createReadStream(filePath),
     ContentType: contentType,
+    CacheControl: cacheControl,
   });
 
   await client.send(command);
@@ -233,8 +294,73 @@ export async function uploadLocalFile({ kind, ownerId, filePath, filename, conte
   };
 }
 
+export async function uploadBuffer({
+  kind,
+  ownerId,
+  buffer,
+  filename,
+  contentType,
+  cacheControl,
+}) {
+  REQUIRED_ENVS.forEach(requireEnv);
+
+  const bucket = getBucketForKind(kind);
+  const objectPath = buildObjectPath({
+    kind,
+    ownerId,
+    filename: filename || 'upload.bin',
+  });
+
+  const client = getR2Client();
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: objectPath,
+    Body: buffer,
+    ContentType: contentType,
+    CacheControl: cacheControl,
+  });
+
+  await client.send(command);
+
+  return {
+    bucket,
+    objectPath,
+    url: resolvePublicUrl({ bucket, objectPath, kind }),
+  };
+}
+
+export async function putObject({
+  bucket,
+  objectPath,
+  body,
+  contentType,
+  cacheControl,
+}) {
+  REQUIRED_ENVS.forEach(requireEnv);
+  if (!bucket || !objectPath) throw new Error('bucket and objectPath are required');
+
+  const client = getR2Client();
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: objectPath,
+    Body: body,
+    ContentType: contentType,
+    CacheControl: cacheControl,
+  });
+
+  await client.send(command);
+  return { bucket, objectPath };
+}
+
+export async function headObject({ bucket, objectPath }) {
+  REQUIRED_ENVS.forEach(requireEnv);
+  const client = getR2Client();
+  const command = new HeadObjectCommand({ Bucket: bucket, Key: objectPath });
+  return client.send(command);
+}
+
 export function isR2Url(url) {
   return detectUploadProvider(url) === 'r2';
 }
 
-export { detectUploadProvider, parseR2Url, resolvePublicUrl };
+export { detectUploadProvider, parseR2Url, resolvePublicUrl, getBucketForKind, resolveKind };
