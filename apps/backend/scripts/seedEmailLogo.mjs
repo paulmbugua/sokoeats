@@ -1,5 +1,5 @@
 // apps/backend/scripts/seedEmailLogo.mjs
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../services/cloudinaryShim.js';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';

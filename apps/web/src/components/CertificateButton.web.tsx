@@ -34,13 +34,13 @@ const CertificateButton: React.FC<{ courseId: string; justPassed?: boolean }> = 
   }, [certificate, courseId]);
 
   // Decide which URL the <a> should point to:
-  // - Logged OUT: prefer public Cloudinary URL (certificate.url) → no auth needed
+  // - Logged OUT: prefer public legacy URL (certificate.url) → no auth needed
   // - Logged IN: secure /api/.../download (owner-checked), with JS fetch + auth header
   const downloadHref = useMemo(() => {
     if (!certificate) return null;
     const anyCert = certificate as any;
 
-    // 1) If user is logged out, prefer the public Cloudinary URL
+    // 1) If user is logged out, prefer the public legacy URL
     if (!token && anyCert?.url && typeof anyCert.url === 'string') {
       return anyCert.url as string;
     }
@@ -54,7 +54,7 @@ const CertificateButton: React.FC<{ courseId: string; justPassed?: boolean }> = 
     const id = anyCert.id as string | undefined;
     if (id) return getCertificateDownloadUrl(backendUrl, id);
 
-    // 4) Last resort: Cloudinary URL if present
+    // 4) Last resort: legacy URL if present
     return (anyCert?.url as string | undefined) ?? null;
   }, [certificate, backendUrl, token]);
 

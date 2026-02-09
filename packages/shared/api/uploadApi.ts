@@ -12,13 +12,13 @@ export async function requestUploadPresign(
   token: string,
   kind: UploadKind,
   input: UploadPresignInput
-): Promise<PresignResponse | { provider: 'cloudinary'; message: string }> {
+): Promise<PresignResponse> {
   const res = await axios.post(
     `${backendUrl}/api/uploads/presign`,
     { kind, ...input },
     { headers: { Authorization: `Bearer ${token}` } }
   );
-  return res.data as PresignResponse | { provider: 'cloudinary'; message: string };
+  return res.data as PresignResponse;
 }
 
 export async function completeUpload(

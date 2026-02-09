@@ -1,6 +1,5 @@
 // controllers/profileController.js
 
-import { v2 as cloudinary } from 'cloudinary';
 import pool from '../config/db.js';
 import path from 'path';
 import {
@@ -11,74 +10,32 @@ import { normalizePayoutFromBody } from '../utils/payout.js';
 import { aiParseTutorSearch } from '../services/aiTutorSearchService.js';
 import { resolveCountryIso2FromText } from '../utils/countries.js';
 import { normalizeCategory } from '../utils/normalizeCategory.js';
+import {
+  uploadAssetFromFile,
+  deleteAssetByUrl,
+} from '../services/assetStorageService.js';
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**
- * Upload local files to Cloudinary.
+ * Upload local files to R2.
  * @param {Array} files – each with a `.path` and `.originalname`
- * @param {string} resourceType – 'image' or 'video'
- * @returns {Promise<Array<{ url: string; public_id: string }>>}
+ * @param {string} kind – 'image' or 'video'
+ * @returns {Promise<Array<{ url: string }>>}
  */
-async function uploadToCloudinary(files, resourceType = 'image') {
+async function uploadToStorage(files, kind = 'image') {
   return Promise.all(
-    files.map(async (file) => {
-      // 1) If Multer gave us a buffer (memoryStorage), use upload_stream:
-      if (file.buffer) {
-        return new Promise((resolve, reject) => {
-          const opts = {
-            resource_type: resourceType,
-            folder: 'class_vault',
-            public_id: `auto/${Date.now()}_${file.originalname.replace(/\..+$/, '')}`,
-          };
-          const stream = cloudinary.uploader.upload_stream(
-            opts,
-            (err, result) => {
-              if (err) return reject(err);
-              resolve({ url: result.secure_url, public_id: result.public_id });
-            },
-          );
-          stream.end(file.buffer);
-        });
-      }
-
-      // 2) Otherwise fall back to the on‐disk path:
-      if (file.path) {
-        const result = await cloudinary.uploader.upload(file.path, {
-          resource_type: resourceType,
-          folder: 'class_vault',
-          public_id: `auto/${Date.now()}_${path.basename(file.path, path.extname(file.path))}`,
-        });
-        return { url: result.secure_url, public_id: result.public_id };
-      }
-
-      throw new Error('No file.buffer or file.path provided');
-    }),
+    files.map(async (file) =>
+      uploadAssetFromFile({
+        kind,
+        ownerId: String(file?.userId || 'profile'),
+        file,
+        filename: file.originalname || path.basename(file.path || 'upload.bin'),
+        contentType: file.mimetype,
+      }),
+    ),
   );
 }
 
-/**
- * Delete one or more public_ids from Cloudinary.
- * @param {string[]} publicIds
- */
-const deleteFromCloudinary = async (publicIds, resourceType = 'image') => {
-  try {
-    await cloudinary.api.delete_resources(publicIds, {
-      resource_type: resourceType,
-    });
-  } catch (err) {
-    console.error('Cloudinary delete error:', err);
-  }
-};
-
-/**
- * Given a Cloudinary URL, extract the public_id with path (no extension).
- * E.g. 'https://res.cloudinary.com/…/upload/v123/profiles/abc.jpg'
- * → 'profiles/abc'
- */
-const getPublicIdFromUrl = (url) => {
-  const [, afterUpload] = url.split('/upload/');
-  return afterUpload.replace(/\.[^/.]+$/, '');
-};
 // Normalize country input to ISO2 (e.g. "ke" -> "KE", "Kenya" -> "KE")
 function normIso2(input) {
   const s = String(input || '').trim();
@@ -129,13 +86,13 @@ export const createProfile = async (req, res) => {
 
     const galleryUploads =
       isTutor && imageFiles.length
-        ? await uploadToCloudinary(imageFiles, 'image')
+        ? await uploadToStorage(imageFiles, 'image')
         : [];
     const gallery = galleryUploads.map((u) => u.url);
 
     const videoUrl =
       isTutor && videoFile
-        ? (await uploadToCloudinary([videoFile], 'video'))[0].url
+        ? (await uploadToStorage([videoFile], 'video'))[0].url
         : null;
 
     // 🔹 payout prefs
@@ -737,12 +694,12 @@ export const updateProfile = async (req, res) => {
       .filter(Boolean);
 
     if (images.length) {
-      const uploaded = await uploadToCloudinary(images, 'image');
+      const uploaded = await uploadToStorage(images, 'image');
       updatedData.gallery = uploaded.map((u) => u.url);
     }
 
     if (normalizedRole === 'tutor' && req.files?.video?.[0]) {
-      const [videoUploaded] = await uploadToCloudinary([req.files.video[0]], 'video');
+      const [videoUploaded] = await uploadToStorage([req.files.video[0]], 'video');
       updatedData.video = videoUploaded.url || updatedData.video;
     }
 
@@ -1019,8 +976,7 @@ export const removeProfileItem = async (req, res) => {
     let profile = rows[0];
 
     if (field === 'gallery') {
-      const pid = getPublicIdFromUrl(item);
-      await deleteFromCloudinary([pid]);
+      await deleteAssetByUrl(item);
       const updated = profile.gallery.filter((u) => u !== item);
       const upd = await pool.query(
         'UPDATE profiles SET gallery = $1 WHERE id = $2 RETURNING *',
@@ -1028,10 +984,7 @@ export const removeProfileItem = async (req, res) => {
       );
       profile = upd.rows[0];
     } else if (field === 'video') {
-      if (profile.video) {
-        const pid = getPublicIdFromUrl(profile.video);
-        await deleteFromCloudinary([pid], 'video');
-      }
+      if (profile.video) await deleteAssetByUrl(profile.video);
       const upd = await pool.query(
         'UPDATE profiles SET video = $1 WHERE id = $2 RETURNING *',
         ['', id],
@@ -1078,7 +1031,7 @@ export const uploadSingleFile = async (req, res) => {
       resourceType,
     );
 
-    const [upload] = await uploadToCloudinary([req.file], resourceType);
+    const [upload] = await uploadToStorage([req.file], resourceType);
     res.json({ url: upload.url });
   } catch (err) {
     console.error('uploadSingleFile error:', err);

@@ -1,5 +1,5 @@
 // apps/backend/controllers/oerUploadController.js
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../services/cloudinaryShim.js';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB just as a safety guard
 

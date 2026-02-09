@@ -6,7 +6,19 @@
 export type GalleryImage = File | string | null;
 export type LanguageMap = Record<string, boolean>;
 export type Role = 'student' | 'tutor';
-export type UploadKind = 'video' | 'preview' | 'avatar' | 'thumbnail' | 'pdf';
+export type UploadKind =
+  | 'video'
+  | 'preview'
+  | 'thumbnail'
+  | 'image'
+  | 'avatar'
+  | 'banner'
+  | 'audio'
+  | 'tts'
+  | 'pdf'
+  | 'doc'
+  | 'ai'
+  | 'transcript';
 export type PresignResponse = {
   provider: 'r2';
   bucket: string;

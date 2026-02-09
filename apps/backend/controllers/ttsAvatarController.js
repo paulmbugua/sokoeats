@@ -1,5 +1,9 @@
 // apps/backend/controllers/ttsAvatarController.js
-import { v2 as cloudinary } from 'cloudinary';
+import {
+  getBucketForKind,
+  putObject,
+  resolvePublicUrl,
+} from '../services/r2UploadService.js';
 import {
   synthesizeTtsLocalFirst,
   listGoogleVoices,
@@ -46,21 +50,21 @@ const getHot = (id) => {
   return e.buf;
 };
 
-// Cloudinary buffer upload helper
-function uploadBuf({ buffer, public_id, resource_type, folder = 'tts' }) {
-  return new Promise((resolve, reject) => {
-    const upload = cloudinary.uploader.upload_stream(
-      {
-        public_id: `${folder}/${public_id}`,
-        resource_type,
-        overwrite: true,
-        type: 'upload',
-        format: 'mp3', // explicit
-      },
-      (err, result) => (err ? reject(err) : resolve(result)),
-    );
-    upload.end(buffer);
+function ttsAudioPath(id) {
+  return `tts/${id}.mp3`;
+}
+
+async function uploadBuf({ buffer, publicId }) {
+  const bucket = getBucketForKind('tts');
+  const objectPath = ttsAudioPath(publicId);
+  await putObject({
+    bucket,
+    objectPath,
+    body: buffer,
+    contentType: 'audio/mpeg',
+    cacheControl: 'public, max-age=31536000, immutable',
   });
+  return resolvePublicUrl({ bucket, objectPath, kind: 'tts' });
 }
 
 export const speakRobot = async (req, res) => {
@@ -222,12 +226,10 @@ export const speakRobot = async (req, res) => {
     // Upload MP3 now (non-blocking for playback since we already hot-cached)
     let secureUrl = null;
     try {
-      const mp3Res = await uploadBuf({
+      secureUrl = await uploadBuf({
         buffer: out.mp3Buffer,
-        public_id: audioId,
-        resource_type: 'video',
+        publicId: audioId,
       });
-      secureUrl = mp3Res?.secure_url || null;
       if (secureUrl) {
         console.info(NS, 'upload ok', {
           id: audioId.slice(0, 8),
@@ -242,9 +244,10 @@ export const speakRobot = async (req, res) => {
 
     const cdnUrl =
       secureUrl ||
-      cloudinary.url(`tts/${audioId}.mp3`, {
-        resource_type: 'video',
-        secure: true,
+      resolvePublicUrl({
+        bucket: getBucketForKind('tts'),
+        objectPath: ttsAudioPath(audioId),
+        kind: 'tts',
       });
 
     console.info(NS, 'respond JSON', {
@@ -287,7 +290,7 @@ export const speakRobot = async (req, res) => {
 
 /**
  * GET /api/ttsAvatar/stream/:id
- * Streams from the hot buffer immediately. If gone, 302 to Cloudinary.
+ * Streams from the hot buffer immediately. If gone, 302 to R2.
  * Includes basic Range support for seeking.
  */
 export const streamRobot = async (req, res) => {
@@ -301,9 +304,10 @@ export const streamRobot = async (req, res) => {
 
     const buf = getHot(id);
     if (!buf) {
-      const cdnUrl = cloudinary.url(`tts/${id}.mp3`, {
-        resource_type: 'video',
-        secure: true,
+      const cdnUrl = resolvePublicUrl({
+        bucket: getBucketForKind('tts'),
+        objectPath: ttsAudioPath(id),
+        kind: 'tts',
       });
       console.debug(NS, 'stream MISS -> 302', {
         id: id.slice(0, 8),

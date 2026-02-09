@@ -19,7 +19,6 @@ import { Server } from 'socket.io';
 import bodyParser from 'body-parser';
 import refundRoutes from './routes/refundRoutes.js';
 import emailUnsubscribeRoutes from './routes/emailUnsubscribe.js';
-import connectCloudinary from './config/cloudinary.js';
 import { normalizeCourseSize } from './middleware/normalizeCourseSize.js';
 import { ensureSeedSuperadmin } from './controllers/sessionController.js';
 import progressWatchRoutes from './routes/progressWatchRoutes.js';
@@ -35,7 +34,6 @@ import adminStaffRoutes from './routes/adminStaffRoutes.js';
 import institutionAuthRoutes from './routes/institutionAuthRoutes.js';
 import aiRoutes from './routes/ai.js';
 import orgRoutes from './routes/orgRoutes.js';
-import cloudinaryRoutes from './routes/cloudinaryRoutes.js';
 import uploadRoutes from './routes/uploadRoutes.js';
 import earningsRoutes from './routes/earningsRoutes.js';
 import './cronJobs/scheduler.js';
@@ -98,7 +96,6 @@ import {
 } from './middleware/middleware.js';
 
 
-connectCloudinary();
 
 if (process.env.START_WEBHOOK_WORKER === 'true') {
   console.log('▶️  Webhook worker: enabled (10s interval)');
@@ -405,7 +402,6 @@ app.use('/api/certificates', certificatesLimiter, certificateRoutes);
 
 // ClassVault & media
 app.use('/api/classvault', classVaultRoutes);
-app.use('/api/cloudinary', cloudinaryRoutes);
 app.use(uploadRoutes);
 
 // Courses (non-AI) & enrollments

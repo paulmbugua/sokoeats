@@ -2,11 +2,15 @@
 import PDFDocument from 'pdfkit';
 import QRCode from 'qrcode';
 import axios from 'axios';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from './cloudinaryShim.js';
+import { fetchAssetBuffer } from '../utils/fetchAssetBuffer.js';
 
 /** Cloud name (supports both env names like your cert service) */
 const CLOUDINARY_CLOUD_NAME =
-  process.env.CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_NAME || '';
+  process.env.LEGACY_CLOUDINARY_CLOUD_NAME ||
+  process.env.CLOUDINARY_CLOUD_NAME ||
+  process.env.CLOUDINARY_NAME ||
+  '';
 
 /* ─────────────────────────────────────────────────────────
  * Fetching (with optional signed retry)
@@ -40,53 +44,16 @@ async function fetchBufferWithSignedRetry(
   return null;
 }
 
-/** Simple Cloudinary fetch (PNG) */
-async function fetchCloudinaryAsPngBuffer(
-  cloudinaryPublicId,
-  { w, h, q = 'auto' } = {},
-) {
-  if (!cloudinaryPublicId || !CLOUDINARY_CLOUD_NAME) return null;
-  const parts = [];
-  if (w) parts.push(`w_${w}`);
-  if (h) parts.push(`h_${h}`);
-  parts.push('c_limit', `q_${q}`, 'f_png');
-  const transform = parts.join(',');
-  const url = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${transform}/${cloudinaryPublicId}.png`;
-  try {
-    const buf = await fetchBufferWithSignedRetry(url, {
-      responseType: 'arraybuffer',
-      timeout: 6000,
-    });
-    return buf;
-  } catch {
-    return null;
-  }
+/** Simple asset fetch (PNG) */
+async function fetchCloudinaryAsPngBuffer(cloudinaryPublicId) {
+  if (!cloudinaryPublicId) return null;
+  return fetchAssetBuffer(cloudinaryPublicId, { resourceType: 'image' });
 }
 
-/** For signatures: trim + exact width like the certificate service */
-async function fetchSignaturePngBuffer(
-  idOrPublicId,
-  { w = 600, q = 'auto:good', dpr = 2 } = {},
-) {
-  if (!idOrPublicId || !CLOUDINARY_CLOUD_NAME) return null;
-  const parts = [
-    `w_${w}`,
-    'c_scale',
-    'e_trim',
-    `dpr_${dpr}`,
-    `q_${q}`,
-    'f_png',
-  ];
-  const url = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${parts.join(',')}/${idOrPublicId}.png`;
-  try {
-    const buf = await fetchBufferWithSignedRetry(url, {
-      responseType: 'arraybuffer',
-      timeout: 6000,
-    });
-    return buf;
-  } catch {
-    return null;
-  }
+/** For signatures: load existing image buffer */
+async function fetchSignaturePngBuffer(idOrPublicId) {
+  if (!idOrPublicId) return null;
+  return fetchAssetBuffer(idOrPublicId, { resourceType: 'image' });
 }
 
 /* ─────────────────────────────────────────────────────────

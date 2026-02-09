@@ -1,6 +1,6 @@
 // apps/backend/controllers/orgLearnersController.js
 import 'dotenv/config';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from '../services/cloudinaryShim.js';
 import path from 'path';
 import pool from '../config/db.js';
 import bcrypt from 'bcryptjs';

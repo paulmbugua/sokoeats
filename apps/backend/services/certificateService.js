@@ -8,12 +8,14 @@
 import PDFDocument from 'pdfkit';
 import axios from 'axios';
 import QRCode from 'qrcode';
-import { v2 as cloudinary } from 'cloudinary';
+import cloudinary from './cloudinaryShim.js';
+import { fetchAssetBuffer } from '../utils/fetchAssetBuffer.js';
 import crypto from 'node:crypto';
 import crc32 from 'crc-32';
 
 /** Cloud name from env (supports both names) */
 const CLOUDINARY_CLOUD_NAME = (
+  process.env.LEGACY_CLOUDINARY_CLOUD_NAME ||
   process.env.CLOUDINARY_CLOUD_NAME ||
   process.env.CLOUDINARY_NAME ||
   ''
@@ -156,53 +158,9 @@ async function fetchBufferWithSignedRetry(
  *  - exact: use c_scale to force exact width; otherwise c_limit
  *  - dpr: device pixel ratio hint
  */
-async function fetchCloudinaryAsPngBuffer(
-  idOrUrl,
-  { w, h, q = 'auto', trim = false, exact = false, dpr = 2 } = {},
-) {
+async function fetchCloudinaryAsPngBuffer(idOrUrl) {
   if (!idOrUrl) return null;
-
-  if (typeof idOrUrl === 'string' && idOrUrl.includes('://')) {
-    try {
-      const buf = await fetchBufferWithSignedRetry(idOrUrl, {
-        responseType: 'arraybuffer',
-        timeout: 6000,
-      });
-      if (buf) return buf;
-    } catch (e) {
-      console.warn('[cert] direct image fetch failed', e?.message);
-    }
-    return null;
-  }
-
-  if (!CLOUDINARY_CLOUD_NAME) return null;
-
-  const parts = [];
-  if (trim) parts.push('e_trim');
-  if (typeof dpr === 'number' && dpr > 0) parts.push(`dpr_${dpr}`);
-  if (w) parts.push(`w_${w}`);
-  if (h) parts.push(`h_${h}`);
-  parts.push(exact ? 'c_scale' : 'c_limit');
-  parts.push(`q_${q}`, 'f_png');
-
-  const transform = parts.join(',');
-  const url = `https://res.cloudinary.com/${CLOUDINARY_CLOUD_NAME}/image/upload/${transform}/${idOrUrl}.png`;
-
-  try {
-    const buf = await fetchBufferWithSignedRetry(url, {
-      responseType: 'arraybuffer',
-      timeout: 6000,
-    });
-    return buf;
-  } catch (e) {
-    const status = e?.response?.status;
-    console.warn('[cert] Cloudinary fetch failed:', {
-      url,
-      status,
-      msg: e?.message,
-    });
-    return null;
-  }
+  return fetchAssetBuffer(idOrUrl, { resourceType: 'image' });
 }
 
 /* Decorative elements */
