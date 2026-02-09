@@ -48,8 +48,8 @@ const warnIfMissingId = () => {
 
 /**
  * Init GA4 once.
- * IMPORTANT: We do NOT inject gtag.js here anymore (it is loaded by index.html).
- * This function simply ensures gtag exists and applies config options safely.
+ * IMPORTANT: gtag.js is loaded by index.html.
+ * This function applies config flags exactly once.
  */
 export const initGA4 = () => {
   warnIfMissingId();
@@ -59,20 +59,29 @@ export const initGA4 = () => {
 
   ensureGtag();
 
-  // Running this is harmless if web-next already initialized gtag.
-  window.gtag?.('js', new Date());
-
-  // Apply config (and disable automatic page_view so SPA can control it)
+  // DO NOT call gtag('js', new Date()) here (index.html already does it)
   window.gtag?.('config', GA4_MEASUREMENT_ID, {
     send_page_view: false,
     debug_mode: isDebug(),
   });
 };
 
+// ---- page_view dedupe (protects against React dev double-effects / HMR remounts) ----
+let lastPvKey = '';
+let lastPvAt = 0;
+
 export const trackPageView = (path: string) => {
   warnIfMissingId();
   if (!GA4_MEASUREMENT_ID || !hasWindow()) return;
   ensureGtag();
+
+  const key = `${path}|${window.location.href}|${document.title}`;
+  const now = Date.now();
+  // If the same PV is fired twice within a short window, drop the duplicate.
+  if (key === lastPvKey && now - lastPvAt < 1500) return;
+  lastPvKey = key;
+  lastPvAt = now;
+
   window.gtag?.(
     'event',
     'page_view',
@@ -140,10 +149,6 @@ export type Ga4Item = {
 
 const purchaseDedupeKey = (tx: string) => `ga4:purchase:${tx}`;
 
-/**
- * Recommended: begin_checkout
- * Use when user starts checkout flow (opens modal, clicks "Continue", etc.)
- */
 export const trackBeginCheckout = (payload: {
   currency: string;
   value: number;
@@ -159,10 +164,6 @@ export const trackBeginCheckout = (payload: {
     affiliation: payload.affiliation,
   });
 
-/**
- * Recommended: add_payment_info
- * Use when user selects a payment method or submits payment details.
- */
 export const trackAddPaymentInfo = (payload: {
   currency: string;
   value: number;
@@ -178,17 +179,11 @@ export const trackAddPaymentInfo = (payload: {
     affiliation: payload.affiliation,
   });
 
-/**
- * Recommended: purchase (with items[])
- * Fire ONLY after backend confirms payment success.
- * Includes client-side dedupe to avoid double-counting on refresh/callback retries.
- */
 export const trackPurchase = (payload: {
   transaction_id: string;
   value: number; // major units
   currency: string; // 'USD' | 'KES' | ...
   items: Ga4Item[];
-
   affiliation?: string; // e.g. 'DayBreak Learner'
   coupon?: string;
   payment_type?: string; // 'paystack' | 'mpesa'
@@ -197,7 +192,6 @@ export const trackPurchase = (payload: {
 }) => {
   if (!payload?.transaction_id) return;
 
-  // client-side dedupe (refresh/back/callback retries)
   if (typeof window !== 'undefined') {
     const k = purchaseDedupeKey(payload.transaction_id);
     if (sessionStorage.getItem(k) === '1') return;
@@ -209,7 +203,6 @@ export const trackPurchase = (payload: {
     value: payload.value,
     currency: payload.currency,
     items: payload.items,
-
     affiliation: payload.affiliation,
     coupon: payload.coupon,
     payment_type: payload.payment_type,

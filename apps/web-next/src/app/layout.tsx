@@ -41,7 +41,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const isDev = process.env.NODE_ENV !== 'production';
 
   return (
-    <html lang="en">
+    // Option B: ignore hydration mismatches on <html>/<body> (e.g. browser extensions injecting attrs)
+    <html lang="en" suppressHydrationWarning>
       <head>
         {gaId ? (
           <>
@@ -63,7 +64,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </>
         ) : null}
       </head>
-      <body>
+
+      <body suppressHydrationWarning>
         <Providers>
           <Suspense fallback={null}>
             <GaRouteTracker />
