@@ -11,7 +11,7 @@ export const ORG_SEATS = {
 export const ORG_PRICING = {
   USD: {
     pro: { monthly: 99_00, yearly: 990_00 }, // $99 / $990
-    enterprise: { monthly: 1_00, yearly: 3990_00 }, // $399 / $3990
+    enterprise: { monthly: 399_00, yearly: 3990_00 }, // $399 / $3990
   },
   KES: {
     pro: { monthly: 13500_00, yearly: 135000_00 }, // 13,500 / 135,000
