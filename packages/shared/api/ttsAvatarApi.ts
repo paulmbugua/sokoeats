@@ -183,6 +183,11 @@ export async function speakRobot(
  */
 export function bestAudioUrl(backendUrl: string | URL, resp: SpeakResp): string {
   const base = normalizeBase(backendUrl);
+
+  // Prefer explicit absolute URLs from backend (e.g. public R2 custom domain)
+  // so playback does not depend on authenticated proxy redirects.
+  if (resp.url && /^https?:\/\//i.test(resp.url)) return resp.url;
+
   if (resp.streamPath) return toAbsolute(base, resp.streamPath);
   if (resp.cacheKey) return toAbsolute(base, buildStreamPath(resp.cacheKey));
   return resp.url;
