@@ -8,12 +8,16 @@ import {
   synthesizeTtsLocalFirst,
   listGoogleVoices,
 } from '../services/googleTtsService.js';
-import { normalizeIncomingSsml } from '../../../packages/shared/utils/ssmlText.js';
+
+import {
+  normalizeIncomingSsml,
+  ssmlToPlainText,
+} from '../../../packages/shared/utils/ssmlText.js';
+
 import {
   normalizeNarration,
   mapWordTimingsToDisplay,
 } from '../../../packages/shared/utils/narrationNormalize.js';
-import { ssmlToPlainText } from '../../../packages/shared/utils/ssmlText.js';
 
 const NS = '[tts]';
 
@@ -29,9 +33,28 @@ function errShape(err) {
   };
 }
 
+// Map Azure-ish names → Google Wavenet defaults
+function mapVoiceNameToGoogle(voiceName) {
+  const s = String(voiceName || '').toLowerCase();
+  const def = process.env.GOOGLE_TTS_VOICE || 'en-US-Wavenet-C';
+  if (!s) return def;
+
+  // already Google-ish
+  if (s.includes('wavenet') || s.includes('standard')) return voiceName;
+
+  if (s.includes('jenny')) return 'en-US-Wavenet-C';
+  if (s.includes('guy')) return 'en-US-Wavenet-C';
+  if (s.includes('aria')) return 'en-US-Wavenet-C';
+  if (s.includes('neerja') || s.includes('prabhat')) return 'en-IN-Wavenet-A';
+  if (s.includes('libby') || s.includes('mia')) return 'en-GB-Wavenet-A';
+
+  return def;
+}
+
 // Tiny hot cache: immediate streaming for the first couple minutes
 const HOT_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const hotAudio = new Map(); // id -> { buf, expiresAt }
+
 const putHot = (id, buf) => {
   hotAudio.set(id, { buf, expiresAt: Date.now() + HOT_TTL_MS });
   const t = setTimeout(() => hotAudio.delete(id), HOT_TTL_MS);
@@ -40,6 +63,7 @@ const putHot = (id, buf) => {
     console.log(NS, 'HOT put', { id: id.slice(0, 8), bytes: buf?.length ?? 0 });
   } catch {}
 };
+
 const getHot = (id) => {
   const e = hotAudio.get(id);
   if (!e) return null;
@@ -73,7 +97,8 @@ export const speakRobot = async (req, res) => {
     String(req.query?.raw || '').toLowerCase() === '1' ||
     /\baudio\/mpeg\b/.test(String(req.headers?.accept || ''));
 
-  let { ssml, text, voiceName, rate, pitch, ttsText: ttsTextOverride } = req.body || {};
+  let { ssml, text, voiceName, rate, pitch, ttsText: ttsTextOverride } =
+    req.body || {};
 
   try {
     if (ssml) {
@@ -89,26 +114,16 @@ export const speakRobot = async (req, res) => {
 
     const rawText = ssml ? ssmlToPlainText(ssml) : String(text || '');
     const normalizedNarration = normalizeNarration(rawText);
-    const ttsText = typeof ttsTextOverride === 'string' && ttsTextOverride.trim()
-      ? ttsTextOverride.trim()
-      : normalizedNarration.ttsText;
+
+    const ttsText =
+      typeof ttsTextOverride === 'string' && ttsTextOverride.trim()
+        ? ttsTextOverride.trim()
+        : normalizedNarration.ttsText;
+
     const displayText = normalizedNarration.displayText;
     const tokenMap = normalizedNarration.tokenMap;
-    // Map Azure-ish names → Google Wavenet defaults
-    function mapVoice(v) {
-      const s = String(v || '').toLowerCase();
-      const def = process.env.GOOGLE_TTS_VOICE || 'en-US-Wavenet-C';
-      if (!s) return def;
-      if (s.includes('wavenet') || s.includes('standard')) return v; // already Google
-      if (s.includes('jenny')) return 'en-US-Wavenet-C';
-      if (s.includes('guy')) return 'en-US-Wavenet-C';
-      if (s.includes('aria')) return 'en-US-Wavenet-C';
-      if (s.includes('neerja') || s.includes('prabhat'))
-        return 'en-IN-Wavenet-A';
-      if (s.includes('libby') || s.includes('mia')) return 'en-GB-Wavenet-A';
-      return def;
-    }
-    const mappedVoice = mapVoice(voiceName);
+
+    const mappedVoice = mapVoiceNameToGoogle(voiceName);
 
     const speakingRate = rate ?? '0%';
     const safePitch = pitch ?? '+0st';
@@ -129,14 +144,9 @@ export const speakRobot = async (req, res) => {
 
     if (!ssml && !text && !ttsText) {
       console.warn(NS, 'EMPTY_TEXT');
-      return res
-        .status(400)
-        .json({ message: 'TTS_FAILED', error: 'EMPTY_TEXT' });
+      return res.status(400).json({ message: 'TTS_FAILED', error: 'EMPTY_TEXT' });
     }
 
-    // 1) Synthesize (local-first). Service may return either:
-    //    - { cdnUrl, mp3Buffer: undefined }  ← uploaded or cached
-    //    - { cdnUrl: undefined, mp3Buffer }  ← not uploaded yet
     const out = await synthesizeTtsLocalFirst({
       ssml,
       text: ssml ? undefined : ttsText || text,
@@ -158,9 +168,7 @@ export const speakRobot = async (req, res) => {
     const streamPath = `/api/ttsAvatar/stream/${audioId}`;
     const cdnFromSvc = out.cdnUrl || null;
 
-    // If the service already has a CDN URL (cached or it uploaded), prefer it.
     if (cdnFromSvc) {
-      // We don't have a buffer to hot-cache in this path (and we don't need it).
       console.info(NS, 'READY VIA SERVICE URL', {
         id: audioId?.slice(0, 8),
         url: cdnFromSvc,
@@ -169,20 +177,14 @@ export const speakRobot = async (req, res) => {
       });
 
       if (wantsRaw) {
-        // Direct the client to fetch from CDN
         res.setHeader('Location', cdnFromSvc);
         return res.status(302).end();
       }
 
-      // CURRENT RESPONSE SHAPE (speakRobot):
-      // {
-      //   url, cdnUrl, streamPath, words, wordsDisplay, visemes, bookmarks,
-      //   vtt, srt, cached, hotTtlMs, displayText, ttsText
-      // }
       return res.json({
-        url: cdnFromSvc, // <-- actual URL string
-        cdnUrl: cdnFromSvc, // duplicate for compatibility
-        streamPath, // hot stream fallback (will 302 if buffer is gone)
+        url: cdnFromSvc,
+        cdnUrl: cdnFromSvc,
+        streamPath,
         words: out.wordsJson,
         wordsDisplay,
         visemes: out.visemesJson,
@@ -196,15 +198,12 @@ export const speakRobot = async (req, res) => {
       });
     }
 
-    // Fresh synth and no CDN URL yet -> we must have a buffer
     if (!out.mp3Buffer || !out.mp3Buffer.length) {
       console.warn(NS, 'EMPTY_AUDIO after synth', {
         haveUrl: !!cdnFromSvc,
         haveBuf: !!out.mp3Buffer,
       });
-      return res
-        .status(502)
-        .json({ message: 'TTS_FAILED', error: 'EMPTY_AUDIO' });
+      return res.status(502).json({ message: 'TTS_FAILED', error: 'EMPTY_AUDIO' });
     }
 
     // Prime HOT cache for instant local streaming
@@ -258,9 +257,9 @@ export const speakRobot = async (req, res) => {
     });
 
     return res.json({
-      url: cdnUrl, // <-- actual URL string
+      url: cdnUrl,
       cdnUrl,
-      streamPath, // immediate stream from HOT cache
+      streamPath,
       words: out.wordsJson,
       wordsDisplay,
       visemes: out.visemesJson,
