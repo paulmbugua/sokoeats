@@ -1061,6 +1061,15 @@ export function useWordSync() {
     a.onerror = () => {
       try {
         const src = a.currentSrc || a.src || '';
+        // eslint-disable-next-line no-console
+        console.error('[useWordSync] audio error', {
+          src,
+          readyState: a.readyState,
+          networkState: a.networkState,
+          mediaErrorCode: a.error?.code ?? null,
+          mediaErrorMessage: a.error?.message ?? null,
+        });
+
         const base = lastBaseRef.current;
         const data = lastRespRef.current;
         if (base && data) {
