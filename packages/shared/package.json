@@ -1,8 +1,16 @@
 {
   "name": "@mytutorapp/shared",
   "version": "1.0.0",
+  "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": "./dist/*"
+  },
   "license": "MIT",
   "scripts": {
     "build": "tsc -p tsconfig.json",

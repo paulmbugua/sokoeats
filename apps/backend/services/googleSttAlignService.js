@@ -1,4 +1,4 @@
-// apps/backend/controllers/ttsAvatarController.js
+// apps/backend/services/googleSttAlignService.js
 import {
   getBucketForKind,
   putObject,
@@ -367,3 +367,48 @@ export const listVoices = async (req, res) => {
       .json({ message: 'VOICES_FAILED', error: err?.code || 'LIST_FAILED' });
   }
 };
+
+/**
+ * "CapCut-grade" word-offset alignment fallback.
+ *
+ * NOTE:
+ * - This implementation uses simpleAlign() (already in your codebase) to avoid
+ *   introducing new dependencies and audio transcoding requirements.
+ * - It returns the same shape your googleTtsService expects: { wordsJson }.
+ *
+ * Later, if you want true Google STT offsets, we can replace this body with
+ * Speech-to-Text alignment (requires decoding MP3 -> LINEAR16/FLAC).
+ */
+export async function alignWithGoogleSttWordOffsets({
+  audioMp3Buffer,
+  languageCode = 'en-US',
+  scriptWords = [],
+}) {
+  const text = Array.isArray(scriptWords) ? scriptWords.join(' ') : String(scriptWords || '');
+
+  if (!audioMp3Buffer || !Buffer.isBuffer(audioMp3Buffer) || audioMp3Buffer.length === 0) {
+    return { wordsJson: [] };
+  }
+  if (!text.trim()) {
+    return { wordsJson: [] };
+  }
+
+  // Use existing aligner to compute word timings from audio + script.
+  // This keeps your system working without adding Google STT + transcoding complexity.
+  try {
+    const { simpleAlign } = await import('./simpleAlignerService.js');
+    const aligned = await simpleAlign({
+      audioBuffer: audioMp3Buffer,
+      audioUrl: undefined,
+      text,
+      lang: languageCode || 'en-US',
+    });
+
+    return { wordsJson: Array.isArray(aligned) ? aligned : [] };
+  } catch (e) {
+    console.warn('[sttAlign] alignWithGoogleSttWordOffsets fallback failed', {
+      message: e?.message || String(e),
+    });
+    return { wordsJson: [] };
+  }
+}

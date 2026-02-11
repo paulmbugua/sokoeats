@@ -3,6 +3,12 @@
   "compilerOptions": {
     "composite": true,
     "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
     "jsx": "react",
     "baseUrl": ".",
     "lib": ["dom", "dom.iterable", "esnext"],
