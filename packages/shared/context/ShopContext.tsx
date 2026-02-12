@@ -211,6 +211,8 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
     setAuthSessionStorage(storage);
   }, [storage]);
 
+  
+
   // Keep the latest tokens available to interceptors
   const tokensRef = useRef<{ token: string; orgToken: string; adminToken: string }>({
     token: '',

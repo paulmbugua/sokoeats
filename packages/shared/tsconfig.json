@@ -6,8 +6,8 @@
     "declarationMap": true,
     "sourceMap": true,
 
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
 
     "jsx": "react",
     "baseUrl": ".",
