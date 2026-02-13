@@ -195,7 +195,7 @@ const HelpPage: React.FC = () => {
         <ul className="list-disc pl-5 space-y-2">
           <li>
             Log in to your org portal:{' '}
-            <Link href="/institution/login" className="underline text-primary">
+            <Link href="/institutions/login" className="underline text-primary">
               Institution Login
             </Link>
             .

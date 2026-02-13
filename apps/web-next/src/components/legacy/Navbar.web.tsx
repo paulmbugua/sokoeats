@@ -63,7 +63,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
   const isLearnerRole = normalizedRole === 'learner' || normalizedRole === 'student';
   const isInstructorRole = normalizedRole === 'instructor' || normalizedRole === 'teacher';
 
-  const orgPortalHref = '/institution';
+  const orgPortalHref = '/institutions';
 
   const handleOrgButtonClick = () => {}; // deterministic no-op
 
@@ -103,7 +103,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
      if (isInstructorRole) return appUrl('/org/instructor');
      return appUrl('/org/profile');
    }
-   return token ? appUrl('/profile/me') : '/login';
+   return token ? appUrl('/profile/me') : appUrl('/login');
  }, [orgToken, isLearnerRole, isInstructorRole, token]);
 
  
@@ -187,7 +187,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
 
     if (!orgToken) {
       return {
-        href: '/institution/login',
+        href: '/institutions/login',
         label: 'Login',
         icon: faBuilding,
         title: 'Institution login',

@@ -19,5 +19,5 @@ export default async function OrgLoginBridge({
   searchParams?: Promise<Params>;
 }) {
   const params = searchParams ? await searchParams : undefined;
-  redirect(`/institution/login${buildQuery(params)}`);
+  redirect(`/institutions/login${buildQuery(params)}`);
 }

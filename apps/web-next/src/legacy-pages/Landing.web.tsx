@@ -233,7 +233,7 @@ const Landing: React.FC = () => {
             </div>
 
             <div className="mt-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-             <Link href="/institution"
+             <Link href="/institutions"
                 className="inline-flex h-11 sm:h-12 items-center justify-center rounded-xl px-5
                         bg-emerald-600 hover:bg-emerald-500 text-white font-bold transition
                         w-full sm:w-auto"
@@ -469,7 +469,7 @@ const Hero: React.FC<{
             </motion.div>
 
             <motion.div whileHover={{ scale: 1.04 }} whileTap={{ scale: 0.98 }}>
-             <Link href="/institution"
+             <Link href="/institutions"
                 aria-label="Open the Institution E-Learning portal"
                 className="flex min-w-[120px] items-center justify-center rounded-xl h-11 sm:h-12 px-5
                             bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold tracking-[0.01em]
