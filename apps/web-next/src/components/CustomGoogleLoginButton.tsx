@@ -19,8 +19,7 @@ export default function CustomGoogleLoginButton({
   const startRedirectFlow = async () => {
     sessionStorage.setItem(REDIRECT_MARKER, '1');
     sessionStorage.setItem(BUSY_KEY, '1');
-    const started = await signInGoogleRedirect();
-    if (!started) throw new Error('Missing Firebase web config');
+    await signInGoogleRedirect();
   };
 
   const handleGoogleLogin = async () => {
@@ -28,7 +27,6 @@ export default function CustomGoogleLoginButton({
       setLoading(true);
       try {
         const result = await signInGooglePopup();
-        if (!result?.user) throw new Error('Missing Firebase web config');
         const idToken = await result.user.getIdToken(true);
         await onSuccess(idToken);
         setLoading(false);
@@ -54,9 +52,8 @@ export default function CustomGoogleLoginButton({
       sessionStorage.removeItem(REDIRECT_MARKER);
       sessionStorage.removeItem(BUSY_KEY);
       setLoading(false);
-      const message = err instanceof Error ? err.message : '';
       onFailure?.(err instanceof Error ? err : undefined);
-      alert(message.includes('Missing Firebase web config') ? 'Missing Firebase web config.' : 'Failed to start Google sign-in.');
+      alert('Failed to start Google sign-in.');
     }
   };
 

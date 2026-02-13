@@ -1,12 +1,12 @@
-'use client';
+import { Suspense } from 'react';
+import InstitutionLogin from '@/legacy-pages/InstitutionLogin.web';
 
-import dynamic from 'next/dynamic';
-
-const InstitutionLogin = dynamic(() => import('@/legacy-pages/InstitutionLogin.web'), {
-  ssr: false,
-  loading: () => null,
-});
+export const dynamic = 'force-dynamic';
 
 export default function InstitutionLoginPage() {
-  return <InstitutionLogin />;
+  return (
+    <Suspense fallback={null}>
+      <InstitutionLogin />
+    </Suspense>
+  );
 }

@@ -1,12 +1,12 @@
-'use client';
+import { Suspense } from 'react';
+import LoginPage from '@/legacy-pages/LoginPage.web';
 
-import dynamic from 'next/dynamic';
-
-const LoginPage = dynamic(() => import('@/legacy-pages/LoginPage.web'), {
-  ssr: false,
-  loading: () => null,
-});
+export const dynamic = 'force-dynamic';
 
 export default function LoginPageRoute() {
-  return <LoginPage />;
+  return (
+    <Suspense fallback={null}>
+      <LoginPage />
+    </Suspense>
+  );
 }
