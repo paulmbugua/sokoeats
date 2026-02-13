@@ -5,10 +5,33 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const legacyAppOrigin = (process.env.NEXT_PUBLIC_LEGACY_APP_ORIGIN || 'http://localhost:5173')
-  .toString()
-  .trim()
-  .replace(/\/+$/, '');
+const normalizeOrigin = (value) => {
+  const raw = (value || '').toString().trim();
+  if (!raw) return '';
+
+  try {
+    const parsed = new URL(raw);
+    return parsed.origin;
+  } catch {
+    return raw.replace(/\/+$/, '');
+  }
+};
+
+const resolveLegacyAppOrigin = () => {
+  const legacy = normalizeOrigin(process.env.NEXT_PUBLIC_LEGACY_APP_ORIGIN);
+  if (legacy) return legacy;
+
+  const appOrigin = normalizeOrigin(process.env.NEXT_PUBLIC_APP_ORIGIN);
+  if (appOrigin) return appOrigin;
+
+  return 'http://localhost:5173';
+};
+
+const legacyAppOrigin = resolveLegacyAppOrigin();
+
+if (process.env.NODE_ENV === 'development') {
+  console.info(`[web-next] legacy proxy target: ${legacyAppOrigin}`);
+}
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
