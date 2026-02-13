@@ -1,174 +1,86 @@
-// apps/web/src/analytics/ga4.ts
+import { initGa4, trackEvent as trackEventBase, trackOnce } from '@mytutorapp/shared/analytics/ga4';
 
 const GA4_MEASUREMENT_ID = import.meta.env.VITE_GA4_MEASUREMENT_ID as string | undefined;
-
-const hasWindow = () => typeof window !== 'undefined';
-
-let initialized = false;
-
-declare global {
-  interface Window {
-    dataLayer?: unknown[];
-    gtag?: (...args: any[]) => void;
-  }
-}
-
-type EventParams = Record<string, any>;
-
-const ensureGtag = () => {
-  if (!hasWindow()) return;
-  window.dataLayer = window.dataLayer || [];
-  window.gtag =
-    window.gtag ||
-    ((...args: any[]) => {
-      window.dataLayer?.push(args);
-    });
-};
-
-/** Remove undefined/null/empty-string so GA4 payloads stay clean */
-const cleanParams = (params: EventParams) => {
-  const out: EventParams = {};
-  for (const [k, v] of Object.entries(params || {})) {
-    if (v === undefined || v === null) continue;
-    if (typeof v === 'string' && v.trim() === '') continue;
-    out[k] = v;
-  }
-  return out;
-};
-
-const hasDebugFlag = () => new URLSearchParams(window.location.search).has('ga_debug');
+const hasDebugFlag = () =>
+  typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('ga_debug');
 const isDebug = () => import.meta.env.DEV || hasDebugFlag();
 
-let warnedMissingId = false;
-const warnIfMissingId = () => {
-  if (!import.meta.env.DEV || GA4_MEASUREMENT_ID || warnedMissingId) return;
-  warnedMissingId = true;
-  console.warn('[ga4] Missing VITE_GA4_MEASUREMENT_ID; GA4 events will be skipped.');
-};
+const opts = () => ({ measurementId: GA4_MEASUREMENT_ID, debugMode: isDebug() });
 
-/**
- * Init GA4 once.
- * IMPORTANT: gtag.js is loaded by index.html.
- * This function applies config flags exactly once.
- */
-export const initGA4 = () => {
-  warnIfMissingId();
-  if (!GA4_MEASUREMENT_ID || !hasWindow()) return;
-  if (initialized) return;
-  initialized = true;
+export const initGA4 = () => initGa4(opts());
 
-  ensureGtag();
-
-  // DO NOT call gtag('js', new Date()) here (index.html already does it)
-  window.gtag?.('config', GA4_MEASUREMENT_ID, {
-    send_page_view: false,
-    debug_mode: isDebug(),
-  });
-};
-
-// ---- page_view dedupe (protects against React dev double-effects / HMR remounts) ----
 let lastPvKey = '';
 let lastPvAt = 0;
-
 export const trackPageView = (path: string) => {
-  warnIfMissingId();
-  if (!GA4_MEASUREMENT_ID || !hasWindow()) return;
-  ensureGtag();
-
-  const key = `${path}|${window.location.href}|${document.title}`;
+  const key = `${path}|${typeof window !== 'undefined' ? window.location.href : ''}|${typeof document !== 'undefined' ? document.title : ''}`;
   const now = Date.now();
-  // If the same PV is fired twice within a short window, drop the duplicate.
   if (key === lastPvKey && now - lastPvAt < 1500) return;
   lastPvKey = key;
   lastPvAt = now;
-
-  window.gtag?.(
-    'event',
+  trackEventBase(
     'page_view',
-    cleanParams({
+    {
       page_path: path,
-      page_location: window.location.href,
-      page_title: document.title,
-      debug_mode: isDebug(),
-    })
+      page_location: typeof window !== 'undefined' ? window.location.href : undefined,
+      page_title: typeof document !== 'undefined' ? document.title : undefined,
+    },
+    opts()
   );
-
-  if (import.meta.env.DEV && hasDebugFlag()) {
-    const recent = window.dataLayer?.slice(-5) ?? [];
-    console.debug('[ga4] dataLayer (last 5)', recent);
-  }
 };
 
-export const trackEvent = (name: string, params: EventParams = {}) => {
-  warnIfMissingId();
-  if (!GA4_MEASUREMENT_ID || !hasWindow()) return;
-  ensureGtag();
-  window.gtag?.('event', name, cleanParams({ ...params, debug_mode: isDebug() }));
-};
-
-/* ─────────────────────────────────────────────
-   Opinionated helpers for your key funnel events
-   ───────────────────────────────────────────── */
+export const trackEvent = (name: string, params: Record<string, any> = {}) =>
+  trackEventBase(name, params, opts());
 
 export type LoginMethod = 'email' | 'google';
 
-export const trackLogin = (method: LoginMethod, extra: EventParams = {}) =>
+export const trackLogin = (method: LoginMethod, extra: Record<string, any> = {}) =>
   trackEvent('login', { method, ...extra });
 
-export const trackSignUp = (method: LoginMethod, extra: EventParams = {}) =>
-  trackEvent('sign_up', { method, ...extra });
-
-export const trackStartCourse = (payload: {
-  course_id: string | number;
-  course_title?: string;
-  source?: string; // e.g. 'courses_page' | 'my_enrollments' | 'search'
-  is_ai?: boolean;
-}) => trackEvent('start_course', payload);
-
-export const trackAiGenerateLesson = (payload: {
-  course_id?: string | number;
-  course_title?: string;
-  lesson_id?: string | number;
-  language?: string; // e.g. 'German'
-  voice?: string;
-  mode?: 'robot_teacher' | 'language_learning' | 'course_progress';
-}) => trackEvent('ai_generate_lesson', payload);
-
-/* ─────────────────────────────────────────────
-   GA4 ecommerce helpers (recommended events)
-   ───────────────────────────────────────────── */
+export const trackSignUp = (method: LoginMethod, extra: Record<string, any> = {}) => {
+  const key = extra.user_id || extra.email_hash || extra.dedupe_key;
+  if (!key) return;
+  trackOnce('sign_up', { method, ...extra }, `signup:${String(key)}`, opts());
+};
 
 export type Ga4Item = {
   item_id: string;
   item_name: string;
-  item_category?: string; // 'tokens' | 'subscription' | ...
-  item_variant?: string; // 'monthly' | 'annual' | ...
-  price?: number; // major units
+  item_category?: string;
+  item_variant?: string;
+  price?: number;
   quantity?: number;
 };
-
-const purchaseDedupeKey = (tx: string) => `ga4:purchase:${tx}`;
 
 export const trackBeginCheckout = (payload: {
   currency: string;
   value: number;
   items: Ga4Item[];
-  payment_type?: string; // 'paystack' | 'mpesa'
+  payment_type?: string;
   affiliation?: string;
-}) =>
-  trackEvent('begin_checkout', {
-    currency: payload.currency,
-    value: payload.value,
-    items: payload.items,
-    payment_type: payload.payment_type,
-    affiliation: payload.affiliation,
-  });
+  checkout_session_id?: string;
+  cart_signature?: string;
+}) => {
+  const key = payload.checkout_session_id || payload.cart_signature;
+  if (!key) return;
+  trackOnce(
+    'begin_checkout',
+    {
+      currency: payload.currency,
+      value: payload.value,
+      items: payload.items,
+      payment_type: payload.payment_type,
+      affiliation: payload.affiliation,
+    },
+    `checkout:${String(key)}`,
+    opts()
+  );
+};
 
 export const trackAddPaymentInfo = (payload: {
   currency: string;
   value: number;
   items: Ga4Item[];
-  payment_type: string; // 'paystack' | 'mpesa'
+  payment_type: string;
   affiliation?: string;
 }) =>
   trackEvent('add_payment_info', {
@@ -181,32 +93,36 @@ export const trackAddPaymentInfo = (payload: {
 
 export const trackPurchase = (payload: {
   transaction_id: string;
-  value: number; // major units
-  currency: string; // 'USD' | 'KES' | ...
+  value: number;
+  currency: string;
   items: Ga4Item[];
-  affiliation?: string; // e.g. 'DayBreak Learner'
+  affiliation?: string;
   coupon?: string;
-  payment_type?: string; // 'paystack' | 'mpesa'
+  payment_type?: string;
   org_id?: string | number;
   org_name?: string;
 }) => {
   if (!payload?.transaction_id) return;
-
-  if (typeof window !== 'undefined') {
-    const k = purchaseDedupeKey(payload.transaction_id);
-    if (sessionStorage.getItem(k) === '1') return;
-    sessionStorage.setItem(k, '1');
-  }
-
-  trackEvent('purchase', {
-    transaction_id: payload.transaction_id,
-    value: payload.value,
-    currency: payload.currency,
-    items: payload.items,
-    affiliation: payload.affiliation,
-    coupon: payload.coupon,
-    payment_type: payload.payment_type,
-    org_id: payload.org_id,
-    org_name: payload.org_name,
-  });
+  trackOnce(
+    'purchase',
+    payload,
+    `purchase:${String(payload.transaction_id)}`,
+    opts()
+  );
 };
+
+export const trackStartCourse = (payload: {
+  course_id: string | number;
+  course_title?: string;
+  source?: string;
+  is_ai?: boolean;
+}) => trackEvent('start_course', payload);
+
+export const trackAiGenerateLesson = (payload: {
+  course_id?: string | number;
+  course_title?: string;
+  lesson_id?: string | number;
+  language?: string;
+  voice?: string;
+  mode?: 'robot_teacher' | 'language_learning' | 'course_progress';
+}) => trackEvent('ai_generate_lesson', payload);
