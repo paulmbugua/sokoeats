@@ -1,18 +1,10 @@
 // apps/web/src/components/CustomGoogleLoginButton.tsx
 import React, { useState } from 'react';
 import { FcGoogle } from 'react-icons/fc';
-import { signInWithPopup, signInWithRedirect, GoogleAuthProvider } from 'firebase/auth';
-import { getAuthOrThrow } from '@mytutorapp/shared/utils/firebaseConfig';
+import { signInGooglePopup, signInGoogleRedirect } from '@mytutorapp/shared/utils/firebaseAuthWeb';
 
 const REDIRECT_MARKER = 'auth:googleRedirect';
 const BUSY_KEY = 'auth:busy';
-
-function buildGoogleProviderSelectAccount() {
-  const p = new GoogleAuthProvider();
-  // ✅ Always show account chooser (even if already signed-in in this browser)
-  p.setCustomParameters({ prompt: 'select_account' });
-  return p;
-}
 
 export default function CustomGoogleLoginButton({
   onSuccess,
@@ -24,23 +16,18 @@ export default function CustomGoogleLoginButton({
   const [loading, setLoading] = useState(false);
 
   const startRedirectFlow = async () => {
-    const auth = getAuthOrThrow();
-    const provider = buildGoogleProviderSelectAccount();
-
     sessionStorage.setItem(REDIRECT_MARKER, '1');
     sessionStorage.setItem(BUSY_KEY, '1');
-    await signInWithRedirect(auth, provider);
+    const started = await signInGoogleRedirect();
+    if (!started) throw new Error('Missing Firebase web config');
   };
 
   const handleGoogleLogin = async () => {
     try {
       setLoading(true);
-      const auth = getAuthOrThrow();
-      const provider = buildGoogleProviderSelectAccount();
-
-      // 1) Try popup first
       try {
-        const result = await signInWithPopup(auth, provider);
+        const result = await signInGooglePopup();
+        if (!result?.user) throw new Error('Missing Firebase web config');
         const idToken = await result.user.getIdToken(true);
         await onSuccess(idToken);
         setLoading(false);
@@ -55,7 +42,6 @@ export default function CustomGoogleLoginButton({
           code === 'auth/operation-not-supported-in-this-environment' ||
           code === 'auth/operation-not-allowed';
 
-        // 2) Fallback to redirect
         if (popupBlocked || unsupported) {
           await startRedirectFlow();
           return;
@@ -67,8 +53,13 @@ export default function CustomGoogleLoginButton({
       sessionStorage.removeItem(REDIRECT_MARKER);
       sessionStorage.removeItem(BUSY_KEY);
       setLoading(false);
+      const message = err instanceof Error ? err.message : '';
       onFailure?.(err instanceof Error ? err : undefined);
-      alert('Failed to start Google sign-in.');
+      alert(
+        message.includes('Missing Firebase web config')
+          ? 'Missing Firebase web config.'
+          : 'Failed to start Google sign-in.'
+      );
     }
   };
 

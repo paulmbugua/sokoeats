@@ -43,7 +43,7 @@ const HelpPage: React.FC = () => {
         <ol className="list-decimal pl-5 space-y-2">
           <li>
             <strong>Create your account</strong> →{' '}
-            <Link href={appUrl('/login')} className="text-primary underline">
+            <Link href="/login" className="text-primary underline">
               Login / Sign up
             </Link>
             .
@@ -195,7 +195,7 @@ const HelpPage: React.FC = () => {
         <ul className="list-disc pl-5 space-y-2">
           <li>
             Log in to your org portal:{' '}
-            <Link href={appUrl('/org/login?next=/org')} className="underline text-primary">
+            <Link href="/institution/login" className="underline text-primary">
               Institution Login
             </Link>
             .

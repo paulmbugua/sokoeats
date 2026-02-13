@@ -1,124 +1,110 @@
 /* eslint-disable no-console */
-// packages/shared/utils/firebaseConfig.ts (or wherever this file lives)
+import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-
-type AnyEnv = Record<string, any>;
-
-const viteEnv: AnyEnv | undefined =
+const hasProcessEnv = typeof process !== 'undefined' && !!process.env;
+const viteEnv: Record<string, any> | undefined =
   typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
 
-// ✅ Expo ONLY inlines env vars when keys are literal
-const expoApiKey =
-  (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_FIREBASE_API_KEY) || '';
-const expoProjectId =
-  (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID) ||
-  '';
-const expoAppId =
-  (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_FIREBASE_APP_ID) || '';
-const expoSenderId =
-  (typeof process !== 'undefined' &&
-    process.env &&
-    process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID) ||
-  '';
-const expoAuthDomain =
-  (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN) ||
-  '';
-const expoBucket =
-  (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET) ||
-  '';
+const readProcessEnv = (key: string) => (hasProcessEnv ? process.env[key] : undefined);
 
-// Web (Vite) vars
-const apiKey = (viteEnv?.VITE_FIREBASE_API_KEY ?? expoApiKey ?? '').trim();
-const projectId = (viteEnv?.VITE_FIREBASE_PROJECT_ID ?? expoProjectId ?? 'mytutorapp-d3c91').trim();
-const appId = (viteEnv?.VITE_FIREBASE_APP_ID ?? expoAppId ?? '').trim();
-const messagingSenderId = (viteEnv?.VITE_FIREBASE_MESSAGING_SENDER_ID ?? expoSenderId ?? '').trim();
-const authDomain = (
-  viteEnv?.VITE_FIREBASE_AUTH_DOMAIN ??
-  expoAuthDomain ??
-  `${projectId}.firebaseapp.com`
-).trim();
-const storageBucket = (
-  viteEnv?.VITE_FIREBASE_STORAGE_BUCKET ??
-  expoBucket ??
-  `${projectId}.appspot.com`
-).trim();
-
-try {
-  console.log(
-    '[firebase] apiKey prefix',
-    apiKey ? `${apiKey.slice(0, 8)}… (len=${apiKey.length})` : 'EMPTY'
-  );
-  console.log('[firebase] projectId', projectId);
-  console.log('[firebase] authDomain', authDomain);
-} catch {}
-
-if (!apiKey) {
-  // Don’t hard-crash the whole app; log clearly.
-  console.error(
-    '[firebase] Missing apiKey. Ensure EXPO_PUBLIC_FIREBASE_API_KEY (mobile) or VITE_FIREBASE_API_KEY (web) is set.'
-  );
-}
-
-const firebaseConfig = {
-  apiKey,
-  authDomain,
-  projectId,
-  appId,
-  messagingSenderId,
-  storageBucket,
+export const getFirebaseEnv = (key: string) => {
+  const envKey = String(key || '').trim();
+  if (!envKey) return '';
+  const nextValue = readProcessEnv(`NEXT_PUBLIC_${envKey}`);
+  const viteValue = viteEnv?.[`VITE_${envKey}`] ?? readProcessEnv(`VITE_${envKey}`);
+  const expoValue = readProcessEnv(`EXPO_PUBLIC_${envKey}`);
+  return String(nextValue ?? viteValue ?? expoValue ?? '').trim();
 };
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+export const firebaseEnv = {
+  apiKey: getFirebaseEnv('FIREBASE_API_KEY'),
+  authDomain: getFirebaseEnv('FIREBASE_AUTH_DOMAIN'),
+  projectId: getFirebaseEnv('FIREBASE_PROJECT_ID') || 'mytutorapp-d3c91',
+  storageBucket: getFirebaseEnv('FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: getFirebaseEnv('FIREBASE_MESSAGING_SENDER_ID'),
+  appId: getFirebaseEnv('FIREBASE_APP_ID'),
+  measurementId: getFirebaseEnv('FIREBASE_MEASUREMENT_ID'),
+};
 
-// Wrap Auth init so a config issue doesn’t abort the app in release
-let auth: ReturnType<typeof getAuth> | null = null;
-try {
-  auth = getAuth(app);
-} catch (e) {
-  console.error('[firebase] getAuth failed:', e);
-}
+const firebaseConfig = {
+  apiKey: firebaseEnv.apiKey,
+  authDomain: firebaseEnv.authDomain || `${firebaseEnv.projectId}.firebaseapp.com`,
+  projectId: firebaseEnv.projectId,
+  storageBucket: firebaseEnv.storageBucket || `${firebaseEnv.projectId}.appspot.com`,
+  messagingSenderId: firebaseEnv.messagingSenderId,
+  appId: firebaseEnv.appId,
+  measurementId: firebaseEnv.measurementId || undefined,
+};
 
-/**
- * ✅ Option A: keep `auth` nullable, but provide a safe non-null getter for callers.
- * This removes TS2345 while still not hard-crashing the whole app at import time.
- */
-export function getAuthOrThrow() {
-  if (!auth) {
-    throw new Error(
-      'Firebase Auth is not initialized. Check FIREBASE env vars (apiKey/authDomain/projectId/etc.).'
-    );
+let warnedMissingApiKey = false;
+let appInitFailed = false;
+let appInstance: FirebaseApp | null = null;
+
+const warnMissingApiKeyOnce = () => {
+  if (warnedMissingApiKey) return;
+  warnedMissingApiKey = true;
+  console.warn(
+    '[firebase] Missing FIREBASE_API_KEY. Set NEXT_PUBLIC_FIREBASE_* (web-next), VITE_FIREBASE_* (web), or EXPO_PUBLIC_FIREBASE_* (mobile). Firebase app/auth disabled.'
+  );
+};
+
+export const getFirebaseAppSafe = (): FirebaseApp | null => {
+  if (appInstance) return appInstance;
+  if (appInitFailed) return null;
+
+  if (!firebaseConfig.apiKey) {
+    warnMissingApiKeyOnce();
+    return null;
   }
-  return auth;
-}
-
-// Web-only: ensure Firebase Auth persists across refreshes in the browser
-export async function ensureBrowserPersistence() {
-  // Not in a browser (SSR / Node / React Native)
-  if (typeof window === 'undefined') return;
-  if (!auth) return;
 
   try {
-    // Dynamic import so React Native never evaluates browser persistence code
-    const { setPersistence, browserLocalPersistence, inMemoryPersistence } = await import(
+    appInstance = getApps().length ? getApp() : initializeApp(firebaseConfig);
+    return appInstance;
+  } catch (error) {
+    appInitFailed = true;
+    console.warn('[firebase] initializeApp failed:', error);
+    return null;
+  }
+};
+
+export const getAuthOrThrow = async () => {
+  if (typeof window === 'undefined') {
+    throw new Error('Firebase auth is unavailable during SSR.');
+  }
+
+  const app = getFirebaseAppSafe();
+  if (!app) {
+    throw new Error('Missing Firebase web config.');
+  }
+
+  const { getAuth } = await import('firebase/auth');
+  return getAuth(app);
+};
+
+export async function ensureBrowserPersistence() {
+  if (typeof window === 'undefined') return;
+
+  const app = getFirebaseAppSafe();
+  if (!app) return;
+
+  try {
+    const { getAuth, setPersistence, browserLocalPersistence, inMemoryPersistence } = await import(
       'firebase/auth'
     );
-
+    const auth = getAuth(app);
     try {
       await setPersistence(auth, browserLocalPersistence);
     } catch {
-      // If localStorage is blocked (private mode, strict settings), fall back
       await setPersistence(auth, inMemoryPersistence);
     }
-  } catch (e) {
-    // best-effort; never crash app for persistence
-    console.warn('[firebase] ensureBrowserPersistence failed:', e);
+  } catch (error) {
+    console.warn('[firebase] ensureBrowserPersistence failed:', error);
   }
 }
 
-export { auth };
-
-// Providers
-export const googleProvider = new GoogleAuthProvider();
-export const provider = googleProvider;
+/**
+ * Env requirements:
+ * - apps/web-next: NEXT_PUBLIC_FIREBASE_API_KEY (+ other NEXT_PUBLIC_FIREBASE_* vars)
+ * - apps/web (Vite): VITE_FIREBASE_API_KEY (+ other VITE_FIREBASE_* vars)
+ * - apps/mobile (Expo): EXPO_PUBLIC_FIREBASE_API_KEY (+ other EXPO_PUBLIC_FIREBASE_* vars)
+ */
