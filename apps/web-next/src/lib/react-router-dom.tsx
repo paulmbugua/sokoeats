@@ -24,6 +24,13 @@ const isNextRoute = (href: string) => {
   const [path] = href.split(/[?#]/);
   if (path === '/') return true;
   if (path === '/find-tutor') return true;
+  if (path === '/login') return true;
+  if (path === '/institution') return true;
+  if (path === '/institution/login') return true;
+  if (path === '/org/login') return true;
+  if (path === '/terms') return true;
+  if (path === '/privacy-policy') return true;
+  if (path === '/refunds') return true;
   if (path === '/resources') return true;
   if (path === '/courses') return true;
   if (path === '/help') return true;

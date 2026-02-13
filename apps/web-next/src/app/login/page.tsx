@@ -1,6 +1,12 @@
-import { redirect } from 'next/navigation';
-import { appUrl } from '@/lib/appOrigin';
+import { Suspense } from 'react';
+import LoginPage from '@/legacy-pages/LoginPage.web';
 
-export default function LoginBridge() {
-  redirect(appUrl('/login'));
+export const dynamic = 'force-dynamic';
+
+export default function LoginPageRoute() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPage />
+    </Suspense>
+  );
 }

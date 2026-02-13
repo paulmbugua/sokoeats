@@ -346,7 +346,7 @@ const PaymentWidget: React.FC<Props> = ({
     if (!checkoutEventKeysRef.current.has(`begin:${baseKey}`)) {
       // begin_checkout: user starts checkout
       trackCheckoutOnce(checkoutKey, () => {
-        trackBeginCheckout(payload);
+        trackBeginCheckout({ ...payload, cart_signature: checkoutKey });
       });
       checkoutEventKeysRef.current.add(`begin:${baseKey}`);
     }
