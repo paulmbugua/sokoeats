@@ -25,8 +25,8 @@ const isNextRoute = (href: string) => {
   if (path === '/') return true;
   if (path === '/find-tutor') return true;
   if (path === '/login') return true;
-  if (path === '/institution') return true;
-  if (path === '/institution/login') return true;
+  if (path === '/institutions') return true;
+  if (path === '/institutions/login') return true;
   if (path === '/org/login') return true;
   if (path === '/terms') return true;
   if (path === '/privacy-policy') return true;
