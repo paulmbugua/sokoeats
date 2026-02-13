@@ -37,9 +37,7 @@ const nextConfig = {
   async redirects() {
     return [
       { source: '/robot-teach', destination: '/app/robot-teach', permanent: false },
-      { source: '/login', destination: '/app/login', permanent: false },
       { source: '/org', destination: '/app/org', permanent: false },
-      { source: '/org/login', destination: '/app/org/login', permanent: false },
       { source: '/messages', destination: '/app/messages', permanent: false },
       { source: '/settings/:path*', destination: '/app/settings/:path*', permanent: false },
       { source: '/courses/:path*', destination: '/app/courses/:path*', permanent: false },

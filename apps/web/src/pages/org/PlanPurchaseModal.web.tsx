@@ -347,6 +347,7 @@ export default function PlanPurchaseModalWeb({
         items: gaItem,
         payment_type: method === 'M-Pesa' ? 'mpesa' : 'paystack',
         affiliation: 'DayBreak Learner',
+        cart_signature: checkoutKey,
       });
     });
 

@@ -1,4 +1,5 @@
-// apps/web/src/components/CustomGoogleLoginButton.tsx
+'use client';
+
 import React, { useState } from 'react';
 import { FcGoogle } from 'react-icons/fc';
 import { signInGooglePopup, signInGoogleRedirect } from '@mytutorapp/shared/utils/firebaseAuthWeb';
@@ -55,11 +56,7 @@ export default function CustomGoogleLoginButton({
       setLoading(false);
       const message = err instanceof Error ? err.message : '';
       onFailure?.(err instanceof Error ? err : undefined);
-      alert(
-        message.includes('Missing Firebase web config')
-          ? 'Missing Firebase web config.'
-          : 'Failed to start Google sign-in.'
-      );
+      alert(message.includes('Missing Firebase web config') ? 'Missing Firebase web config.' : 'Failed to start Google sign-in.');
     }
   };
 

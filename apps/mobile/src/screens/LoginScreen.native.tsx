@@ -27,7 +27,7 @@ import SelectField, { type Option } from './SelectField.native';
 
 // 🔹 parity with web (Cancel role flow)
 import { signOut } from 'firebase/auth';
-import { auth } from '@mytutorapp/shared/utils/firebaseConfig';
+import { getAuthOrThrow } from '@mytutorapp/shared/utils/firebaseConfig';
 import { useThemePref } from '../theme/ThemeContext';
 
 type LoginNavProp = StackNavigationProp<MainStackParamList>;
@@ -284,7 +284,8 @@ const LoginScreenNative: React.FC = () => {
 
   const safeFirebaseSignOut = async () => {
   try {
-    if (auth) await signOut(auth);
+    const auth = await getAuthOrThrow();
+    await signOut(auth);
   } catch {
     // ignore
   }

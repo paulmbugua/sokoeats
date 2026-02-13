@@ -39,7 +39,7 @@ const FALLBACK_AVATAR = (name = 'You') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=223649&color=ffffff`;
 
 const Navbar: React.FC<Props> = ({ avatarUrl }) => {
-  const { token, orgToken, backendUrl, profile, orgLogout, authMode } = useShopContext() as any;
+  const { token, orgToken, backendUrl, profile, authMode } = useShopContext() as any;
 
   const { role } = useOrg() ?? {};
   const pathname = usePathname() ?? '';
@@ -63,26 +63,9 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
   const isLearnerRole = normalizedRole === 'learner' || normalizedRole === 'student';
   const isInstructorRole = normalizedRole === 'instructor' || normalizedRole === 'teacher';
 
-  const orgPortalHref = useMemo(() => {
-    if (!orgToken) return appUrl('/org/login?next=/org');
-    if (isLearnerRole) return appUrl('/org/learn');
-    if (isInstructorRole) return appUrl('/org/instructor');
-    return appUrl('/org/profile');
-  }, [orgToken, isLearnerRole, isInstructorRole]);
+  const orgPortalHref = '/institution';
 
-  const handleOrgButtonClick = async (e: React.MouseEvent<HTMLAnchorElement, MouseEvent>) => {
-    // Learner/Instructor = "switch account" behavior
-    if (!orgToken || !orgLogout) return;
-    if (!(isLearnerRole || isInstructorRole)) return;
-
-    e.preventDefault();
-    try {
-      await orgLogout();
-    } catch (err) {
-      console.error('[Navbar] orgLogout error', err);
-    }
-    window.location.href = appUrl('/org/login?next=/org');
-  };
+  const handleOrgButtonClick = () => {}; // deterministic no-op
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -120,7 +103,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
      if (isInstructorRole) return appUrl('/org/instructor');
      return appUrl('/org/profile');
    }
-   return token ? appUrl('/profile/me') : appUrl('/login');
+   return token ? appUrl('/profile/me') : '/login';
  }, [orgToken, isLearnerRole, isInstructorRole, token]);
 
  
@@ -204,7 +187,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
 
     if (!orgToken) {
       return {
-        href: appUrl('/org/login?next=/org'),
+        href: '/institution/login',
         label: 'Login',
         icon: faBuilding,
         title: 'Institution login',

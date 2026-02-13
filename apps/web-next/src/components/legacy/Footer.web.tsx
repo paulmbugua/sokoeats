@@ -18,7 +18,7 @@ const Footer: React.FC = () => {
   const handleJoinClick = () => {
     // "Become a Tutor" should only care about normal user accounts
     if (!token) {
-      window.location.href = appUrl('/login');
+      window.location.href = '/login';
       return;
     }
     window.location.href = appUrl('/become-tutor');
@@ -42,7 +42,7 @@ const Footer: React.FC = () => {
       }
     } else {
       // When it's showing "Login", always go to the normal user login page
-      window.location.href = appUrl('/login');
+      window.location.href = '/login';
     }
   };
 

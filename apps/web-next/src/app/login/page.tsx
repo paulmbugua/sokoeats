@@ -1,6 +1,12 @@
-import { redirect } from 'next/navigation';
-import { appUrl } from '@/lib/appOrigin';
+'use client';
 
-export default function LoginBridge() {
-  redirect(appUrl('/login'));
+import dynamic from 'next/dynamic';
+
+const LoginPage = dynamic(() => import('@/legacy-pages/LoginPage.web'), {
+  ssr: false,
+  loading: () => null,
+});
+
+export default function LoginPageRoute() {
+  return <LoginPage />;
 }
