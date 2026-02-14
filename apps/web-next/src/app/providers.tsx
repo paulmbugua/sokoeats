@@ -6,6 +6,7 @@ import { QueryClient, QueryClientProvider } from '@mytutorapp/shared/hooks/react
 import ShopContextProvider from '@mytutorapp/shared/context/ShopContext';
 import { ChatProvider } from '@mytutorapp/shared/context/ChatContext';
 import { ThemeProvider } from '@mytutorapp/shared/hooks';
+import type { ThemeMode } from '@mytutorapp/shared/hooks/useTheme';
 import { publicEnv } from '@/lib/env';
 
 // ✅ Async-storage compatible wrapper (consistent Promise<void>)
@@ -19,7 +20,13 @@ const storage = {
   },
 };
 
-export default function Providers({ children }: { children: React.ReactNode }) {
+export default function Providers({
+  children,
+  initialTheme,
+}: {
+  children: React.ReactNode;
+  initialTheme: ThemeMode;
+}) {
   const backendUrl = publicEnv.backendUrl || '';
   const sharedChildren = children as unknown as React.ComponentProps<typeof ThemeProvider>['children'];
 
@@ -41,7 +48,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
     axios.defaults.baseURL = backendUrl;
 
-    // ✅ dev-only (never in prod), enabled via env or query param
     const debugHttp =
       process.env.NODE_ENV !== 'production' &&
       (publicEnv.debugHttp || new URLSearchParams(window.location.search).has('debug_http'));
@@ -66,7 +72,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={queryClient}>
       <ShopContextProvider backendUrl={backendUrl} storage={storage} queryClient={queryClient}>
         <ChatProvider>
-          <ThemeProvider applyToDocument storageKey="theme">
+          <ThemeProvider applyToDocument storageKey="theme" initialTheme={initialTheme}>
             {sharedChildren}
           </ThemeProvider>
         </ChatProvider>
