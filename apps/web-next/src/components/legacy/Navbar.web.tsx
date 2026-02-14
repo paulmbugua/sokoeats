@@ -103,7 +103,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
      if (isInstructorRole) return appUrl('/org/instructor');
      return appUrl('/org/profile');
    }
-   return token ? appUrl('/profile/me') : appUrl('/login');
+   return token ? appUrl('/profile/me') : '/login';
  }, [orgToken, isLearnerRole, isInstructorRole, token]);
 
  

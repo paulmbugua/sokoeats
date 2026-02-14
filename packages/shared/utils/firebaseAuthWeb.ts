@@ -1,5 +1,5 @@
 import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
-import { getAuthOrThrow } from './firebaseConfig';
+import { getAuthOrThrow, getFirebaseAppSafe } from './firebaseConfig';
 
 export const buildGoogleProviderSelectAccount = () => {
   const provider = new GoogleAuthProvider();
@@ -7,6 +7,19 @@ export const buildGoogleProviderSelectAccount = () => {
   return provider;
 };
 
+export const getAuthSafe = async () => {
+  if (typeof window === 'undefined') return null;
+
+  const app = getFirebaseAppSafe();
+  if (!app) return null;
+
+  try {
+    const { getAuth } = await import('firebase/auth');
+    return getAuth(app);
+  } catch {
+    return null;
+  }
+};
 export const signInGooglePopup = async () => {
   const auth = getAuthOrThrow();
   const provider = buildGoogleProviderSelectAccount();
