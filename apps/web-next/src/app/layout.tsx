@@ -49,11 +49,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   const initialTheme = await resolveInitialTheme();
 
   return (
-    <html
-      lang="en"
-      className={initialTheme === 'dark' ? 'dark' : undefined}
-      suppressHydrationWarning
-    >
+    <html lang="en" className={initialTheme === 'dark' ? 'dark' : undefined}>
       <head>
         {gaId ? (
           <>
@@ -78,7 +74,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         ) : null}
       </head>
 
-      <body suppressHydrationWarning>
+      <body>
         <Providers initialTheme={initialTheme}>
           <Suspense fallback={null}>
             <GaRouteTracker />
