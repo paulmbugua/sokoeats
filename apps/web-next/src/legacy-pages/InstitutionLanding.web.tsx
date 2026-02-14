@@ -16,26 +16,62 @@ const policies = [
   { href: '/payment-flow', label: 'Payment Flow' },
 ];
 
+const featureSections = [
+  {
+    title: 'Roster, roles & onboarding',
+    cta: { label: 'See access options', href: '/institutions/login', source: 'features_roster_roles' },
+    cards: [
+      { icon: '👥', title: 'Instructor & learner rosters', desc: 'Manage instructors and learners with class, subject, staff code, and admission details.' },
+      { icon: '✉️', title: 'Invite links & join flows', desc: 'Send role-specific invites and support secure “accept invite” onboarding paths.' },
+      { icon: '📥', title: 'Bulk onboarding tools', desc: 'Import learners with CSV templates, filter by class, and print/export roster views.' },
+      { icon: '🔐', title: 'Role-safe authentication', desc: 'Separate admin, instructor, and learner portal routes with first-login password update prompts.' },
+    ],
+  },
+  {
+    title: 'Learning, assessment & operations',
+    cta: { label: 'Explore institution workflows', href: '/institutions/login', source: 'features_learning_ops' },
+    cards: [
+      { icon: '📝', title: 'Assignments portal', desc: 'Create AI or classic assignments, target class/subject, share invite links, and review submissions.' },
+      { icon: '🧾', title: 'Exams & report cards', desc: 'Configure terms/sessions, enter marks, generate learner/class PDFs, and save teacher remarks.' },
+      { icon: '✅', title: 'Attendance sessions', desc: 'Create sessions, bulk mark Present/Absent/Late/Excused, and export attendance CSV reports.' },
+      { icon: '💳', title: 'Fees & statements', desc: 'Build fee structures, post charges/payments, reconcile unmatched receipts, and download statements.' },
+    ],
+  },
+  {
+    title: 'Engagement, activities & reporting',
+    cta: { label: 'Book a guided demo', href: 'mailto:support@daybreaklearner.com?subject=Institution%20Demo%20Request', source: 'features_engagement_reporting' },
+    cards: [
+      { icon: '📰', title: 'Newsletters & announcements', desc: 'Draft updates, schedule/pin announcements, send newsletters, and generate branded PDF copies.' },
+      { icon: '🏆', title: 'Sports events workspace', desc: 'Plan fixtures and practice events, publish results, record scores, and export events CSV.' },
+      { icon: '🤝', title: 'Clubs & societies', desc: 'Create clubs, enroll members by learner references, and manage roles such as captain/member.' },
+      { icon: '📈', title: 'Plan-aware analytics', desc: 'Track learning performance across assignments, exams, quizzes, and export analytics on eligible tiers.' },
+    ],
+  },
+];
+
 export default function InstitutionLanding() {
   const onCta = (source: string) => trackEvent('institution_portal_cta_click', { source });
+  const onFeatureCta = (source: string) => trackEvent('feature_section_cta_click', { source });
+  const onFaqToggle = (q: string) => trackEvent('faq_toggle', { q });
+  const onPolicyClick = (href: string) => trackEvent('policies_click', { href });
 
   const faqs: Faq[] = useMemo(
     () => [
       {
-        q: 'How secure is student data on DayBreak?',
-        a: 'We follow modern security best practices including strict role-based access across staff, learners, and admins, secure transport (TLS), and clear “official portal” trust cues to reduce phishing risk.',
+        q: 'How are admin, instructor, and learner permissions separated?',
+        a: 'The institution portal uses role-specific routes and guarded access, so admins handle institution management, instructors run teaching workflows, and learners access learner-only pages like assignments, results, and newsletters.',
       },
       {
-        q: 'Can we integrate with our existing tools?',
-        a: 'Yes. We can support institution workflows with exports and API-friendly data structures. Request a demo and we’ll map an integration approach for your environment.',
+        q: 'What onboarding options do institutions get?',
+        a: 'Institutions can onboard through direct adds, invite links, and CSV-assisted learner imports. Invite acceptance flows support secure sign-in before the user enters the organization workspace.',
       },
       {
-        q: 'What support do you offer for large institutions?',
-        a: 'We provide guided onboarding, admin training, and priority support options for institutions with larger rosters and multiple departments.',
+        q: 'Can we export records and downloadable reports?',
+        a: 'Yes. Institutions can export attendance and sports CSVs, download fee statements/structures as PDFs, and generate exam report card PDFs for individual learners and classes.',
       },
       {
-        q: 'Do learners have separate access from staff/admin?',
-        a: 'Yes. Learner roles are isolated from staff and admin permissions. Institutions control what learners can see and do.',
+        q: 'Do eLearning and reporting work together?',
+        a: 'Yes. The portal combines assignment delivery, learner submissions, exams, and analytics summaries so institutions can track outcomes across coursework and assessments in one environment.',
       },
     ],
     []
@@ -62,7 +98,6 @@ export default function InstitutionLanding() {
     <div className="bg-white text-slate-900 dark:bg-darkBg dark:text-slate-100">
       {/* HERO (no Navbar here — global one will render above) */}
       <section className="relative overflow-hidden pt-14 pb-20 sm:pt-16 sm:pb-24 lg:pt-24 lg:pb-32">
-        {/* Background wash */}
         <div className="pointer-events-none absolute inset-0">
           <div className="absolute inset-0 bg-gradient-to-br from-indigo-50 via-white to-cyan-50 dark:from-slate-900 dark:via-slate-950 dark:to-slate-950" />
           <div className="absolute -top-24 -right-24 h-80 w-80 rounded-full bg-indigo-500/10 blur-3xl dark:bg-indigo-500/15" />
@@ -71,24 +106,24 @@ export default function InstitutionLanding() {
 
         <div className="relative mx-auto w-full max-w-7xl px-4 sm:px-6">
           <div className="grid items-center gap-12 lg:grid-cols-2 lg:gap-16">
-            {/* Copy */}
             <div className="space-y-7">
               <div className="inline-flex items-center gap-2 rounded-full border border-indigo-200/60 bg-indigo-50/70 px-4 py-2 text-sm font-semibold text-indigo-700 dark:border-white/10 dark:bg-white/5 dark:text-indigo-200">
                 <span className="relative flex h-2 w-2">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-indigo-500 opacity-40" />
                   <span className="relative inline-flex h-2 w-2 rounded-full bg-indigo-500" />
                 </span>
-                New: AI-powered institutional insights
+                Built for real institution workflows
               </div>
 
               <h1 className="text-4xl font-extrabold leading-tight tracking-tight sm:text-5xl lg:text-6xl">
-                Empower Your Institution with{' '}
-                <span className="text-indigo-600 dark:text-indigo-400">DayBreak</span> Learner
+                Run your institution portal on{' '}
+                <span className="text-indigo-600 dark:text-indigo-400">DayBreak Learner</span>
               </h1>
 
               <p className="max-w-xl text-lg leading-relaxed text-slate-600 dark:text-slate-300">
-                A modern institutional workspace for staff management, assignments, eLearning access, analytics,
-                and reporting — built to be simple, secure, and fast to adopt.
+                Manage rosters, assignments, exams, fees, attendance, newsletters, announcements,
+                clubs, sports, and analytics in one secure workspace for admins, instructors,
+                and learners.
               </p>
 
               <div className="flex flex-wrap gap-3 pt-2">
@@ -104,26 +139,23 @@ export default function InstitutionLanding() {
                 <a
                   href="mailto:support@daybreaklearner.com?subject=Institution%20Demo%20Request"
                   onClick={() => onCta('hero_demo')}
-                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/60 px-7 py-3.5 text-sm font-semibold text-indigo-700 backdrop-blur transition hover:border-indigo-200 hover:bg-white dark:border-white/10 dark:bg-white/5 dark:text-indigo-200 dark:hover:border-white/20"
+                  className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white/60 px-7 py-3.5 text-sm font-semibold text-indigo-700 backdrop-blur transition hover:border-indigo-200 hover:bg-white dark:border-white/10 dark:bg-white/10 dark:text-indigo-200 dark:hover:bg-white/15"
                 >
                   Request a Demo
                 </a>
               </div>
 
-              <div className="pt-3">
-                <div className="rounded-2xl border border-slate-200/70 bg-white/60 p-4 text-sm text-slate-600 backdrop-blur dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
-                  <p className="font-semibold text-slate-800 dark:text-slate-100">
-                    Secure sign-in on daybreaklearner.com
-                  </p>
-                  <p className="mt-1">
-                    We never ask for credentials on third-party sites. Always verify{' '}
-                    <span className="font-semibold">daybreaklearner.com</span>.
-                  </p>
-                </div>
+              <div className="rounded-2xl border border-slate-200 bg-white/70 p-4 text-sm text-slate-600 shadow-sm dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
+                <p>
+                  <span className="font-semibold">Secure sign-in on daybreaklearner.com</span>
+                </p>
+                <p className="mt-1">
+                  We never ask for credentials on third-party sites. Always confirm the portal URL is{' '}
+                  <span className="font-semibold">daybreaklearner.com</span>.
+                </p>
               </div>
             </div>
 
-            {/* Glass dashboard mock */}
             <div className="relative">
               <div className="pointer-events-none absolute -inset-6 rounded-[2.5rem] bg-gradient-to-r from-indigo-500/20 to-cyan-500/20 blur-3xl opacity-50 dark:opacity-35" />
 
@@ -131,7 +163,7 @@ export default function InstitutionLanding() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-bold">Student Roster</p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">Academic Year 2026</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">Sample institution dashboard</p>
                   </div>
 
                   <div className="flex items-center gap-2">
@@ -161,7 +193,7 @@ export default function InstitutionLanding() {
 
                       <div className="text-right">
                         <div className="text-xs font-bold text-indigo-700 dark:text-indigo-200">
-                          {row.score}% Score
+                          {row.score}% course score
                         </div>
                         <div className="mt-1 h-1.5 w-16 rounded-full bg-indigo-600/10">
                           <div className="h-full rounded-full bg-indigo-600" style={{ width: `${row.score}%` }} />
@@ -171,14 +203,15 @@ export default function InstitutionLanding() {
                   ))}
                 </div>
 
-                <div className="pointer-events-none absolute -bottom-6 -right-6 w-52 rounded-2xl border border-indigo-200/40 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-slate-900">
+                <div className="pointer-events-none absolute -bottom-6 -right-6 w-56 rounded-2xl border border-indigo-200/40 bg-white p-4 shadow-xl dark:border-white/10 dark:bg-slate-900">
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                      Total Revenue
-                    </span>
-                    <span className="text-xs font-bold text-emerald-600">▲</span>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Sample metrics</span>
+                    <span className="text-xs font-bold text-emerald-600">Live</span>
                   </div>
-                  <div className="mt-1 text-2xl font-extrabold">$124.5k</div>
+                  <div className="mt-1 text-lg font-extrabold">1,248 Active learners</div>
+                  <div className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    912 assignments submitted • 96% exam completion
+                  </div>
                   <div className="mt-3 flex h-8 items-end gap-1">
                     <div className="h-3 flex-1 rounded-t bg-indigo-600/20" />
                     <div className="h-5 flex-1 rounded-t bg-indigo-600/20" />
@@ -188,7 +221,6 @@ export default function InstitutionLanding() {
                 </div>
               </div>
             </div>
-            {/* end visual */}
           </div>
         </div>
       </section>
@@ -197,46 +229,39 @@ export default function InstitutionLanding() {
       <section className="py-16 sm:py-20">
         <div className="mx-auto w-full max-w-7xl px-4 sm:px-6">
           <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
-              Powerful Features for Modern Schools
-            </h2>
+            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">What institutions can run today</h2>
             <p className="mt-3 text-slate-600 dark:text-slate-300">
-              Everything you need to manage your institution&apos;s digital transformation in one place.
+              The landing experience mirrors workflows already available across the organization portal.
             </p>
           </div>
 
-          <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-            {[
-              {
-                title: 'Staff Management',
-                desc: 'Centralize roles, permissions, departments, and staff onboarding.',
-                icon: '👥',
-              },
-              {
-                title: 'Assignment Tracking',
-                desc: 'Create, submit, and grade coursework with clear status and visibility.',
-                icon: '📝',
-              },
-              {
-                title: 'eLearning Modules',
-                desc: 'Deliver learning content with structured modules and student access controls.',
-                icon: '🎓',
-              },
-              {
-                title: 'Advanced Analytics',
-                desc: 'Track engagement, outcomes, and growth with actionable reporting.',
-                icon: '📈',
-              },
-            ].map((f) => (
-              <div
-                key={f.title}
-                className="group rounded-3xl border border-slate-200 bg-slate-50 p-6 transition-all hover:-translate-y-1 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-600/10 dark:border-white/10 dark:bg-white/5 dark:hover:border-white/20"
-              >
-                <div className="mb-5 grid h-14 w-14 place-items-center rounded-2xl bg-indigo-600/10 text-2xl transition-colors group-hover:bg-indigo-600 group-hover:text-white dark:bg-indigo-500/20">
-                  <span aria-hidden>{f.icon}</span>
+          <div className="mt-10 space-y-8">
+            {featureSections.map((section) => (
+              <div key={section.title} className="rounded-3xl border border-slate-200 bg-slate-50/70 p-5 dark:border-white/10 dark:bg-white/5">
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+                  <h3 className="text-xl font-extrabold">{section.title}</h3>
+                  <Link
+                    href={section.cta.href}
+                    onClick={() => onFeatureCta(section.cta.source)}
+                    className="inline-flex items-center gap-1 text-sm font-semibold text-indigo-700 hover:text-indigo-600 dark:text-indigo-300"
+                  >
+                    {section.cta.label} →
+                  </Link>
                 </div>
-                <h3 className="text-lg font-extrabold">{f.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{f.desc}</p>
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                  {section.cards.map((f) => (
+                    <div
+                      key={f.title}
+                      className="group rounded-2xl border border-slate-200 bg-white p-5 transition-all hover:-translate-y-0.5 hover:border-indigo-200 hover:shadow-lg hover:shadow-indigo-600/10 dark:border-white/10 dark:bg-slate-900/40 dark:hover:border-white/20"
+                    >
+                      <div className="mb-3 grid h-11 w-11 place-items-center rounded-xl bg-indigo-600/10 text-lg dark:bg-indigo-500/20">
+                        <span aria-hidden>{f.icon}</span>
+                      </div>
+                      <h4 className="text-base font-extrabold">{f.title}</h4>
+                      <p className="mt-2 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{f.desc}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -247,9 +272,9 @@ export default function InstitutionLanding() {
       <section className="bg-slate-50 py-16 sm:py-20 dark:bg-slate-950/40">
         <div className="mx-auto w-full max-w-7xl px-4 sm:px-6">
           <div className="mx-auto max-w-3xl text-center">
-            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Set Up in Minutes</h2>
+            <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">How institutions onboard</h2>
             <p className="mt-3 text-slate-600 dark:text-slate-300">
-              A smooth onboarding flow for your institution — from account creation to reporting.
+              A practical 3-step rollout based on existing admin and instructor portal flows.
             </p>
           </div>
 
@@ -259,20 +284,20 @@ export default function InstitutionLanding() {
             {[
               {
                 n: 1,
-                title: 'Create Account',
-                desc: 'Register your institution and verify your details for a secure workspace.',
+                title: 'Sign in & set roles',
+                desc: 'Owner/admin access institution profile, branding, and role-based portal routes for staff and learners.',
                 filled: true,
               },
               {
                 n: 2,
-                title: 'Invite Teams',
-                desc: 'Add staff and learners via invites or bulk onboarding flows.',
+                title: 'Populate roster',
+                desc: 'Add instructors and learners directly, use invite links, or import learner CSV files with class-level grouping.',
                 filled: false,
               },
               {
                 n: 3,
-                title: 'Track Reports',
-                desc: 'Monitor learning and operational activity with clear, exportable reporting.',
+                title: 'Run academics & reports',
+                desc: 'Launch assignments, exams, attendance, fees, and communications, then export PDFs/CSVs for stakeholders.',
                 filled: false,
               },
             ].map((s) => (
@@ -306,6 +331,7 @@ export default function InstitutionLanding() {
                 <Link
                   key={p.href}
                   href={p.href}
+                  onClick={() => onPolicyClick(p.href)}
                   className="underline decoration-slate-300 underline-offset-4 hover:text-indigo-600 dark:decoration-white/20 dark:hover:text-indigo-300"
                 >
                   {p.label}
@@ -322,7 +348,7 @@ export default function InstitutionLanding() {
           <div className="text-center">
             <h2 className="text-3xl font-extrabold tracking-tight sm:text-4xl">Frequently Asked Questions</h2>
             <p className="mt-3 text-slate-600 dark:text-slate-300">
-              Everything you need to know about our institutional platform.
+              Answers based on institution workflows currently available in the portal.
             </p>
           </div>
 
@@ -336,7 +362,10 @@ export default function InstitutionLanding() {
                 >
                   <button
                     type="button"
-                    onClick={() => setOpenIdx(open ? -1 : idx)}
+                    onClick={() => {
+                      onFaqToggle(item.q);
+                      setOpenIdx(open ? -1 : idx);
+                    }}
                     className="flex w-full items-center justify-between gap-4 px-6 py-5 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
                   >
                     <span className="text-base font-bold sm:text-lg">{item.q}</span>
