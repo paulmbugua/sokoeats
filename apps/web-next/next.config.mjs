@@ -59,6 +59,9 @@ const nextConfig = {
 
   async redirects() {
     return [
+      { source: '/institution', destination: '/institutions', permanent: false },
+      { source: '/institution/login', destination: '/institutions/login', permanent: false },
+      { source: '/institution/:path*', destination: '/institutions/:path*', permanent: false },
       { source: '/robot-teach', destination: '/app/robot-teach', permanent: false },
       { source: '/org', destination: '/app/org', permanent: false },
       { source: '/messages', destination: '/app/messages', permanent: false },

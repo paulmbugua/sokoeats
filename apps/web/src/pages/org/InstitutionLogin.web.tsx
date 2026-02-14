@@ -7,7 +7,7 @@ const toNextPath = (path: string) => {
 
 export default function InstitutionLoginRedirect() {
   useEffect(() => {
-    const nextPath = `/institution/login${window.location.search || ''}`;
+    const nextPath = `/institutions/login${window.location.search || ''}`;
     window.location.replace(toNextPath(nextPath));
   }, []);
 
