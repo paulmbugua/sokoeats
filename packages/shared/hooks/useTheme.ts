@@ -50,6 +50,16 @@ const getSystem = (): ThemeMode => {
 
 const readThemeLS = async (storageKey: string): Promise<ThemeMode> => {
   try {
+    if (typeof document !== 'undefined') {
+      const key = `${encodeURIComponent(storageKey)}=`;
+      const rawCookie = document.cookie
+        .split(';')
+        .map((part) => part.trim())
+        .find((part) => part.startsWith(key));
+      const cookieTheme = rawCookie ? decodeURIComponent(rawCookie.slice(key.length)) : '';
+      if (cookieTheme === 'light' || cookieTheme === 'dark') return cookieTheme;
+    }
+
     if (typeof localStorage !== 'undefined') {
       const v = localStorage.getItem(storageKey) as ThemeMode | null;
       if (v === 'light' || v === 'dark') return v;
@@ -63,6 +73,10 @@ const writeThemeLS = async (storageKey: string, next: ThemeMode) => {
     if (typeof localStorage !== 'undefined') {
       localStorage.setItem(storageKey, next);
     }
+
+    if (typeof document !== 'undefined') {
+      document.cookie = `${encodeURIComponent(storageKey)}=${encodeURIComponent(next)}; path=/; max-age=31536000; samesite=lax`;
+    }
   } catch {}
 };
 
@@ -73,12 +87,13 @@ export const ThemeProvider: React.FC<{
   storageKey?: string;
   applyToDocument?: boolean; // web only
   storage?: ThemeStorage; // RN/alt storage adapter
-}> = ({ children, storageKey = 'theme', applyToDocument = false, storage }) => {
+  initialTheme?: ThemeMode;
+}> = ({ children, storageKey = 'theme', applyToDocument = false, storage, initialTheme = 'light' }) => {
   const qc = useQueryClient();
 
   const read = async () => {
     const v = storage ? await storage.read(storageKey) : await readThemeLS(storageKey);
-    return v ?? 'light';
+    return v ?? initialTheme;
   };
 
   const { data } = useAppQuery<ThemeMode, Error>(['theme', storageKey], read, {
@@ -89,7 +104,7 @@ export const ThemeProvider: React.FC<{
     refetchOnWindowFocus: false,
   });
 
-  const theme = (data ?? 'light') as ThemeMode;
+  const theme = (data ?? initialTheme) as ThemeMode;
 
   const setTheme = (next: ThemeMode) => {
     (storage?.write(storageKey, next) ?? writeThemeLS(storageKey, next)).catch(() => {});

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import Script from 'next/script';
 import { Suspense } from 'react';
+import { cookies } from 'next/headers';
 
 import Providers from './providers';
 import GaRouteTracker from './_components/GaRouteTracker';
@@ -36,13 +37,23 @@ export const viewport = {
   themeColor: '#111827',
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+const resolveInitialTheme = async () => {
+  const cookieStore = await cookies();
+  const cookieTheme = cookieStore.get('theme')?.value;
+  return cookieTheme === 'dark' ? 'dark' : 'light';
+};
+
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const gaId = publicEnv.ga4MeasurementId;
   const isDev = process.env.NODE_ENV !== 'production';
+  const initialTheme = await resolveInitialTheme();
 
   return (
-    // Option B: ignore hydration mismatches on <html>/<body> (e.g. browser extensions injecting attrs)
-    <html lang="en" suppressHydrationWarning>
+    <html
+      lang="en"
+      className={initialTheme === 'dark' ? 'dark' : undefined}
+      suppressHydrationWarning
+    >
       <head>
         {gaId ? (
           <>
@@ -52,24 +63,23 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               strategy="afterInteractive"
             />
             <Script id="ga4-init" strategy="afterInteractive">
-  {`
+              {`
     window.dataLayer = window.dataLayer || [];
     function gtag(){window.dataLayer.push(arguments);}
     window.gtag = gtag;
     gtag('js', new Date());
 
-    // ✅ debug only in dev
     var gaDebug = ${isDev ? 'true' : 'false'} && new URLSearchParams(window.location.search).has('ga_debug');
 
     gtag('config', '${gaId}', { send_page_view: false, debug_mode: gaDebug });
   `}
-</Script>
+            </Script>
           </>
         ) : null}
       </head>
 
       <body suppressHydrationWarning>
-        <Providers>
+        <Providers initialTheme={initialTheme}>
           <Suspense fallback={null}>
             <GaRouteTracker />
           </Suspense>
