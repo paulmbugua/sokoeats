@@ -1,14 +1,12 @@
 'use client';
 
 // apps/web/src/pages/org/InstitutionLogin.web.tsx
-import React, { useEffect, useMemo, useState, useCallback, useLayoutEffect } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from '@/lib/react-router-dom';
 import useInstitutionAuth from '@mytutorapp/shared/hooks/useInstitutionAuth';
 import CustomGoogleLoginButton from '@/components/CustomGoogleLoginButton';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { trackEvent, trackLogin, trackSignUp } from '../analytics/ga4';
-
-
 
 const LOGIN_BG =
   'https://images.unsplash.com/photo-1513258496099-48168024aec0?q=80&w=2000&auto=format&fit=crop';
@@ -25,13 +23,44 @@ const emailHash = (email: string) => {
   }
 };
 
+/* ----------------------------- Safe storage helpers ----------------------------- */
+
+const safeSessionGet = (k: string) => {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.sessionStorage.getItem(k);
+  } catch {
+    return null;
+  }
+};
+const safeSessionSet = (k: string, v: string) => {
+  try {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.setItem(k, v);
+  } catch {}
+};
+const safeSessionRemove = (k: string) => {
+  try {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.removeItem(k);
+  } catch {}
+};
+
+const safeNow = () => {
+  try {
+    return Date.now();
+  } catch {
+    return 0;
+  }
+};
+
 const InstitutionLogin: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
   const { orgToken, hydrated } = useShopContext() as any;
 
-  // ✅ NEW: read query params (supports step-up / reauth flows)
+  // ✅ Parse query params (SSR-safe: uses location.search only)
   const qs = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const reauth = (qs.get('reauth') || '').trim(); // e.g. "fees"
   const isFeesReauth = reauth === 'fees';
@@ -44,8 +73,8 @@ const InstitutionLogin: React.FC = () => {
       ? (forcedKindRaw as AccountKind)
       : null;
 
-  // ✅ IMPORTANT: If already authenticated, only redirect for normal login (NOT reauth)
-  useLayoutEffect(() => {
+  // ✅ Next-safe redirect: useEffect (not useLayoutEffect)
+  useEffect(() => {
     if (!hydrated) return;
     if (orgToken && !reauth) navigate('/org', { replace: true });
   }, [orgToken, navigate, reauth, hydrated]);
@@ -55,8 +84,8 @@ const InstitutionLogin: React.FC = () => {
   const [resetMode, setResetMode] = useState<ResetMode>('idle');
   const [otpSent, setOtpSent] = useState(false);
 
-  // ✅ CHANGED: initialize accountKind from ?kind=... (or default institution)
-  const [accountKind, setAccountKind] = useState<AccountKind>(forcedKind || 'institution');
+  // ✅ Init from URL only (SSR-stable)
+  const [accountKind, setAccountKind] = useState<AccountKind>(() => forcedKind || 'institution');
 
   const [name, setName] = useState(''); // sign-up only
   const [email, setEmail] = useState('');
@@ -93,79 +122,71 @@ const InstitutionLogin: React.FC = () => {
     if (!canSignUp && authMode === 'Sign Up') setAuthMode('Login');
   }, [canSignUp, authMode]);
 
-  // —— Auth hook —— //
-const navigateAfterAuth = useCallback(
-  (dest?: string) => {
-    const clearReturnTo = () => {
-      try {
-        sessionStorage.removeItem('auth:returnTo');
-        sessionStorage.removeItem('auth:returnTo:org');
-      } catch {}
-    };
+  /* ---------------------- Navigate-after-auth (SSR-safe) ---------------------- */
+  const navigateAfterAuth = useCallback(
+    (dest?: string) => {
+      const clearReturnTo = () => {
+        safeSessionRemove('auth:returnTo');
+        safeSessionRemove('auth:returnTo:org');
+      };
 
-    // must-change always wins
-    try {
-      if (sessionStorage.getItem('org:mustChangePassword') === '1') {
+      // must-change always wins
+      if (safeSessionGet('org:mustChangePassword') === '1') {
         clearReturnTo();
         navigate('/org/change-password', { replace: true });
         return;
       }
-    } catch {}
 
-    // ✅ Read query params FIRST (important for reauth flows)
-    const search = new URLSearchParams(location.search);
-    const reauthQ = (search.get('reauth') || '').trim();
-    const orgIdQ = (search.get('orgId') || search.get('org_id') || '').trim();
-    const returnToQ = (search.get('returnTo') || search.get('return_to') || '').trim();
+      // ✅ Read query params (client callback, safe)
+      const search = new URLSearchParams(location.search);
+      const reauthQ = (search.get('reauth') || '').trim();
+      const orgIdQ = (search.get('orgId') || search.get('org_id') || '').trim();
+      const returnToQ = (search.get('returnTo') || search.get('return_to') || '').trim();
 
-    // ✅ If this was a fees reauth, mark the unlock NOW (even if dest exists)
-    if (reauthQ === 'fees' && orgIdQ) {
-      try {
-        sessionStorage.setItem(`org:feesUnlock:${orgIdQ}`, String(Date.now()));
-      } catch {}
-    }
+      // ✅ Fees reauth unlock marker
+      if (reauthQ === 'fees' && orgIdQ) {
+        safeSessionSet(`org:feesUnlock:${orgIdQ}`, String(safeNow()));
+      }
 
-    // ✅ If caller provided explicit returnTo, ALWAYS honor it first
-    if (returnToQ) {
-      clearReturnTo();
-      navigate(returnToQ, { replace: true });
-      return;
-    }
+      // ✅ Explicit returnTo always wins
+      if (returnToQ) {
+        clearReturnTo();
+        navigate(returnToQ, { replace: true });
+        return;
+      }
 
-    // ✅ If we have a saved deep link, honor it
-    try {
-      const saved = sessionStorage.getItem('auth:returnTo');
-      const savedOrg = sessionStorage.getItem('auth:returnTo:org');
+      // ✅ Saved deep link
+      const saved = safeSessionGet('auth:returnTo');
+      const savedOrg = safeSessionGet('auth:returnTo:org');
       const finalSaved = saved || savedOrg || '';
       if (finalSaved) {
         clearReturnTo();
         navigate(finalSaved, { replace: true });
         return;
       }
-    } catch {}
 
-    // ✅ Invite code next
-    const inviteCode = search.get('code');
-    if (inviteCode) {
+      // ✅ Invite code next
+      const inviteCode = search.get('code');
+      if (inviteCode) {
+        clearReturnTo();
+        navigate(`/org/join/${inviteCode}`, { replace: true });
+        return;
+      }
+
+      // ✅ Normal dest
+      if (dest) {
+        clearReturnTo();
+        navigate(dest, { replace: true });
+        return;
+      }
+
       clearReturnTo();
-      navigate(`/org/join/${inviteCode}`, { replace: true });
-      return;
-    }
+      navigate('/org', { replace: true });
+    },
+    [navigate, location.search]
+  );
 
-    // ✅ Only now honor dest (normal login flows)
-    if (dest) {
-      clearReturnTo();
-      navigate(dest, { replace: true });
-      return;
-    }
-
-    clearReturnTo();
-    navigate('/org', { replace: true });
-  },
-  [navigate, location.search],
-);
-
-
+  // —— Auth hook —— //
   const {
     handleGoogleLoginSuccess,
     handleGoogleLoginFailure,
@@ -189,14 +210,14 @@ const navigateAfterAuth = useCallback(
           setError('Please enter email and password.');
           return;
         }
+
         trackEvent('org_login_start', {
-        kind: accountKind,
-        reauth: reauth || undefined,
-        org_id: orgIdParam || undefined,
-      });
+          kind: accountKind,
+          reauth: reauth || undefined,
+          org_id: orgIdParam || undefined,
+        });
 
-
-        // ✅ NEW: pass reauth payload through (safe even if backend ignores)
+        // pass reauth payload (safe if backend ignores)
         const extra =
           reauth && orgIdParam
             ? ({ reauth, orgId: orgIdParam } as any)
@@ -206,7 +227,6 @@ const navigateAfterAuth = useCallback(
 
         await loginWithEmail({ email: email.trim(), password, ...extra } as any);
         trackLogin('email', { mode: 'org', kind: accountKind, reauth: reauth || undefined });
-
         return;
       }
 
@@ -231,8 +251,13 @@ const navigateAfterAuth = useCallback(
         password,
         role: 'owner',
       } as any);
-      trackSignUp('email', { mode: 'org', kind: 'institution', role: 'owner', email_hash: emailHash(email) });
 
+      trackSignUp('email', {
+        mode: 'org',
+        kind: 'institution',
+        role: 'owner',
+        email_hash: emailHash(email),
+      });
     } catch (err: any) {
       setError(err?.message || 'Authentication failed');
     } finally {
@@ -286,7 +311,6 @@ const navigateAfterAuth = useCallback(
     async (idToken: string) => {
       await handleGoogleLoginSuccess(idToken, name || undefined);
       trackLogin('google', { mode: 'org', kind: 'institution' });
-
     },
     [handleGoogleLoginSuccess, name]
   );
@@ -317,13 +341,12 @@ const navigateAfterAuth = useCallback(
   ];
 
   const switchAccountKind = (kind: AccountKind) => {
-    if (isFeesReauth) return; // ✅ lock in fees reauth
+    if (isFeesReauth) return;
     setAccountKind(kind);
     clearErrors();
     setResetMode('idle');
   };
 
-  // In fees reauth mode we do not allow reset screens
   const effectiveResetMode: ResetMode = isFeesReauth ? 'idle' : resetMode;
 
   return (
@@ -343,7 +366,7 @@ const navigateAfterAuth = useCallback(
       {/* Content */}
       <div className="relative mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 py-16 md:py-24">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-stretch">
-          {/* Left: copy for institutions (desktop only) */}
+          {/* Left */}
           <aside className="hidden md:flex md:col-span-6">
             <div className="w-full rounded-2xl p-8 lg:p-10 bg-white/70 ring-1 ring-gray-200 shadow-sm backdrop-blur-sm dark:bg-[#0f1821]/70 dark:ring-darkCard">
               <div className="flex items-center gap-3">
@@ -375,10 +398,9 @@ const navigateAfterAuth = useCallback(
             </div>
           </aside>
 
-          {/* Right: auth card */}
+          {/* Right */}
           <section className="md:col-span-6 flex">
             <div className="w-full rounded-2xl bg-white ring-1 ring-gray-200 shadow-sm p-6 sm:p-8 lg:p-10 backdrop-blur-sm dark:bg-[#0f1821] dark:ring-darkCard">
-              {/* ✅ NEW: Fees lock notice */}
               {isFeesReauth && (
                 <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 px-3 py-2 text-xs">
                   🔒 Fees &amp; balances is protected. Please re-enter the <b>Instructor</b> login to continue.
@@ -388,7 +410,6 @@ const navigateAfterAuth = useCallback(
                 </div>
               )}
 
-              {/* Account type toggle (hidden during fees reauth) */}
               {!isFeesReauth && (
                 <div className="mb-5">
                   <p className="text-xs font-medium text-gray-500 dark:text-darkTextSecondary mb-2 text-center">
@@ -433,18 +454,11 @@ const navigateAfterAuth = useCallback(
                 </div>
               )}
 
-              {/* Forms */}
               {effectiveResetMode !== 'idle' ? (
                 otpSent ? (
                   <form onSubmit={handleResetPassword} className="space-y-5">
                     <h2 className="text-xl font-display font-semibold text-center">Enter OTP</h2>
-                    <input
-                      className="input"
-                      placeholder="Enter OTP"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value)}
-                      required
-                    />
+                    <input className="input" placeholder="Enter OTP" value={otp} onChange={(e) => setOtp(e.target.value)} required />
                     <input
                       className="input"
                       placeholder="New Password (min. 8 characters)"
@@ -473,14 +487,7 @@ const navigateAfterAuth = useCallback(
                 ) : (
                   <form onSubmit={handleSendOtp} className="space-y-5">
                     <h2 className="text-xl font-display font-semibold text-center">Reset Password</h2>
-                    <input
-                      className="input"
-                      type="email"
-                      placeholder="Enter your email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      required
-                    />
+                    <input className="input" type="email" placeholder="Enter your email" value={email} onChange={(e) => setEmail(e.target.value)} required />
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -503,13 +510,7 @@ const navigateAfterAuth = useCallback(
                   <h2 className="text-xl font-display font-semibold text-center">{emailFormTitle}</h2>
 
                   {authMode === 'Sign Up' && (
-                    <input
-                      className="input"
-                      placeholder="Full name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      required
-                    />
+                    <input className="input" placeholder="Full name" value={name} onChange={(e) => setName(e.target.value)} required />
                   )}
 
                   <input
@@ -540,15 +541,10 @@ const navigateAfterAuth = useCallback(
                     />
                   )}
 
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className={`${primaryBtn} w-full ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                  >
+                  <button type="submit" disabled={busy} className={`${primaryBtn} w-full ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}>
                     {authMode === 'Login' ? (isFeesReauth ? 'Unlock fees' : 'Login') : 'Sign Up'}
                   </button>
 
-                  {/* Links row (hidden during fees reauth) */}
                   {!isFeesReauth && (
                     <div className="flex justify-between text-sm">
                       <button
@@ -591,8 +587,7 @@ const navigateAfterAuth = useCallback(
 
                   {!isFeesReauth && accountKind !== 'institution' && (
                     <p className="mt-3 text-[11px] text-gray-500 dark:text-darkTextSecondary text-center">
-                      Instructors and learners: please log in using the email/ID and password shared
-                      by your school or the invite link.
+                      Instructors and learners: please log in using the email/ID and password shared by your school or the invite link.
                     </p>
                   )}
 
@@ -604,7 +599,6 @@ const navigateAfterAuth = useCallback(
                 </form>
               )}
 
-              {/* Google login only for Institution (not in fees reauth) */}
               {accountKind === 'institution' && !isFeesReauth && (
                 <>
                   <div className="my-6 flex items-center gap-3">
@@ -618,7 +612,6 @@ const navigateAfterAuth = useCallback(
                 </>
               )}
 
-              {/* Mobile-only helper link */}
               <div className="mt-6 text-center text-sm md:hidden">
                 Need a normal DayBreak account?{' '}
                 <Link to="/login?switch=1" className="underline hover:text-indigo-600">

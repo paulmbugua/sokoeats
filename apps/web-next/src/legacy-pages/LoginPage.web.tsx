@@ -1,7 +1,7 @@
 'use client';
 
 // apps/web/src/pages/LoginPage.web.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from '@/lib/react-router-dom';
 import useAuth from '@mytutorapp/shared/hooks/useAuth';
 import { useShopContext } from '@mytutorapp/shared/context';
@@ -9,7 +9,6 @@ import CustomGoogleLoginButton from '@/components/CustomGoogleLoginButton';
 import { trackLogin, trackSignUp } from '../analytics/ga4';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 import CountrySelect from '@/components/CountrySelect';
-// For Cancel in the role modal
 import { signOutCurrentUser } from '@mytutorapp/shared/utils/firebaseAuthWeb';
 
 type AuthMode = 'Login' | 'Sign Up';
@@ -20,6 +19,7 @@ const LOGIN_BG =
 
 const NEED_ROLE_FLAG = 'auth:needsRole';
 const GOOGLE_NAME_KEY = 'auth:googleName';
+const RETURN_TO_SS_KEY = 'auth:returnTo';
 
 const emailHash = (email: string) => {
   try {
@@ -29,19 +29,50 @@ const emailHash = (email: string) => {
   }
 };
 
+const safeSessionGet = (k: string) => {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.sessionStorage.getItem(k);
+  } catch {
+    return null;
+  }
+};
+const safeSessionSet = (k: string, v: string) => {
+  try {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.setItem(k, v);
+  } catch {}
+};
+const safeSessionRemove = (k: string) => {
+  try {
+    if (typeof window === 'undefined') return;
+    window.sessionStorage.removeItem(k);
+  } catch {}
+};
+const safeLocalGet = (k: string) => {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+};
+const safeLocalRemove = (k: string) => {
+  try {
+    if (typeof window === 'undefined') return;
+    window.localStorage.removeItem(k);
+  } catch {}
+};
+
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation() as any;
 
-  // -- Return-to handling -------------------------------------------------------
-  const RETURN_TO_SS_KEY = 'auth:returnTo';
-
+  // ---- computeNextFromLocation is SSR-safe (no window/localStorage usage)
   const computeNextFromLocation = (loc: any) => {
-    // Prefer explicit RobotTeacher redirection:
     const stateNext: string | undefined = loc?.state?.next;
     if (stateNext && typeof stateNext === 'string') return stateNext;
 
-    // Fallback: ProtectedRoute put { from: location }
     const from = loc?.state?.from;
     if (from && typeof from?.pathname === 'string') {
       const p = from.pathname ?? '';
@@ -50,36 +81,33 @@ const LoginPage: React.FC = () => {
       return `${p}${s}${h}`;
     }
 
-    // Fallback: ?next=/some/path
     const qs = new URLSearchParams(loc?.search || '');
     const qNext = qs.get('next');
     if (qNext) return qNext;
 
-    // Default
     return '/home';
   };
 
-  // Resolve once, then persist in sessionStorage so refresh on /login doesn't lose it
-  const initialReturnTo = computeNextFromLocation(location);
+  // ✅ store returnTo only after mount (client only)
+  const initialReturnTo = useMemo(() => computeNextFromLocation(location), [location]);
+
   useEffect(() => {
-    if (initialReturnTo) sessionStorage.setItem(RETURN_TO_SS_KEY, initialReturnTo);
+    if (initialReturnTo) safeSessionSet(RETURN_TO_SS_KEY, initialReturnTo);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-  const getReturnTo = () => sessionStorage.getItem(RETURN_TO_SS_KEY) || '/home';
-  const clearReturnTo = () => sessionStorage.removeItem(RETURN_TO_SS_KEY);
+
+  const getReturnTo = useCallback(() => safeSessionGet(RETURN_TO_SS_KEY) || '/home', []);
+  const clearReturnTo = useCallback(() => safeSessionRemove(RETURN_TO_SS_KEY), []);
 
   const { token, role: userRole } = useShopContext();
 
   const {
-    // Google
     handleGoogleLoginSuccess,
     handleGoogleLoginFailure,
-    // Email/password
     loginWithEmail,
     registerWithEmail,
     sendResetOTP,
     resetPasswordWithOTP,
-    // Role modal
     isRoleModalNeeded,
     completeRole,
     clearAuthFlags,
@@ -96,63 +124,73 @@ const LoginPage: React.FC = () => {
   // Local UI state
   // ─────────────────────────────────────────────────────────
   const [authMode, setAuthMode] = useState<AuthMode>('Login');
-
-  // Forgot/reset password
   const [resetMode, setResetMode] = useState<ResetMode>('idle');
   const [otpSent, setOtpSent] = useState(false);
 
-  // Basic fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Sign-up & Role modal fields
   const [name, setName] = useState('');
   const [role, setRole] = useState<'' | 'student' | 'tutor'>('');
   const [languages, setLanguages] = useState<string[]>([]);
   const [country, setCountry] = useState<string>('');
 
-  // OTP/reset fields
   const [otp, setOtp] = useState('');
   const [newPassword, setNewPassword] = useState('');
 
-  // UX
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const clearErrors = () => setError(null);
 
   // ─────────────────────────────────────────────────────────
-  // FAST MODAL OPEN (Change #3)
-  // - open instantly if NEED_ROLE_FLAG is set or URL has ?roleFlow=1
-  // - react to storage events (no polling)
+  // FAST MODAL OPEN (SSR-safe)
+  // - compute initial open without touching localStorage
+  // - check NEED_ROLE_FLAG only after mount
   // ─────────────────────────────────────────────────────────
-  const query = new URLSearchParams(location.search);
+  const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const switchToIndividual = query.get('switch') === '1';
   const roleFlowParam = query.get('roleFlow');
-  const initialShouldOpen =
-    isRoleModalNeeded() || roleFlowParam === '1' || localStorage.getItem(NEED_ROLE_FLAG) === '1';
-  const [showRoleModal, setShowRoleModal] = useState<boolean>(initialShouldOpen);
 
-  // Prefill name/language defaults on first mount (Change #2)
+ // ✅ SSR-stable initial state: URL only (no storage/hook)
+const [showRoleModal, setShowRoleModal] = useState<boolean>(() => roleFlowParam === '1');
+
+// ✅ After mount, sync from hook + localStorage flag
+useEffect(() => {
+  const neededByHook = isRoleModalNeeded();
+  const neededByLS = safeLocalGet(NEED_ROLE_FLAG) === '1';
+  if (neededByHook || neededByLS) setShowRoleModal(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, []);
+
+  // ✅ After mount, also open if NEED_ROLE_FLAG in localStorage
   useEffect(() => {
-    const gName = sessionStorage.getItem(GOOGLE_NAME_KEY);
+    const needed = safeLocalGet(NEED_ROLE_FLAG) === '1';
+    if (needed) setShowRoleModal(true);
+  }, []);
+
+  // Prefill name/language defaults on first mount
+  useEffect(() => {
+    const gName = safeSessionGet(GOOGLE_NAME_KEY);
     if (gName && !name) setName(gName);
 
     if (!languages.length) setLanguages(['English']);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // React to NEED_ROLE_FLAG changes
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.storageArea !== localStorage) return;
-      if (e.key === NEED_ROLE_FLAG) {
-        const needed = localStorage.getItem(NEED_ROLE_FLAG) === '1';
-        setShowRoleModal(needed);
-      }
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
+  // React to NEED_ROLE_FLAG changes (client-only)
+ useEffect(() => {
+  if (typeof window === 'undefined') return;
+
+  const onStorage = (e: StorageEvent) => {
+    if (e.storageArea !== window.localStorage) return;
+    if (e.key !== NEED_ROLE_FLAG) return;
+    setShowRoleModal(safeLocalGet(NEED_ROLE_FLAG) === '1');
+  };
+
+  window.addEventListener('storage', onStorage);
+  return () => window.removeEventListener('storage', onStorage);
+}, []);
 
   useEffect(() => {
     if (switchToIndividual) return;
@@ -161,9 +199,7 @@ const LoginPage: React.FC = () => {
       clearReturnTo();
       navigate(target, { replace: true });
     }
-  }, [token, userRole, navigate, switchToIndividual]);
-
-  const clearErrors = () => setError(null);
+  }, [token, userRole, navigate, switchToIndividual, getReturnTo, clearReturnTo]);
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setLanguages([e.target.value]);
@@ -193,7 +229,6 @@ const LoginPage: React.FC = () => {
         return;
       }
 
-      // Sign Up
       if (authMode === 'Sign Up') {
         const needsCountry = role === 'student';
         if (!name || !email || !password || !role || (needsCountry && !country)) {
@@ -214,7 +249,6 @@ const LoginPage: React.FC = () => {
           languages: role === 'student' ? languages : (undefined as any),
         });
 
-        // Successful sign-up
         trackSignUp('email', { mode: 'consumer', role, email_hash: emailHash(email) });
 
         const target = getReturnTo();
@@ -262,7 +296,6 @@ const LoginPage: React.FC = () => {
     try {
       setBusy(true);
       await resetPasswordWithOTP(email.trim(), otp.trim(), newPassword);
-      // back to login
       setResetMode('idle');
       setOtpSent(false);
       setAuthMode('Login');
@@ -289,18 +322,21 @@ const LoginPage: React.FC = () => {
     Array.isArray(languages) &&
     (languages[0] || '').trim().length > 0 &&
     country !== '';
+
   const canContinue = role === 'tutor' ? true : isStudentValid;
   const ctaText = role === 'tutor' ? 'Create account' : 'Create profile';
 
-  // ⬇️ NEW: close modal + clear artifacts instantly so Cancel feels responsive
   const closeRoleFlowInstant = () => {
     setShowRoleModal(false);
-    localStorage.removeItem(NEED_ROLE_FLAG);
-    sessionStorage.removeItem(GOOGLE_NAME_KEY);
-    sessionStorage.removeItem('auth:busy');
-    const url = new URL(window.location.href);
-    url.searchParams.delete('roleFlow');
-    window.history.replaceState({}, '', url.toString());
+    safeLocalRemove(NEED_ROLE_FLAG);
+    safeSessionRemove(GOOGLE_NAME_KEY);
+    safeSessionRemove('auth:busy');
+
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete('roleFlow');
+      window.history.replaceState({}, '', url.toString());
+    } catch {}
   };
 
   const submitRoleFromModal = async () => {
@@ -314,7 +350,6 @@ const LoginPage: React.FC = () => {
     try {
       setBusy(true);
       if (role === 'tutor') {
-        // Tutors create user only (no country here)
         await completeRole({ role: 'tutor' } as any);
       } else if (isStudentValid) {
         await completeRole({
@@ -328,13 +363,10 @@ const LoginPage: React.FC = () => {
         return;
       }
 
-      // ⬇️ Close UI immediately after success to avoid flicker
-
       trackLogin('google', { mode: 'consumer', role });
 
       closeRoleFlowInstant();
 
-      // Go back to original destination if desired
       const target = getReturnTo();
       clearReturnTo();
       navigate(target, { replace: true });
@@ -345,23 +377,19 @@ const LoginPage: React.FC = () => {
     }
   };
 
-  // Cancel role modal: fully abort partial Google sign-in
   const handleCancelRole = async () => {
-  try {
-    setBusy(false);
-    closeRoleFlowInstant(); // close UI now
-    clearAuthFlags(); // clear pending jwt/flags
+    try {
+      setBusy(false);
+      closeRoleFlowInstant();
+      clearAuthFlags();
+      await signOutCurrentUser();
+    } catch {
+      // ignore
+    } finally {
+      navigate('/login', { replace: true });
+    }
+  };
 
-    await signOutCurrentUser();
-  } catch {
-    // ignore
-  } finally {
-    navigate('/login', { replace: true });
-  }
-};
-
-
-  // Primary button style shared with "Explore Tutors"
   const primaryBtn =
     'inline-flex items-center justify-center rounded-xl h-11 px-5 bg-primary text-white font-semibold shadow-sm hover:shadow transition active:translate-y-[1px]';
 
@@ -370,10 +398,11 @@ const LoginPage: React.FC = () => {
     [authMode]
   );
 
+  // ─────────────────────────────────────────────────────────
+  // UI (UNCHANGED BELOW)
+  // ─────────────────────────────────────────────────────────
   return (
-    // ⬇️ overflow-x-hidden prevents decorative elements from creating horizontal scroll
     <div className="relative min-h-screen overflow-x-hidden text-darkText dark:text-darkTextPrimary">
-      {/* Background image */}
       <div
         className="absolute inset-0 bg-cover bg-center"
         style={{
@@ -381,13 +410,11 @@ const LoginPage: React.FC = () => {
         }}
       />
 
-      {/* Decorative blobs are clipped within the viewport to avoid horizontal scroll */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden">
         <div className="absolute -top-24 -right-24 h-72 w-72 rounded-full bg-primary/25 blur-3xl dark:bg-secondary/25" />
         <div className="absolute -bottom-24 -left-24 h-80 w-80 rounded-full bg-softPink/20 blur-3xl" />
       </div>
 
-      {/* Content */}
       <div className="relative mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 py-16 md:py-24">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-stretch">
           {/* Brand / Benefits panel */}
@@ -395,12 +422,7 @@ const LoginPage: React.FC = () => {
             <div className="w-full rounded-2xl p-8 lg:p-10 bg-white/70 ring-1 ring-gray-200 shadow-sm backdrop-blur-sm dark:bg-[#0f1821]/70 dark:ring-darkCard">
               <div className="flex items-center gap-3">
                 <span className="h-10 w-10 text-primary dark:text-darkTextPrimary">
-                  <svg
-                    viewBox="0 0 48 48"
-                    fill="currentColor"
-                    aria-hidden="true"
-                    className="h-full w-full"
-                  >
+                  <svg viewBox="0 0 48 48" fill="currentColor" aria-hidden="true" className="h-full w-full">
                     <path d="M36.7273 44C33.9891 44 31.6043 39.8386 30.3636 33.69C29.123 39.8386 26.7382 44 24 44C21.2618 44 18.877 39.8386 17.6364 33.69C16.3957 39.8386 14.0109 44 11.2727 44C7.25611 44 4 35.0457 4 24C4 12.9543 7.25611 4 11.2727 4C14.0109 4 16.3957 8.16144 17.6364 14.31C18.877 8.16144 21.2618 4 24 4C26.7382 4 29.123 8.16144 30.3636 14.31C31.6043 8.16144 33.9891 4 36.7273 4C40.7439 4 44 12.9543 44 24C44 35.0457 40.7439 44 36.7273 44Z" />
                   </svg>
                 </span>
@@ -408,8 +430,8 @@ const LoginPage: React.FC = () => {
               </div>
 
               <p className="mt-4 max-w-prose text-mutedGray dark:text-darkTextSecondary">
-                Sign in to continue learning with top-rated tutors. Personalized sessions, flexible
-                schedules, and real results—right at your fingertips.
+                Sign in to continue learning with top-rated tutors. Personalized sessions, flexible schedules, and real
+                results—right at your fingertips.
               </p>
 
               <ul className="mt-6 space-y-4">
@@ -445,34 +467,18 @@ const LoginPage: React.FC = () => {
           {/* Auth Card */}
           <section className="md:col-span-6 flex">
             <div className="w-full rounded-2xl bg-white ring-1 ring-gray-200 shadow-sm p-6 sm:p-8 lg:p-10 backdrop-blur-sm dark:bg-[#0f1821] dark:ring-darkCard">
-              {/* Error banner */}
               {error && (
                 <div className="mb-4 rounded-lg bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-200 px-3 py-2 text-sm">
                   {error}
                 </div>
               )}
 
-              {/* Forms */}
               {resetMode !== 'idle' ? (
                 otpSent ? (
                   <form onSubmit={handleResetPassword} className="space-y-5">
                     <h2 className="text-xl font-display font-semibold text-center">Enter OTP</h2>
-                    <input
-                      type="text"
-                      value={otp}
-                      onChange={(e) => setOtp(e.target.value)}
-                      className="input"
-                      placeholder="Enter OTP"
-                      required
-                    />
-                    <input
-                      type="password"
-                      value={newPassword}
-                      onChange={(e) => setNewPassword(e.target.value)}
-                      className="input"
-                      placeholder="New Password (min. 8 characters)"
-                      required
-                    />
+                    <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)} className="input" placeholder="Enter OTP" required />
+                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="input" placeholder="New Password (min. 8 characters)" required />
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -492,17 +498,8 @@ const LoginPage: React.FC = () => {
                   </form>
                 ) : (
                   <form onSubmit={handleSendOtp} className="space-y-5">
-                    <h2 className="text-xl font-display font-semibold text-center">
-                      Reset Password
-                    </h2>
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      className="input"
-                      placeholder="Enter your email"
-                      required
-                    />
+                    <h2 className="text-xl font-display font-semibold text-center">Reset Password</h2>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input" placeholder="Enter your email" required />
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -522,97 +519,44 @@ const LoginPage: React.FC = () => {
                 )
               ) : (
                 <form onSubmit={onSubmit} className="space-y-5">
-                  <h2 className="text-xl font-display font-semibold text-center">
-                    {emailFormTitle}
-                  </h2>
+                  <h2 className="text-xl font-display font-semibold text-center">{emailFormTitle}</h2>
 
                   {authMode === 'Sign Up' && (
                     <>
-                      <input
-                        type="text"
-                        value={name}
-                        onChange={(e) => setName(e.target.value)}
-                        className="input"
-                        placeholder="Full name"
-                        required
-                      />
-                      <select
-                        value={role}
-                        onChange={(e) => setRole(e.target.value as 'student' | 'tutor')}
-                        className="input"
-                        required
-                      >
+                      <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input" placeholder="Full name" required />
+                      <select value={role} onChange={(e) => setRole(e.target.value as 'student' | 'tutor')} className="input" required>
                         <option value="">Select role</option>
                         <option value="student">Student</option>
                         <option value="tutor">Tutor</option>
                       </select>
 
-                      {/* Country (students only) */}
                       {role === 'student' && (
-                        <CountrySelect
-                          value={country}
-                          onChange={setCountry}
-                          options={COUNTRIES}
-                          className="input"
-                          placeholder="Select your country"
-                        />
+                        <CountrySelect value={country} onChange={setCountry} options={COUNTRIES} className="input" placeholder="Select your country" />
                       )}
 
                       {role === 'student' && (
-                        <>
-                          <select
-                            value={languages[0] || ''}
-                            onChange={handleLanguageChange}
-                            className="input"
-                            required
-                          >
-                            <option value="" disabled>
-                              Select your language
-                            </option>
-                            <option value="English">English</option>
-                            <option value="Swahili">Swahili</option>
-                            <option value="French">French</option>
-                            <option value="Spanish">Spanish</option>
-                            <option value="German">German</option>
-                          </select>
-                        </>
+                        <select value={languages[0] || ''} onChange={handleLanguageChange} className="input" required>
+                          <option value="" disabled>
+                            Select your language
+                          </option>
+                          <option value="English">English</option>
+                          <option value="Swahili">Swahili</option>
+                          <option value="French">French</option>
+                          <option value="Spanish">Spanish</option>
+                          <option value="German">German</option>
+                        </select>
                       )}
                     </>
                   )}
 
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="input"
-                    placeholder="Email"
-                    required
-                  />
-                  <input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="input"
-                    placeholder="Password"
-                    required
-                  />
+                  <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input" placeholder="Email" required />
+                  <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input" placeholder="Password" required />
 
                   {authMode === 'Sign Up' && (
-                    <input
-                      type="password"
-                      value={confirmPassword}
-                      onChange={(e) => setConfirmPassword(e.target.value)}
-                      className="input"
-                      placeholder="Confirm password"
-                      required
-                    />
+                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="input" placeholder="Confirm password" required />
                   )}
 
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className={`${primaryBtn} w-full ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}
-                  >
+                  <button type="submit" disabled={busy} className={`${primaryBtn} w-full ${busy ? 'opacity-60 cursor-not-allowed' : ''}`}>
                     {authMode === 'Login' ? 'Login' : 'Sign Up'}
                   </button>
 
@@ -654,21 +598,16 @@ const LoginPage: React.FC = () => {
                 </form>
               )}
 
-              {/* Divider / Google */}
               <div className="my-6 flex items-center gap-3">
                 <div className="h-px flex-1 bg-gray-200 dark:bg-darkCard" />
                 <span className="text-xs text-mutedGray dark:text-darkTextSecondary">OR</span>
                 <div className="h-px flex-1 bg-gray-200 dark:bg-darkCard" />
               </div>
+
               <div className="flex justify-center">
-                {/* Popup-first with redirect fallback; GlobalAuthRedirect completes it */}
-                <CustomGoogleLoginButton
-                  onSuccess={handleGoogleLoginSuccess}
-                  onFailure={handleGoogleLoginFailure}
-                />
+                <CustomGoogleLoginButton onSuccess={handleGoogleLoginSuccess} onFailure={handleGoogleLoginFailure} />
               </div>
 
-              {/* Subtle bottom help */}
               <p className="mt-6 text-center text-xs text-mutedGray dark:text-darkTextSecondary">
                 By continuing, you agree to our{' '}
                 <Link to="/terms" className="underline hover:text-primary">
@@ -692,7 +631,6 @@ const LoginPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Role Modal on the LoginPage (fast & role-aware) */}
       {showRoleModal && (
         <div className="fixed inset-0 z-[9998] bg-black/40 backdrop-blur-sm flex items-center justify-center">
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#0f1821] p-6 shadow-xl ring-1 ring-black/5">
@@ -720,13 +658,11 @@ const LoginPage: React.FC = () => {
                   setRole(next);
                   if (next === 'student') {
                     if (!languages.length) setLanguages(['English']);
-
                     if (!(name || '').trim()) {
-                      const gName = sessionStorage.getItem(GOOGLE_NAME_KEY) || '';
+                      const gName = safeSessionGet(GOOGLE_NAME_KEY) || '';
                       if (gName) setName(gName);
                     }
                   } else {
-                    // Tutors do not create a profile
                     setName('');
                     setLanguages([]);
                   }
@@ -740,32 +676,13 @@ const LoginPage: React.FC = () => {
               </select>
 
               {role === 'student' && (
-                <CountrySelect
-                  value={country}
-                  onChange={setCountry}
-                  options={COUNTRIES}
-                  className="input"
-                  placeholder="Select your country"
-                />
+                <CountrySelect value={country} onChange={setCountry} options={COUNTRIES} className="input" placeholder="Select your country" />
               )}
 
-              {/* Student profile fields */}
               {role === 'student' && (
                 <>
-                  <input
-                    type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="input"
-                    placeholder="Full name"
-                    required
-                  />
-                  <select
-                    value={languages[0] || ''}
-                    onChange={(e) => setLanguages([e.target.value])}
-                    className="input"
-                    required
-                  >
+                  <input type="text" value={name} onChange={(e) => setName(e.target.value)} className="input" placeholder="Full name" required />
+                  <select value={languages[0] || ''} onChange={(e) => setLanguages([e.target.value])} className="input" required>
                     <option value="" disabled>
                       Select your language
                     </option>

@@ -1,5 +1,10 @@
 const trimEnv = (value?: string) => (value ?? '').trim();
 
+const envBool = (value?: string) => {
+  const v = trimEnv(value).toLowerCase();
+  return v === '1' || v === 'true' || v === 'yes' || v === 'on';
+};
+
 export const publicEnv = {
   siteUrl: trimEnv(process.env.NEXT_PUBLIC_SITE_URL) || 'https://www.daybreaklearner.com',
   backendUrl: trimEnv(process.env.NEXT_PUBLIC_BACKEND_URL),
@@ -10,6 +15,10 @@ export const publicEnv = {
   ga4MeasurementId: trimEnv(process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID),
   heroBg: trimEnv(process.env.NEXT_PUBLIC_HERO_BG),
   landingBg: trimEnv(process.env.NEXT_PUBLIC_LANDING_BG),
+
+  // ✅ NEW: enable dev HTTP logging when needed (default off)
+  debugHttp: envBool(process.env.NEXT_PUBLIC_DEBUG_HTTP),
+
   // TODO: add /public/og/default.png in web-next and switch to that local path.
   ogImage:
     trimEnv(process.env.NEXT_PUBLIC_OG_IMAGE) ||

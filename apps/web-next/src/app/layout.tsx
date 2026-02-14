@@ -52,15 +52,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               strategy="afterInteractive"
             />
             <Script id="ga4-init" strategy="afterInteractive">
-              {`
-                window.dataLayer = window.dataLayer || [];
-                function gtag(){window.dataLayer.push(arguments);}
-                window.gtag = gtag;
-                gtag('js', new Date());
-                var gaDebug = ${isDev ? 'true' : 'false'} || new URLSearchParams(window.location.search).has('ga_debug');
-                gtag('config', '${gaId}', { send_page_view: false, debug_mode: gaDebug });
-              `}
-            </Script>
+  {`
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){window.dataLayer.push(arguments);}
+    window.gtag = gtag;
+    gtag('js', new Date());
+
+    // ✅ debug only in dev
+    var gaDebug = ${isDev ? 'true' : 'false'} && new URLSearchParams(window.location.search).has('ga_debug');
+
+    gtag('config', '${gaId}', { send_page_view: false, debug_mode: gaDebug });
+  `}
+</Script>
           </>
         ) : null}
       </head>

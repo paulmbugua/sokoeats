@@ -8,12 +8,13 @@ import { ChatProvider } from '@mytutorapp/shared/context/ChatContext';
 import { ThemeProvider } from '@mytutorapp/shared/hooks';
 import { publicEnv } from '@/lib/env';
 
+// ✅ Async-storage compatible wrapper (consistent Promise<void>)
 const storage = {
-  getItem: async (k: string) => Promise.resolve(localStorage.getItem(k)),
-  setItem: async (k: string, v: string) => {
+  getItem: async (k: string): Promise<string | null> => localStorage.getItem(k),
+  setItem: async (k: string, v: string): Promise<void> => {
     localStorage.setItem(k, v);
   },
-  removeItem: async (k: string) => {
+  removeItem: async (k: string): Promise<void> => {
     localStorage.removeItem(k);
   },
 };
@@ -22,7 +23,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   const backendUrl = publicEnv.backendUrl || '';
   const sharedChildren = children as unknown as React.ComponentProps<typeof ThemeProvider>['children'];
 
-  // ✅ Create QueryClient per app instance (Next-safe)
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -37,7 +37,29 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   );
 
   useEffect(() => {
-    if (backendUrl) axios.defaults.baseURL = backendUrl;
+    if (!backendUrl) return;
+
+    axios.defaults.baseURL = backendUrl;
+
+    // ✅ dev-only (never in prod), enabled via env or query param
+    const debugHttp =
+      process.env.NODE_ENV !== 'production' &&
+      (publicEnv.debugHttp || new URLSearchParams(window.location.search).has('debug_http'));
+
+    if (!debugHttp) return;
+
+    const interceptorId = axios.interceptors.response.use(
+      (r) => r,
+      (error) => {
+        const cfg = error?.config || {};
+        const status = error?.response?.status;
+        const data = error?.response?.data ?? error?.message;
+        console.error('[HTTP]', cfg?.method?.toUpperCase(), cfg?.url, status, data);
+        return Promise.reject(error);
+      }
+    );
+
+    return () => axios.interceptors.response.eject(interceptorId);
   }, [backendUrl]);
 
   return (

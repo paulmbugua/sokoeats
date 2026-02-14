@@ -25,11 +25,12 @@ const DevSafeStrictMode: React.FC<React.PropsWithChildren> = ({ children }) =>
   import.meta.env.DEV ? <>{children}</> : <React.StrictMode>{children}</React.StrictMode>;
 
 // Optional: expose for any old code that reads window.queryClient
-(window as any).queryClient = queryClient;
+if (import.meta.env.DEV) (window as any).queryClient = queryClient;
 
 const DEBUG =
-  import.meta.env.VITE_DEBUG_ERRORS === '1' ||
-  new URLSearchParams(window.location.search).has('debug');
+  import.meta.env.DEV &&
+  (import.meta.env.VITE_DEBUG_ERRORS === '1' ||
+    new URLSearchParams(window.location.search).has('debug'));
 
 function toError(e: unknown): Error | undefined {
   if (!e) return undefined;
@@ -203,7 +204,7 @@ if (!container) {
                 </ChatProvider>
               </ShopContextProvider>
 
-              {(import.meta.env.DEV || DEBUG) && <ReactQueryDevtools initialIsOpen={false} />}
+              {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
             </QueryClientProvider>
           </BrowserRouter>
         </ErrorBoundary>
