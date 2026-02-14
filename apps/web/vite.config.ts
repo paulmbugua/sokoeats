@@ -8,12 +8,13 @@ const BACKEND_TARGET =
   process.env.BACKEND_URL?.replace(/\/$/, '') || `http://localhost:${BACKEND_PORT}`;
 
 const IS_BRIDGED = process.env.VITE_BRIDGED === '1';
-
+const DEV_HOST = process.env.VITE_DEV_HOST || '0.0.0.0';
+const HMR_HOST = process.env.VITE_HMR_HOST;
+const HMR_CLIENT_PORT = Number(process.env.VITE_HMR_CLIENT_PORT || 5173);
 
 export default defineConfig({
   plugins: [react()],
   base: IS_BRIDGED ? '/app/' : '/',
-
 
   resolve: {
     dedupe: [
@@ -86,26 +87,29 @@ export default defineConfig({
   },
 
   server: {
-  port: 5173,
-  strictPort: true,
-  host: '127.0.0.1',
+    port: 5173,
+    strictPort: true,
+    host: DEV_HOST,
+    hmr: {
+      clientPort: HMR_CLIENT_PORT,
+      ...(HMR_HOST ? { host: HMR_HOST } : {}),
+    },
 
-  fs: {
-    allow: [
-      path.resolve(__dirname),
-      path.resolve(__dirname, '../../packages/shared'),
-      // (optional but recommended in monorepo)
-      path.resolve(__dirname, '../..'),
-    ],
+    fs: {
+      allow: [
+        path.resolve(__dirname),
+        path.resolve(__dirname, '../../packages/shared'),
+        // (optional but recommended in monorepo)
+        path.resolve(__dirname, '../..'),
+      ],
+    },
+
+    // Helps when being reverse-proxied
+    cors: true,
+
+    proxy: {
+      '/api': { target: BACKEND_TARGET, changeOrigin: true, secure: false },
+      '/socket.io': { target: BACKEND_TARGET, ws: true, changeOrigin: true, secure: false },
+    },
   },
-
-  // Helps when being reverse-proxied
-  cors: true,
-
-  proxy: {
-    '/api': { target: BACKEND_TARGET, changeOrigin: true, secure: false },
-    '/socket.io': { target: BACKEND_TARGET, ws: true, changeOrigin: true, secure: false },
-  },
-},
-
 });
