@@ -15,6 +15,7 @@ import {
   Play,
   ChevronRight,
 } from 'lucide-react';
+import StablePageShell from '@/components/layout/StablePageShell';
 
 // Mock analytics tracking function
 const trackEvent = (eventName: string, params?: Record<string, any>) => {
@@ -192,7 +193,7 @@ const RobotTeachAdLanding: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-950 dark:to-slate-900 text-slate-900 dark:text-slate-100">
+    <StablePageShell className="bg-gradient-to-b from-slate-50 to-white text-slate-900 dark:from-slate-950 dark:to-slate-900 dark:text-slate-100">
       {/* Hero Section */}
       <section className="relative overflow-hidden">
         {/* Animated Background Elements */}
@@ -649,7 +650,7 @@ const RobotTeachAdLanding: React.FC = () => {
           </p>
         </div>
       </section>
-    </div>
+    </StablePageShell>
   );
 };
 

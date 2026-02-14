@@ -3,6 +3,7 @@
 import React, { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { trackEvent } from '../analytics/ga4';
+import StablePageShell from '@/components/layout/StablePageShell';
 
 type Faq = { q: string; a: string };
 
@@ -95,7 +96,7 @@ export default function InstitutionLanding() {
   ];
 
   return (
-    <div className="bg-white text-slate-900 dark:bg-darkBg dark:text-slate-100">
+    <StablePageShell className="bg-white text-slate-900 dark:bg-darkBg dark:text-slate-100">
       {/* HERO (no Navbar here — global one will render above) */}
       <section className="relative overflow-hidden pt-14 pb-20 sm:pt-16 sm:pb-24 lg:pt-24 lg:pb-32">
         <div className="pointer-events-none absolute inset-0">
@@ -437,6 +438,6 @@ export default function InstitutionLanding() {
           </div>
         </div>
       </section>
-    </div>
+    </StablePageShell>
   );
 }
