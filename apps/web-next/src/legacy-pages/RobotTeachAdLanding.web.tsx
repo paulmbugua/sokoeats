@@ -16,6 +16,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import StablePageShell from '@/components/layout/StablePageShell';
+import { appUrl } from '@/lib/appOrigin';
 
 // Mock analytics tracking function
 const trackEvent = (eventName: string, params?: Record<string, any>) => {
@@ -23,14 +24,6 @@ const trackEvent = (eventName: string, params?: Record<string, any>) => {
   if (typeof window !== 'undefined' && (window as any).gtag) {
     (window as any).gtag('event', eventName, params);
   }
-};
-
-// Mock app URL helper
-const appUrl = (path: string) => {
-  if (typeof window !== 'undefined') {
-    return `${window.location.origin}${path}`;
-  }
-  return path;
 };
 
 const VALUE_BULLETS = [
@@ -124,6 +117,7 @@ const FAQS = [
 const RobotTeachAdLanding: React.FC = () => {
   const firedDepths = useRef<Set<number>>(new Set());
   const scrollTicking = useRef(false);
+  const robotTeacherHref = appUrl('/robot-teach');
 
   useEffect(() => {
     try {
@@ -175,9 +169,6 @@ const RobotTeachAdLanding: React.FC = () => {
     try {
       trackEvent('robot_teach_ad_cta_click', { source });
     } catch {}
-    const legacyUrl = appUrl('/robot-teach');
-    const fallbackUrl = `${window.location.origin}/app/robot-teach`;
-    window.location.assign(legacyUrl || fallbackUrl);
   };
 
   const handleSectionClick = (section: string) => {
@@ -202,9 +193,6 @@ const RobotTeachAdLanding: React.FC = () => {
           <div className="absolute -right-40 top-20 h-[500px] w-[500px] rounded-full bg-gradient-to-br from-emerald-400/20 via-teal-400/20 to-cyan-400/20 blur-3xl dark:from-emerald-500/30 dark:via-teal-500/30 dark:to-cyan-500/30" />
           <div className="absolute left-1/2 top-1/2 h-64 w-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-gradient-to-br from-yellow-400/10 to-orange-400/10 blur-3xl dark:from-yellow-500/20 dark:to-orange-500/20" />
         </div>
-
-        {/* Grid Pattern Overlay */}
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#8882_1px,transparent_1px),linear-gradient(to_bottom,#8882_1px,transparent_1px)] bg-[size:4rem_4rem] [mask-image:radial-gradient(ellipse_80%_50%_at_50%_0%,#000_70%,transparent_110%)]" />
 
         <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
           <div className="grid gap-12 lg:grid-cols-2 lg:gap-16 items-center">
@@ -246,8 +234,8 @@ const RobotTeachAdLanding: React.FC = () => {
               </div>
 
               <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                <button
-                  type="button"
+                <a
+                  href={robotTeacherHref}
                   className="group inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-indigo-600 to-purple-600 px-8 py-4 text-base font-semibold text-white shadow-lg shadow-indigo-500/30 transition-all hover:shadow-xl hover:shadow-indigo-500/40 hover:scale-105 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus-visible:ring-offset-2 dark:shadow-indigo-500/20 dark:hover:shadow-indigo-500/30"
                   aria-label="Open RobotTeacher"
                   onClick={() => handleCtaClick('hero')}
@@ -255,7 +243,7 @@ const RobotTeachAdLanding: React.FC = () => {
                   <Play className="h-5 w-5" />
                   Start Learning Now
                   <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-                </button>
+                </a>
 
                 <a
                   href="#how-it-works"
@@ -602,7 +590,6 @@ const RobotTeachAdLanding: React.FC = () => {
 
       {/* Final CTA Section */}
       <section className="relative overflow-hidden bg-gradient-to-br from-indigo-600 via-purple-600 to-pink-600 py-20 text-white sm:py-24">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#ffffff15_1px,transparent_1px),linear-gradient(to_bottom,#ffffff15_1px,transparent_1px)] bg-[size:4rem_4rem]" />
         <div className="absolute -left-20 top-0 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
         <div className="absolute -bottom-20 -right-20 h-96 w-96 rounded-full bg-white/10 blur-3xl" />
 
@@ -624,8 +611,8 @@ const RobotTeachAdLanding: React.FC = () => {
           </p>
 
           <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <button
-              type="button"
+            <a
+              href={robotTeacherHref}
               className="group inline-flex items-center justify-center gap-2 rounded-full bg-white px-8 py-4 text-base font-semibold text-indigo-600 shadow-2xl transition-all hover:scale-105 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-indigo-600"
               aria-label="Start RobotTeacher now"
               onClick={() => handleCtaClick('final')}
@@ -633,7 +620,7 @@ const RobotTeachAdLanding: React.FC = () => {
               <Play className="h-5 w-5" />
               Start RobotTeacher now
               <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
-            </button>
+            </a>
 
             <a
               href="#features"
