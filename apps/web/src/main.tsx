@@ -18,7 +18,10 @@ import ScrollToTop from './components/ScrollToTop';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
 import { queryClient } from '@mytutorapp/shared/utils/queryClient'; // <-- shared singleton
-import { ensureBrowserPersistence } from '@mytutorapp/shared/utils/firebaseConfig'; // ✅ NEW
+
+// ✅ Option A: persistence helper lives here (NOT firebaseConfig)
+import { ensureBrowserPersistence } from '@mytutorapp/shared/utils/firebaseAuthWeb';
+
 import { initGA4 } from './analytics/ga4';
 
 const DevSafeStrictMode: React.FC<React.PropsWithChildren> = ({ children }) =>
@@ -35,7 +38,6 @@ const DEBUG =
 function toError(e: unknown): Error | undefined {
   if (!e) return undefined;
   if (e instanceof Error) return e;
-  // react-error-boundary sometimes passes strings/objects
   return new Error(typeof e === 'string' ? e : JSON.stringify(e));
 }
 
@@ -101,19 +103,26 @@ function Fallback({ error, onRetry }: { error?: unknown; onRetry?: () => void })
   );
 }
 
-
 const backendUrl = import.meta.env.VITE_BACKEND_URL;
+
+// Router base for legacy /app mount
 const routerBase =
   window.location.pathname === '/app' || window.location.pathname.startsWith('/app/')
     ? '/app'
     : undefined;
+
+// axios base URL
 if (backendUrl) axios.defaults.baseURL = backendUrl;
 
 // ✅ Initialize GA4 once (config only; gtag.js is loaded by web-next layout)
-initGA4();
+try {
+  initGA4();
+} catch {
+  // ignore
+}
 
 // ✅ Ensure Firebase uses browser local persistence (safe no-op outside browser)
-void ensureBrowserPersistence();
+void ensureBrowserPersistence().catch(() => {});
 
 // In production with DEBUG enabled, surface HTTP + global errors
 if (import.meta.env.PROD && DEBUG) {
@@ -129,9 +138,10 @@ if (import.meta.env.PROD && DEBUG) {
       return Promise.reject(error);
     }
   );
-  window.addEventListener('error', (e) => console.error('[WindowError]', e.message, e.error || e));
+
+  window.addEventListener('error', (e) => console.error('[WindowError]', e.message, (e as any).error || e));
   window.addEventListener('unhandledrejection', (e) =>
-    console.error('[UnhandledRejection]', e.reason)
+    console.error('[UnhandledRejection]', (e as any).reason)
   );
 }
 

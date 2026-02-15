@@ -26,7 +26,7 @@ export const getFirebaseEnv = (key: string) => {
   // ✅ Vite
   const viteValue = (viteEnv as any)?.[`VITE_${envKey}`] ?? (process as any)?.env?.[`VITE_${envKey}`];
 
-  // ✅ Expo (best-effort; if you need it bulletproof too, do a similar literal map there)
+  // ✅ Expo (best-effort)
   const expoValue = (process as any)?.env?.[`EXPO_PUBLIC_${envKey}`];
 
   return String(nextValue ?? viteValue ?? expoValue ?? '').trim();
@@ -83,6 +83,10 @@ export const getFirebaseAppSafe = (): FirebaseApp | null => {
   }
 };
 
+/**
+ * ONLY returns an auth instance on the client.
+ * NOTE: persistence is handled in firebaseAuthWeb.ts (Option A)
+ */
 export const getAuthOrThrow = async () => {
   if (typeof window === 'undefined') throw new Error('Firebase auth is unavailable during SSR.');
 

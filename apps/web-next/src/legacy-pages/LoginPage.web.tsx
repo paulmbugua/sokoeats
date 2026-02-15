@@ -1,6 +1,6 @@
 'use client';
 
-// apps/web/src/pages/LoginPage.web.tsx
+// apps/web-next/src/legacy-pages/LoginPage.web.tsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from '@/lib/react-router-dom';
 import useAuth from '@mytutorapp/shared/hooks/useAuth';
@@ -21,6 +21,8 @@ const LOGIN_BG =
 const NEED_ROLE_FLAG = 'auth:needsRole';
 const GOOGLE_NAME_KEY = 'auth:googleName';
 const RETURN_TO_SS_KEY = 'auth:returnTo';
+
+const DEFAULT_RETURN_TO = '/profile/me';
 
 const emailHash = (email: string) => {
   try {
@@ -65,6 +67,26 @@ const safeLocalRemove = (k: string) => {
   } catch {}
 };
 
+/**
+ * Avoid open redirects.
+ * - Allow only internal paths like "/home", "/profile/me"
+ * - Disallow "https://evil.com", "//evil.com", "javascript:..."
+ */
+const sanitizeInternalPath = (raw?: string | null) => {
+  const s = (raw || '').trim();
+  if (!s) return DEFAULT_RETURN_TO;
+
+  // block scheme-based or protocol-relative URLs
+  if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(s)) return DEFAULT_RETURN_TO; // "http:", "https:", "javascript:" etc
+  if (s.startsWith('//')) return DEFAULT_RETURN_TO;
+
+  // must be internal
+  if (!s.startsWith('/')) return DEFAULT_RETURN_TO;
+
+  // normalize
+  return s.replace(/\/{2,}/g, '/');
+};
+
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation() as any;
@@ -72,21 +94,21 @@ const LoginPage: React.FC = () => {
   // ---- computeNextFromLocation is SSR-safe (no window/localStorage usage)
   const computeNextFromLocation = (loc: any) => {
     const stateNext: string | undefined = loc?.state?.next;
-    if (stateNext && typeof stateNext === 'string') return stateNext;
+    if (stateNext && typeof stateNext === 'string') return sanitizeInternalPath(stateNext);
 
     const from = loc?.state?.from;
     if (from && typeof from?.pathname === 'string') {
       const p = from.pathname ?? '';
       const s = from.search ?? '';
       const h = from.hash ?? '';
-      return `${p}${s}${h}`;
+      return sanitizeInternalPath(`${p}${s}${h}`);
     }
 
     const qs = new URLSearchParams(loc?.search || '');
     const qNext = qs.get('next');
-    if (qNext) return qNext;
+    if (qNext) return sanitizeInternalPath(qNext);
 
-    return siteUrl('/profile/me');
+    return DEFAULT_RETURN_TO;
   };
 
   // ✅ store returnTo only after mount (client only)
@@ -97,14 +119,13 @@ const LoginPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const getReturnTo = useCallback(() => safeSessionGet(RETURN_TO_SS_KEY) || siteUrl('/profile/me'), []);
+  const getReturnTo = useCallback(() => sanitizeInternalPath(safeSessionGet(RETURN_TO_SS_KEY)) || DEFAULT_RETURN_TO, []);
   const clearReturnTo = useCallback(() => safeSessionRemove(RETURN_TO_SS_KEY), []);
-
 
   const resolveConsumerTarget = useCallback((dest?: string | null) => {
     const raw = (dest || '').trim();
-    if (!raw || raw === '/home') return siteUrl('/profile/me');
-    return siteUrl(raw);
+    if (!raw || raw === '/home') return DEFAULT_RETURN_TO;
+    return sanitizeInternalPath(raw);
   }, []);
 
   const { token, role: userRole } = useShopContext();
@@ -153,23 +174,21 @@ const LoginPage: React.FC = () => {
 
   // ─────────────────────────────────────────────────────────
   // FAST MODAL OPEN (SSR-safe)
-  // - compute initial open without touching localStorage
-  // - check NEED_ROLE_FLAG only after mount
   // ─────────────────────────────────────────────────────────
   const query = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const switchToIndividual = query.get('switch') === '1';
   const roleFlowParam = query.get('roleFlow');
 
- // ✅ SSR-stable initial state: URL only (no storage/hook)
-const [showRoleModal, setShowRoleModal] = useState<boolean>(() => roleFlowParam === '1');
+  // ✅ SSR-stable initial state: URL only (no storage/hook)
+  const [showRoleModal, setShowRoleModal] = useState<boolean>(() => roleFlowParam === '1');
 
-// ✅ After mount, sync from hook + localStorage flag
-useEffect(() => {
-  const neededByHook = isRoleModalNeeded();
-  const neededByLS = safeLocalGet(NEED_ROLE_FLAG) === '1';
-  if (neededByHook || neededByLS) setShowRoleModal(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
+  // ✅ After mount, sync from hook + localStorage flag
+  useEffect(() => {
+    const neededByHook = isRoleModalNeeded();
+    const neededByLS = safeLocalGet(NEED_ROLE_FLAG) === '1';
+    if (neededByHook || neededByLS) setShowRoleModal(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ✅ After mount, also open if NEED_ROLE_FLAG in localStorage
   useEffect(() => {
@@ -187,18 +206,18 @@ useEffect(() => {
   }, []);
 
   // React to NEED_ROLE_FLAG changes (client-only)
- useEffect(() => {
-  if (typeof window === 'undefined') return;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
 
-  const onStorage = (e: StorageEvent) => {
-    if (e.storageArea !== window.localStorage) return;
-    if (e.key !== NEED_ROLE_FLAG) return;
-    setShowRoleModal(safeLocalGet(NEED_ROLE_FLAG) === '1');
-  };
+    const onStorage = (e: StorageEvent) => {
+      if (e.storageArea !== window.localStorage) return;
+      if (e.key !== NEED_ROLE_FLAG) return;
+      setShowRoleModal(safeLocalGet(NEED_ROLE_FLAG) === '1');
+    };
 
-  window.addEventListener('storage', onStorage);
-  return () => window.removeEventListener('storage', onStorage);
-}, []);
+    window.addEventListener('storage', onStorage);
+    return () => window.removeEventListener('storage', onStorage);
+  }, []);
 
   useEffect(() => {
     if (switchToIndividual) return;
@@ -394,7 +413,7 @@ useEffect(() => {
     } catch {
       // ignore
     } finally {
-      navigate(siteUrl('/login'), { replace: true });
+      navigate('/login', { replace: true });
     }
   };
 
@@ -487,7 +506,14 @@ useEffect(() => {
                   <form onSubmit={handleResetPassword} className="space-y-5">
                     <h2 className="text-xl font-display font-semibold text-center">Enter OTP</h2>
                     <input type="text" value={otp} onChange={(e) => setOtp(e.target.value)} className="input" placeholder="Enter OTP" required />
-                    <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} className="input" placeholder="New Password (min. 8 characters)" required />
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="input"
+                      placeholder="New Password (min. 8 characters)"
+                      required
+                    />
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -614,7 +640,12 @@ useEffect(() => {
               </div>
 
               <div className="flex justify-center">
-                <CustomGoogleButtonLogin onSuccess={handleGoogleLoginSuccess} onFailure={handleGoogleLoginFailure} mode="consumer" returnTo={getReturnTo()} />
+                <CustomGoogleButtonLogin
+                  onSuccess={handleGoogleLoginSuccess}
+                  onFailure={handleGoogleLoginFailure}
+                  mode="consumer"
+                  returnTo={getReturnTo()}
+                />
               </div>
 
               <p className="mt-6 text-center text-xs text-mutedGray dark:text-darkTextSecondary">
