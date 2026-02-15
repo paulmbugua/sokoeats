@@ -1,15 +1,17 @@
-// apps/web/src/pages/MyCourses.tsx
+// apps/web-next/src/legacy-pages/MyCourses.web.tsx
 'use client';
+
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useAiCourse, useMyLibrary } from '@mytutorapp/shared/hooks';
-import { useClassVault } from '@mytutorapp/shared/hooks';
+import { usePathname, useRouter } from 'next/navigation';
+
+import { useAiCourse, useMyLibrary, useClassVault } from '@mytutorapp/shared/hooks';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { pickImageUriForCourse } from '@mytutorapp/shared/utils/subjectImages';
 import type { Course, RecordedVideo, TopCourse } from '@mytutorapp/shared/types';
+
 import CourseHero from '../components/CourseHero';
-import { appUrl } from '@/lib/appOrigin';
+import { appUrl, siteUrl } from '@/lib/appOrigin';
 import { ROUTES } from '@/lib/routes';
 
 /* ─────────────────────────────────────────────────────────
@@ -21,7 +23,8 @@ function getVaultId(v: any): number {
   return Number.isFinite(n) ? n : -1;
 }
 
-function withNormalizedVaultId<T extends any>(v: T): T & { id: number } {
+// ✅ Fix lint: no unnecessary `extends any`
+function withNormalizedVaultId<T>(v: T): T & { id: number } {
   const id = getVaultId(v);
   return { ...(v as any), id };
 }
@@ -139,7 +142,6 @@ const TopCoursesPromoGrid: React.FC<{
       setPromoError(null);
       try {
         await loadTopCourses({
-          // ✅ 20 at a time
           limit: 20,
           append: opts?.append,
           cursor: opts?.append ? (promoCursorRef.current ?? undefined) : undefined,
@@ -159,9 +161,7 @@ const TopCoursesPromoGrid: React.FC<{
 
   if (!topCourses.length && promoLoading) {
     return (
-      <p className="text-sm text-[#5e738f] dark:text-darkTextSecondary mt-3">
-        Loading top courses…
-      </p>
+      <p className="text-sm text-[#5e738f] dark:text-darkTextSecondary mt-3">Loading top courses…</p>
     );
   }
 
@@ -189,11 +189,10 @@ const TopCoursesPromoGrid: React.FC<{
         </div>
       ) : null}
 
-      {/* ✅ 3 columns (prevents stretched cards) */}
       <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 lg:grid-cols-3 gap-3">
         {topCourses.map((course) => {
           const rawImage = courseThumb(course) || pickImageUriForCourse(course as any, backendUrl);
-          const image = rawImage; // keep as-is; subjectImages should already be absolute / safe
+          const image = rawImage;
 
           return (
             <button
@@ -233,7 +232,7 @@ const TopCoursesPromoGrid: React.FC<{
 };
 
 const ClassVaultCard: React.FC<{
-  item: RecordedVideo; // expected to be normalized in parent, but also guarded inside
+  item: RecordedVideo;
   backendUrl: string;
   isPurchased?: boolean;
   showTutorActions?: boolean;
@@ -247,7 +246,6 @@ const ClassVaultCard: React.FC<{
 
   const isPdfOnly = Boolean((item as any)?.pdf_url) && !(item as any)?.video_url;
 
-  // ✅ Resolve relative urls to backend + add cache-bust
   const pdf = withBust(resolveUrl(backendUrl, (item as any)?.pdf_url || ''), bust);
   const video = withBust(
     resolveUrl(backendUrl, (item as any)?.preview_url || (item as any)?.video_url || ''),
@@ -258,7 +256,6 @@ const ClassVaultCard: React.FC<{
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [pdfBlocked, setPdfBlocked] = useState(false);
 
-  // Best-effort autoplay (browsers may still block)
   useEffect(() => {
     const el = videoRef.current;
     if (!el) return;
@@ -283,9 +280,7 @@ const ClassVaultCard: React.FC<{
         }}
         className="block rounded-xl ring-1 ring-[#e4ecf4] dark:ring-darkCard bg-white dark:bg-[#111b25] overflow-hidden hover:shadow-sm transition"
       >
-        {/* Preview area */}
         <div className="relative aspect-video bg-[#0b1220] overflow-hidden">
-          {/* PDF-only: try iframe preview */}
           {isPdfOnly && pdf && !pdfBlocked ? (
             <iframe
               title="Notes preview"
@@ -295,7 +290,6 @@ const ClassVaultCard: React.FC<{
             />
           ) : null}
 
-          {/* Thumbnail fallback */}
           {poster && (!isPdfOnly || pdfBlocked) ? (
             <div
               className="absolute inset-0 bg-cover bg-center"
@@ -303,7 +297,6 @@ const ClassVaultCard: React.FC<{
             />
           ) : null}
 
-          {/* Video preview */}
           {!isPdfOnly && video ? (
             <video
               key={video}
@@ -319,12 +312,10 @@ const ClassVaultCard: React.FC<{
             />
           ) : null}
 
-          {/* Label chip */}
           <div className="absolute bottom-2 left-2 text-[11px] px-2 py-0.5 rounded-full bg-black/60 text-white">
             {isPdfOnly ? 'Notes' : 'Preview'}
           </div>
 
-          {/* PDF fallback if iframe blocked */}
           {isPdfOnly && pdfBlocked ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/40 text-white p-3 text-center">
               <p className="text-xs font-semibold">Notes preview unavailable</p>
@@ -349,7 +340,6 @@ const ClassVaultCard: React.FC<{
         </div>
       </Link>
 
-      {/* Tutor actions */}
       {showTutorActions && (
         <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
           <Link
@@ -418,7 +408,6 @@ const CourseCard: React.FC<{
       </div>
     </button>
 
-    {/* Tutor actions (top-right) */}
     {showTutorActions && (
       <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
         <Link
@@ -450,11 +439,22 @@ const CourseCard: React.FC<{
 );
 
 const MyCourses: React.FC = () => {
+  const router = useRouter();
   const pathname = usePathname();
-  const { backendUrl, token, profile, role: ctxRole } = useShopContext();
+
+  const { backendUrl, token, orgToken, profile, role: ctxRole } = useShopContext() as any;
   const { role, isTutor, sections } = useMyLibrary();
   const { remove: removeVault } = useClassVault();
-  const authToken = token;
+
+  // ✅ Hydration safety: tokens often come from client storage; keep SSR + first render stable
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const safeToken = mounted ? token : null;
+  const safeOrgToken = mounted ? orgToken : null;
+  const isAnyLoggedIn = Boolean(safeToken || safeOrgToken);
+
+  const authToken = safeToken; // MyLibrary endpoints are user-auth based
 
   const title = 'My Library';
 
@@ -514,19 +514,29 @@ const MyCourses: React.FC = () => {
     window.location.href = appUrl(`/progress/${encodeURIComponent(String(course.id))}`);
   };
 
+  /**
+   * ✅ Login behavior mirrors Footer:
+   * - Hydration-safe (wait for mounted)
+   * - If not logged in -> canonical web-next login: siteUrl('/login')
+   * - Preserve returnTo (use current pathname) + message
+   */
   useEffect(() => {
-    if (authToken) return;
+    if (!mounted) return;
+    if (isAnyLoggedIn) return;
+
     const params = new URLSearchParams();
     params.set('reason', 'auth');
     params.set('message', 'Please sign in to view your library');
     if (pathname) params.set('returnTo', pathname);
-    window.location.href = appUrl(`/login?${params.toString()}`);
-  }, [authToken, pathname]);
+
+    // ✅ Always canonical web-next auth (NOT /app/login)
+    window.location.assign(siteUrl(`/login?${params.toString()}`));
+  }, [mounted, isAnyLoggedIn, pathname]);
 
   // ---------- delete handlers ----------
   const onDeleteCourse = useCallback(
     async (course: Course) => {
-      if (!backendUrl || !token) {
+      if (!backendUrl || !safeToken) {
         alert('Missing backend connection or session token.');
         return;
       }
@@ -542,7 +552,7 @@ const MyCourses: React.FC = () => {
       try {
         const res = await fetch(`${backendUrl}/api/courses/${encodeURIComponent(id)}`, {
           method: 'DELETE',
-          headers: { Authorization: `Bearer ${token}` },
+          headers: { Authorization: `Bearer ${safeToken}` },
         });
 
         if (!res.ok) {
@@ -566,12 +576,12 @@ const MyCourses: React.FC = () => {
         setDeletingCourseId(null);
       }
     },
-    [backendUrl, token, sections, tryRefreshSection]
+    [backendUrl, safeToken, sections, tryRefreshSection]
   );
 
   const onDeleteClassVault = useCallback(
     async (item: RecordedVideo) => {
-      if (!token) {
+      if (!safeToken) {
         alert('You must be logged in.');
         return;
       }
@@ -592,7 +602,6 @@ const MyCourses: React.FC = () => {
       setDeletedVaultIds((prev) => new Set(prev).add(id)); // optimistic hide
 
       try {
-        // shared hook/api: DELETE /api/classvault/:id
         await removeVault(idNum);
         await tryRefreshSection(sections?.createdClassVault);
       } catch (e: any) {
@@ -606,7 +615,7 @@ const MyCourses: React.FC = () => {
         setDeletingVaultId(null);
       }
     },
-    [token, removeVault, sections, tryRefreshSection]
+    [safeToken, removeVault, sections, tryRefreshSection]
   );
 
   // ---------- filtered lists after optimistic deletes ----------
@@ -644,13 +653,32 @@ const MyCourses: React.FC = () => {
     [roleStr, isOwnerClassVault, isTutor]
   );
 
-  if (!authToken) {
+  // ✅ Stable SSR/first paint: don’t render “logged out” flash
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary">
+        <main className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <p className="text-sm text-[#49739c] dark:text-darkTextSecondary">Loading…</p>
+        </main>
+      </div>
+    );
+  }
+
+  // If not logged in, we already triggered redirect; render a tiny message as fallback.
+  if (!isAnyLoggedIn) {
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary">
         <main className="max-w-screen-xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
           <p className="text-sm text-[#49739c] dark:text-darkTextSecondary">
-            Please sign in to view your library
+            Redirecting to login…
           </p>
+          <button
+            type="button"
+            onClick={() => router.replace(siteUrl('/login'))}
+            className="mt-3 text-sm font-semibold text-blue-600 dark:text-blue-400"
+          >
+            Go to login
+          </button>
         </main>
       </div>
     );
@@ -686,7 +714,7 @@ const MyCourses: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {createdVaultItems.map((item: any) => {
-                    const id = String(item.id); // ✅ normalized
+                    const id = String(item.id);
                     return (
                       <ClassVaultCard
                         key={id}
@@ -784,10 +812,7 @@ const MyCourses: React.FC = () => {
           </>
         ) : (
           <>
-            <SectionShell
-              title="Purchased Videos & Notes"
-              subtitle="Your ClassVault purchases live here."
-            >
+            <SectionShell title="Purchased Videos & Notes" subtitle="Your ClassVault purchases live here.">
               {sections.purchasedClassVault.loading && purchasedVaultItems.length === 0 ? (
                 <p className="text-sm text-[#5e738f] dark:text-darkTextSecondary">Loading…</p>
               ) : sections.purchasedClassVault.error ? (
@@ -797,12 +822,7 @@ const MyCourses: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {purchasedVaultItems.map((item: any) => (
-                    <ClassVaultCard
-                      key={String(item.id)} // ✅ normalized
-                      item={item}
-                      backendUrl={backendUrl}
-                      isPurchased
-                    />
+                    <ClassVaultCard key={String(item.id)} item={item} backendUrl={backendUrl} isPurchased />
                   ))}
                 </div>
               )}
@@ -824,12 +844,7 @@ const MyCourses: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {aiCourseItems.map((course: any) => (
-                    <CourseCard
-                      key={String(course.id)}
-                      course={course}
-                      onOpen={() => aiCourseCta(course)}
-                      label="AI"
-                    />
+                    <CourseCard key={String(course.id)} course={course} onOpen={() => aiCourseCta(course)} label="AI" />
                   ))}
                 </div>
               )}
@@ -862,11 +877,7 @@ const MyCourses: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {normalCourseItems.map((course: any) => (
-                    <CourseCard
-                      key={String(course.id)}
-                      course={course}
-                      onOpen={() => openCourse(course)}
-                    />
+                    <CourseCard key={String(course.id)} course={course} onOpen={() => openCourse(course)} />
                   ))}
                 </div>
               )}
