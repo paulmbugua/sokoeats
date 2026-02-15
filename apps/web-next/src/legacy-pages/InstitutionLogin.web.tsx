@@ -4,9 +4,10 @@
 import React, { useEffect, useMemo, useState, useCallback, useLayoutEffect } from 'react';
 import { Link, useNavigate, useLocation } from '@/lib/react-router-dom';
 import useInstitutionAuth from '@mytutorapp/shared/hooks/useInstitutionAuth';
-import CustomGoogleLoginButton from '@/components/CustomGoogleLoginButton';
+import CustomGoogleButtonLogin from '@/legacy-pages/CustomGoogleButtonLogin.web';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { trackEvent, trackLogin, trackSignUp } from '../analytics/ga4';
+import GlobalAuthRedirect from '@/legacy-pages/GlobalAuthRedirect';
 
 
 
@@ -328,6 +329,7 @@ const navigateAfterAuth = useCallback(
 
   return (
     <div className="relative min-h-screen overflow-hidden text-darkText dark:text-darkTextPrimary">
+      <GlobalAuthRedirect mode="institution" />
       {/* BG */}
       <div
         className="absolute inset-0 bg-cover bg-center"
@@ -613,7 +615,7 @@ const navigateAfterAuth = useCallback(
                     <div className="h-px flex-1 bg-gray-200 dark:bg-darkCard" />
                   </div>
                   <div className="flex justify-center">
-                    <CustomGoogleLoginButton onSuccess={onGoogleSuccess} onFailure={onGoogleFailure} />
+                    <CustomGoogleButtonLogin onSuccess={onGoogleSuccess} onFailure={onGoogleFailure} mode="institution" returnTo={location.search ? `/institutions/login${location.search}` : "/institutions/login"} />
                   </div>
                 </>
               )}

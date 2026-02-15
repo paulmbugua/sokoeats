@@ -5,11 +5,13 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from '@/lib/react-router-dom';
 import useAuth from '@mytutorapp/shared/hooks/useAuth';
 import { useShopContext } from '@mytutorapp/shared/context';
-import CustomGoogleLoginButton from '@/components/CustomGoogleLoginButton';
+import CustomGoogleButtonLogin from '@/legacy-pages/CustomGoogleButtonLogin.web';
 import { trackLogin, trackSignUp } from '../analytics/ga4';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 import CountrySelect from '@/components/CountrySelect';
 import { signOutCurrentUser } from '@mytutorapp/shared/utils/firebaseAuthWeb';
+import GlobalAuthRedirect from '@/legacy-pages/GlobalAuthRedirect';
+import { siteUrl } from '@/lib/appOrigin';
 
 type AuthMode = 'Login' | 'Sign Up';
 type ResetMode = 'idle' | 'requesting' | 'verifying';
@@ -85,7 +87,7 @@ const LoginPage: React.FC = () => {
     const qNext = qs.get('next');
     if (qNext) return qNext;
 
-    return '/home';
+    return siteUrl('/profile/me');
   };
 
   // ✅ store returnTo only after mount (client only)
@@ -96,8 +98,15 @@ const LoginPage: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const getReturnTo = useCallback(() => safeSessionGet(RETURN_TO_SS_KEY) || '/home', []);
+  const getReturnTo = useCallback(() => safeSessionGet(RETURN_TO_SS_KEY) || siteUrl('/profile/me'), []);
   const clearReturnTo = useCallback(() => safeSessionRemove(RETURN_TO_SS_KEY), []);
+
+
+  const resolveConsumerTarget = useCallback((dest?: string | null) => {
+    const raw = (dest || '').trim();
+    if (!raw || raw === '/home') return siteUrl('/profile/me');
+    return siteUrl(raw);
+  }, []);
 
   const { token, role: userRole } = useShopContext();
 
@@ -114,7 +123,7 @@ const LoginPage: React.FC = () => {
   } = useAuth({
     alertFn: (msg) => console.log('[auth]', msg),
     navigateFn: (dest) => {
-      const target = dest || getReturnTo();
+      const target = resolveConsumerTarget(dest || getReturnTo());
       clearReturnTo();
       navigate(target, { replace: true });
     },
@@ -195,11 +204,11 @@ useEffect(() => {
   useEffect(() => {
     if (switchToIndividual) return;
     if (token && userRole) {
-      const target = getReturnTo();
+      const target = resolveConsumerTarget(getReturnTo());
       clearReturnTo();
       navigate(target, { replace: true });
     }
-  }, [token, userRole, navigate, switchToIndividual, getReturnTo, clearReturnTo]);
+  }, [token, userRole, navigate, switchToIndividual, getReturnTo, clearReturnTo, resolveConsumerTarget]);
 
   const handleLanguageChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     setLanguages([e.target.value]);
@@ -223,7 +232,7 @@ useEffect(() => {
         await loginWithEmail({ email: email.trim(), password });
         trackLogin('email', { mode: 'consumer' });
 
-        const target = getReturnTo();
+        const target = resolveConsumerTarget(getReturnTo());
         clearReturnTo();
         navigate(target, { replace: true });
         return;
@@ -251,7 +260,7 @@ useEffect(() => {
 
         trackSignUp('email', { mode: 'consumer', role, email_hash: emailHash(email) });
 
-        const target = getReturnTo();
+        const target = resolveConsumerTarget(getReturnTo());
         clearReturnTo();
         navigate(target, { replace: true });
       }
@@ -367,7 +376,7 @@ useEffect(() => {
 
       closeRoleFlowInstant();
 
-      const target = getReturnTo();
+      const target = resolveConsumerTarget(getReturnTo());
       clearReturnTo();
       navigate(target, { replace: true });
     } catch (err: any) {
@@ -386,7 +395,7 @@ useEffect(() => {
     } catch {
       // ignore
     } finally {
-      navigate('/login', { replace: true });
+      navigate(siteUrl('/login'), { replace: true });
     }
   };
 
@@ -403,6 +412,7 @@ useEffect(() => {
   // ─────────────────────────────────────────────────────────
   return (
     <div className="relative min-h-screen overflow-x-hidden text-darkText dark:text-darkTextPrimary">
+      <GlobalAuthRedirect mode="consumer" />
       <div
         className="absolute inset-0 bg-cover bg-center"
         style={{
@@ -605,7 +615,7 @@ useEffect(() => {
               </div>
 
               <div className="flex justify-center">
-                <CustomGoogleLoginButton onSuccess={handleGoogleLoginSuccess} onFailure={handleGoogleLoginFailure} />
+                <CustomGoogleButtonLogin onSuccess={handleGoogleLoginSuccess} onFailure={handleGoogleLoginFailure} mode="consumer" returnTo={getReturnTo()} />
               </div>
 
               <p className="mt-6 text-center text-xs text-mutedGray dark:text-darkTextSecondary">
