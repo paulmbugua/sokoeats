@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { appUrl, siteUrl } from '@/lib/appOrigin';
+import { siteUrl } from '@/lib/appOrigin';
 
 type Props = {
   mode: 'consumer' | 'institution';
@@ -21,7 +21,7 @@ export default function GlobalAuthRedirect({ mode }: Props) {
 
     if (mode === 'institution') {
       if (!hydrated) return;
-      if (orgToken) router.replace(appUrl('/org'));
+      if (orgToken) router.replace(siteUrl('/org/profile'));
       return;
     }
 

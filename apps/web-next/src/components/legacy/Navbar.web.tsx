@@ -118,9 +118,9 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
    * - Client: /app/org/login?next=/org, /app/login
    */
   const handleOrgButtonClick = (e: React.MouseEvent) => {
-  // keep <a href="/institutions"> working normally (no preventDefault)
-  // If you want analytics later, you can add it here without changing the href.
-};
+    // keep <a href="/institutions"> working normally (no preventDefault)
+    // If you want analytics later, you can add it here without changing the href.
+  };
 
   const handleLoginClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -134,19 +134,11 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
     if (safeOrgToken) {
       if (isLearnerRole) return appUrl('/org/learn');
       if (isInstructorRole) return appUrl('/org/instructor');
-      return appUrl('/org/profile');
+      return siteUrl('/org/profile');
     }
 
     return safeToken ? profileHref : loginHref;
-  }, [
-    mounted,
-    safeOrgToken,
-    safeToken,
-    isLearnerRole,
-    isInstructorRole,
-    profileHref,
-    loginHref,
-  ]);
+  }, [mounted, safeOrgToken, safeToken, isLearnerRole, isInstructorRole, profileHref, loginHref]);
 
   const handleSearchSubmit = (raw?: string) => {
     const query = String(raw ?? searchQuery ?? '').trim();
@@ -232,7 +224,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
 
     if (!safeOrgToken) {
       return {
-        href: siteUrl('/institutions/login?next=/org'),
+        href: siteUrl('/institutions/login?returnTo=/org/profile'),
         label: 'Institution Login',
         icon: faBuilding,
         title: 'Institution login',
@@ -258,7 +250,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
     }
 
     return {
-      href: appUrl('/org/profile'),
+      href: siteUrl('/org/profile'),
       label: 'Org Profile',
       icon: faBuilding,
       title: 'Institution profile',
@@ -286,12 +278,17 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
                   <path d="M36.7273 44C33.9891 44 31.6043 39.8386 30.3636 33.69C29.123 39.8386 26.7382 44 24 44C21.2618 44 18.877 39.8386 17.6364 33.69C16.3957 39.8386 14.0109 44 11.2727 44C7.25611 44 4 35.0457 4 24C4 12.9543 7.25611 4 11.2727 4C14.0109 4 16.3957 8.16144 17.6364 14.31C18.877 8.16144 21.2618 4 24 4C26.7382 4 29.123 8.16144 30.3636 14.31C31.6043 8.16144 33.9891 4 36.7273 4C40.7439 4 44 12.9543 44 24C44 35.0457 40.7439 44 36.7273 44Z" />
                 </svg>
               </span>
-              <h1 className="text-base sm:text-lg font-extrabold tracking-tight truncate">DayBreak</h1>
+              <h1 className="text-base sm:text-lg font-extrabold tracking-tight truncate">
+                DayBreak
+              </h1>
             </Link>
 
             <nav className="hidden md:flex items-center gap-6 ml-4">
               {safeToken && (
-                <a href={appUrl('/home')} className="text-sm/6 hover:text-primary transition-colors">
+                <a
+                  href={appUrl('/home')}
+                  className="text-sm/6 hover:text-primary transition-colors"
+                >
                   Home
                 </a>
               )}
@@ -323,11 +320,11 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
 
               {/* ✅ Stable href + click redirect (no hydration mismatch) */}
               <Link
-  href={orgPortalHref} // "/institutions"
-  className="inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition"
->
-  For Institutions
-</Link>
+                href={orgPortalHref} // "/institutions"
+                className="inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition"
+              >
+                For Institutions
+              </Link>
             </nav>
           </div>
 
@@ -547,11 +544,11 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
 
           {/* ✅ Stable href + click redirect (no hydration mismatch) */}
           <Link
-          href={orgPortalHref} // "/institutions"
-          className="inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition"
-        >
-          For Institutions
-        </Link>
+            href={orgPortalHref} // "/institutions"
+            className="inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition"
+          >
+            For Institutions
+          </Link>
 
           {/* Org shortcuts (mobile) */}
           {safeOrgToken && isLearnerRole && (
@@ -580,7 +577,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
 
           {safeOrgToken && !(isLearnerRole || isInstructorRole) && (
             <a
-              href={appUrl('/org/profile')}
+              href={siteUrl('/org/profile')}
               className="rounded-lg px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#172534]"
             >
               <span className="inline-flex items-center gap-2">
