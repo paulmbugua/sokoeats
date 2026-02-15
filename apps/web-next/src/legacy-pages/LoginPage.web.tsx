@@ -5,11 +5,12 @@ import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { Link, useNavigate, useLocation } from '@/lib/react-router-dom';
 import useAuth from '@mytutorapp/shared/hooks/useAuth';
 import { useShopContext } from '@mytutorapp/shared/context';
-import CustomGoogleLoginButton from '@/components/CustomGoogleLoginButton';
+import CustomGoogleButtonLogin from '@/legacy-pages/CustomGoogleButtonLogin.web';
 import { trackLogin, trackSignUp } from '../analytics/ga4';
 import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 import CountrySelect from '@/components/CountrySelect';
 import { signOutCurrentUser } from '@mytutorapp/shared/utils/firebaseAuthWeb';
+import GlobalAuthRedirect from '@/legacy-pages/GlobalAuthRedirect';
 
 type AuthMode = 'Login' | 'Sign Up';
 type ResetMode = 'idle' | 'requesting' | 'verifying';
@@ -403,6 +404,7 @@ useEffect(() => {
   // ─────────────────────────────────────────────────────────
   return (
     <div className="relative min-h-screen overflow-x-hidden text-darkText dark:text-darkTextPrimary">
+      <GlobalAuthRedirect mode="consumer" />
       <div
         className="absolute inset-0 bg-cover bg-center"
         style={{
@@ -605,7 +607,7 @@ useEffect(() => {
               </div>
 
               <div className="flex justify-center">
-                <CustomGoogleLoginButton onSuccess={handleGoogleLoginSuccess} onFailure={handleGoogleLoginFailure} />
+                <CustomGoogleButtonLogin onSuccess={handleGoogleLoginSuccess} onFailure={handleGoogleLoginFailure} mode="consumer" returnTo={getReturnTo()} />
               </div>
 
               <p className="mt-6 text-center text-xs text-mutedGray dark:text-darkTextSecondary">
