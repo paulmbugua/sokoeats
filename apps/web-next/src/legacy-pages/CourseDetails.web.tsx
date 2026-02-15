@@ -1,8 +1,11 @@
 'use client';
-// apps/web/src/pages/CourseDetails.web.tsx
+// apps/web-next/src/legacy-pages/CourseDetails.web.tsx
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import debounce from 'lodash.debounce';
-import { Link, useNavigate, useParams } from '@/lib/react-router-dom';
+
+import Link from 'next/link';
+import { useParams, useRouter } from 'next/navigation';
+
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useCourses, useEnrollments, useOerMeta } from '@mytutorapp/shared/hooks';
 import { useCourseReviews } from '@mytutorapp/shared/hooks/useCourseReviews';
@@ -33,10 +36,21 @@ function toTokens(v: unknown): number {
   return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
 }
 
+/** Next.js params can be string | string[] */
+function paramToString(v: unknown): string {
+  if (Array.isArray(v)) return String(v[0] ?? '');
+  if (typeof v === 'string') return v;
+  return '';
+}
+
 const CourseDetails: React.FC = () => {
-  const navigate = useNavigate();
-  const { courseId } = useParams<{ courseId: string }>();
-  const { backendUrl, token, profile, tokens: walletTokens = 0 } = useShopContext();
+  const router = useRouter();
+
+  // ✅ Next.js App Router useParams is not generic
+  const params = useParams() as { courseId?: string | string[] };
+  const courseId = useMemo(() => paramToString(params?.courseId), [params]);
+
+  const { backendUrl, token, profile, tokens: walletTokens = 0 } = useShopContext() as any;
   const role = String(profile?.role ?? '').toLowerCase();
   const myId = String(profile?.id ?? '');
 
@@ -87,13 +101,17 @@ const CourseDetails: React.FC = () => {
   const mi = (c ?? {}) as Course & MaybeInstructor;
   const tutorName = mi.tutorName || mi.instructor?.name || 'Your tutor';
   const tutorBio = mi.instructor?.bio || 'Experienced educator';
-  const oerMeta = useOerMeta(courseId);
+
+  // ✅ pass string | undefined (not ParamValue)
+  const oerMeta = useOerMeta(courseId || undefined);
+
   // -------- Reviews wiring --------
   const { avg, count, hasMyReview, reload, submit, posting } = useCourseReviews(
     backendUrl,
     courseId,
     { myStudentId: myId, token: token ?? '' }
   );
+
   const debouncedReload = useMemo(
     () =>
       debounce(() => {
@@ -117,10 +135,9 @@ const CourseDetails: React.FC = () => {
     );
     if (!proceed) return;
 
-    // If balance is insufficient → deep-link to Profile payment section
     if (!hasEnough) {
       const goBuy = window.confirm('Not enough tokens. Would you like to buy more now?');
-      if (goBuy) navigate('/profile/me?openPayment=1');
+      if (goBuy) router.push(`/profile/me?openPayment=1`);
       return;
     }
 
@@ -132,14 +149,13 @@ const CourseDetails: React.FC = () => {
         source: 'course_details',
         is_ai: (c as Course & { is_ai?: boolean }).is_ai,
       });
-      navigate(`/progress/${courseId}`);
+      router.push(`/progress/${courseId}`);
     } catch (e: any) {
       const msg: string = e?.message || '';
       if (/insufficient/i.test(msg)) {
         const go = window.confirm('Not enough tokens. Would you like to buy more now?');
-        if (go) navigate('/profile/me?openPayment=1');
+        if (go) router.push(`/profile/me?openPayment=1`);
       }
-      // Hook surfaces other errors via enrollError below
     }
   };
 
@@ -151,7 +167,7 @@ const CourseDetails: React.FC = () => {
       source: 'course_details',
       is_ai: (c as (Course & { is_ai?: boolean }) | null | undefined)?.is_ai,
     });
-    navigate(`/progress/${courseId}`);
+    router.push(`/progress/${courseId}`);
   };
 
   const onUnenroll = async () => {
@@ -209,7 +225,6 @@ const CourseDetails: React.FC = () => {
               </span>
             )}
 
-            {/* ⭐ Rating row */}
             <div className="mt-2">
               <StarRow avg={avg} count={count} />
             </div>
@@ -230,17 +245,15 @@ const CourseDetails: React.FC = () => {
               </span>
             </div>
 
-            {/* Balance helper like ClassVaultDetail */}
             <div className="mt-2 text-sm text-[#49739c] dark:text-darkTextSecondary">
               Your balance: {walletTokens} tokens
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
-            {/* Primary CTA varies by role and enrollment */}
             {role === 'tutor' ? (
               <Link
-                to="/my-courses"
+                href="/my-courses"
                 className="rounded-xl h-10 px-4 bg-[#e7edf4] dark:bg-[#172534] text-sm font-semibold flex items-center justify-center"
                 title="Go to your course list"
               >
@@ -270,8 +283,6 @@ const CourseDetails: React.FC = () => {
                     Download Transcript (Free)
                   </a>
                 )}
-
-                {/* Review button when enrolled & not yet reviewed */}
                 {!hasMyReview && (
                   <button
                     onClick={() => setOpenReview(true)}
@@ -292,7 +303,7 @@ const CourseDetails: React.FC = () => {
                 </button>
                 {!hasEnough && (
                   <button
-                    onClick={() => navigate('/profile/me?openPayment=1')}
+                    onClick={() => router.push(`/profile/me?openPayment=1`)}
                     className="rounded-xl h-10 px-4 bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-sm font-semibold"
                   >
                     Buy Tokens
@@ -301,18 +312,16 @@ const CourseDetails: React.FC = () => {
               </div>
             )}
 
-            {/* Achievements quick link */}
             <Link
-              to="/achievements"
+              href="/achievements"
               className="rounded-xl h-10 px-4 bg-[#e7edf4] dark:bg-[#172534] text-sm font-semibold flex items-center justify-center"
               title="See achievements"
             >
               Achievements
             </Link>
 
-            {/* Back */}
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => router.back()}
               className="rounded-xl h-10 px-4 bg-white dark:bg-[#0f1821] ring-1 ring-[#cedbe8] dark:ring-darkCard text-sm font-semibold"
             >
               Back
