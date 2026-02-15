@@ -37,14 +37,9 @@ export default function GoogleCallbackPage() {
 
   const navigateFn = useCallback(
     (dest?: string) => {
-      if (mode === 'consumer') {
-        const finalDest = !dest || dest === '/home' ? siteUrl('/profile/me') : siteUrl(dest);
-        router.replace(finalDest);
-        return;
-      }
-      router.replace(canonicalize(dest || appUrl('/org/profile')));
+      router.replace(canonicalize(dest || '/'));
     },
-    [mode, router]
+    [router]
   );
 
   const consumerAuth = useAuth({

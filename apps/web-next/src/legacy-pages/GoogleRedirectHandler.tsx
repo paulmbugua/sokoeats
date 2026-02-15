@@ -91,7 +91,7 @@ export default function GoogleRedirectHandler({ onSuccess, onFailure }: Props) {
         doneRef.current = true;
         try {
           await onSuccess(idToken);
-          const target = returnTo || (mode === 'institution' ? '/org/profile' : siteUrl('/profile/me'));
+          const target = returnTo || (mode === 'institution' ? '/org/profile' : '/');
           router.replace(canonicalize(target));
         } finally {
           clearBusy();

@@ -11,7 +11,6 @@ import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
 import CountrySelect from '@/components/CountrySelect';
 import { signOutCurrentUser } from '@mytutorapp/shared/utils/firebaseAuthWeb';
 import GlobalAuthRedirect from '@/legacy-pages/GlobalAuthRedirect';
-import { siteUrl } from '@/lib/appOrigin';
 
 type AuthMode = 'Login' | 'Sign Up';
 type ResetMode = 'idle' | 'requesting' | 'verifying';
