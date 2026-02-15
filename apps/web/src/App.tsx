@@ -86,7 +86,6 @@ import PaystackCallbackRedirectWeb from '@/pages/PaystackCallbackRedirect.web';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { OrgGate, OrgAuthGate } from './components/org/OrgGates';
-import { trackPageView } from './analytics/ga4';
 
 /* ───────────────────────────
    Per-user "first login" helpers
@@ -393,13 +392,6 @@ const OrgInstructorOnlyRoute: React.FC<{ children: ReactNode }> = ({ children })
    ─────────────────────────── */
 const App: React.FC = () => {
   const { hydrated } = useShopContext();
-  const location = useLocation();
-
-
-
-  useEffect(() => {
-    trackPageView(`${location.pathname}${location.search}`);
-  }, [location.pathname, location.search]);
   if (!hydrated) return <Spinner />;
 
   return (

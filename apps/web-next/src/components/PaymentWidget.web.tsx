@@ -1,7 +1,7 @@
 // apps/web/src/components/payment/PaymentWidget.web.tsx
 'use client';
 
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useRef, useState } from 'react';
 import { assets } from '../assets/assets';
 import { FaStar, FaStarHalfAlt, FaRegStar } from 'react-icons/fa';
 import debounce from 'lodash.debounce';
@@ -10,6 +10,7 @@ import { usePayment, useHomePage } from '@mytutorapp/shared/hooks';
 import Link from 'next/link';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { paystackCreateOrder } from '@mytutorapp/shared/api';
+import { trackBeginCheckout } from '@/analytics/ga4';
 import type {
   PaymentPackage,
   UpdatedProfileData,
@@ -127,6 +128,18 @@ const USD_ESTIMATE_RATES: Record<string, number> = {
   TZS: 2800,
 };
 
+
+
+const TOKENS_CHECKOUT_STASH_KEY = 'checkout:tokens';
+
+const stashTokensCheckout = (payload: { credits: number; currency: string; value: number; reference?: string; checkout_key?: string }) => {
+  try {
+    sessionStorage.setItem(TOKENS_CHECKOUT_STASH_KEY, JSON.stringify({ kind: 'tokens', timestamp: Date.now(), ...payload }));
+  } catch {
+    // no-op
+  }
+};
+
 const PaymentWidget: React.FC<Props> = ({
   isOpen,
   onClose,
@@ -169,6 +182,7 @@ const PaymentWidget: React.FC<Props> = ({
   // Profile-aware locale + display currency
   const [userLocale, setUserLocale] = useState<string>('en-US');
   const [userDisplayCurrency, setUserDisplayCurrency] = useState<string>('USD');
+  const checkoutEventKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const navLocale = getBrowserLocale() || 'en-US';
@@ -322,6 +336,37 @@ const PaymentWidget: React.FC<Props> = ({
 
   /* ───────────────────── Paystack hosted checkout ───────────────────── */
 
+  const trackTokensCheckout = () => {
+    if (!selectedPackage) return;
+    const currency = String(selectedPackage.currency || 'USD').toUpperCase();
+    const value = Number(selectedPackage.price || 0);
+    const credits = Number(selectedPackage.credits || 0);
+    if (!Number.isFinite(value) || value <= 0) return;
+
+    const checkoutKey = `tokens:${credits}:${value}:${currency}`;
+    if (!checkoutEventKeysRef.current.has(checkoutKey)) {
+      trackBeginCheckout({
+        currency,
+        value,
+        payment_type: 'paystack',
+        affiliation: 'DayBreak Learner',
+        checkout_session_id: checkoutKey,
+        items: [
+          {
+            item_id: `tokens_${credits}`,
+            item_name: `${credits} Tokens`,
+            item_category: 'tokens',
+            price: value,
+            quantity: 1,
+          },
+        ],
+      });
+      checkoutEventKeysRef.current.add(checkoutKey);
+    }
+
+    stashTokensCheckout({ credits, currency, value, checkout_key: checkoutKey });
+  };
+
   const handlePaystackHosted = useMemo(
     () =>
       debounce(async () => {
@@ -338,10 +383,21 @@ const PaymentWidget: React.FC<Props> = ({
           return;
         }
 
+        trackTokensCheckout();
+
         setCardProcessing(true);
         try {
           const o = await paystackCreateOrder(backendUrl, token, {
             packageId: selectedPackage.id,
+          });
+
+          const checkoutKey = `tokens:${Number(selectedPackage.credits || 0)}:${Number(selectedPackage.price || 0)}:${String(selectedPackage.currency || 'USD').toUpperCase()}`;
+          stashTokensCheckout({
+            credits: Number(selectedPackage.credits || 0),
+            currency: String(selectedPackage.currency || 'USD').toUpperCase(),
+            value: Number(selectedPackage.price || 0),
+            reference: o.reference,
+            checkout_key: checkoutKey,
           });
 
           // hosted checkout (PCI-safe)
