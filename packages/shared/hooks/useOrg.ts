@@ -72,7 +72,7 @@ const shouldRetryAuthSafeNo404 = (failureCount: number, error: unknown): boolean
   return failureCount < 1;
 };
 
-export function useOrg(opts?: { currency?: OrgCurrency }) {
+export function useOrg(opts?: { currency?: OrgCurrency; enabled?: boolean }) {
   const ctx = useShopContext() as any;
 
   // ✅ force stable strings (fixes "string | undefined" arg errors)
@@ -101,7 +101,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
   const membershipHydratedRef = useRef(false);
 
   const [pricingCurrency, setPricingCurrency] = useState<OrgCurrency>(
-    (opts?.currency ?? 'USD') as OrgCurrency,
+    (opts?.currency ?? 'USD') as OrgCurrency
   );
 
   // Keep in sync if caller passes a different currency later
@@ -112,7 +112,8 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opts?.currency]);
 
-  const authed = Boolean(backendUrl && bearer);
+  const enabled = opts?.enabled ?? true;
+  const authed = Boolean(enabled && backendUrl && bearer);
 
   const pricingQuery = useQuery({
     queryKey: ['orgPricingTable', backendUrl, pricingCurrency, bearer],
@@ -260,7 +261,7 @@ export function useOrg(opts?: { currency?: OrgCurrency }) {
           return prev.map((m) =>
             m.orgId === o?.id && m.can_access_fees === undefined
               ? { ...m, can_access_fees: Boolean((o as any)?.can_access_fees) }
-              : m,
+              : m
           );
         }
 

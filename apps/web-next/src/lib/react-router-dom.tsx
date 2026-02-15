@@ -36,7 +36,8 @@ const isNextRoute = (href: string) => {
   if (path === '/resources') return true;
   if (path === '/courses') return true;
   if (path === '/help') return true;
-  if (path.startsWith('/profile/') && path !== '/profile/me') return true;
+  if (path === '/profile/me') return true;
+  if (path.startsWith('/profile/')) return true;
   if (path.startsWith('/oer')) return true;
   if (path.startsWith('/verify')) return true;
   return false;

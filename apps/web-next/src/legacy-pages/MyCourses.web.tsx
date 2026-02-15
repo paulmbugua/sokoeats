@@ -38,7 +38,7 @@ function resolveUrl(backendUrl: string, maybeUrl?: string | null) {
 }
 
 function cacheBustKey(item: any) {
-  return String(item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt || Date.now());
+  return String(item?.updated_at || item?.updatedAt || item?.created_at || item?.createdAt || '0');
 }
 
 function withBust(url: string, bust: string) {
@@ -142,7 +142,7 @@ const TopCoursesPromoGrid: React.FC<{
           // ✅ 20 at a time
           limit: 20,
           append: opts?.append,
-          cursor: opts?.append ? promoCursorRef.current ?? undefined : undefined,
+          cursor: opts?.append ? (promoCursorRef.current ?? undefined) : undefined,
         });
       } catch (e: any) {
         setPromoError(e?.message || 'Failed to load courses');
@@ -232,7 +232,6 @@ const TopCoursesPromoGrid: React.FC<{
   );
 };
 
-
 const ClassVaultCard: React.FC<{
   item: RecordedVideo; // expected to be normalized in parent, but also guarded inside
   backendUrl: string;
@@ -270,8 +269,7 @@ const ClassVaultCard: React.FC<{
     return () => window.clearTimeout(t);
   }, [video]);
 
-  const to =
-    idNum > 0 ? appUrl(`/class-vault/${encodeURIComponent(String(idNum))}`) : '#';
+  const to = idNum > 0 ? appUrl(`/class-vault/${encodeURIComponent(String(idNum))}`) : '#';
 
   return (
     <div className="relative">
@@ -355,9 +353,7 @@ const ClassVaultCard: React.FC<{
       {showTutorActions && (
         <div className="absolute top-3 right-3 z-10 flex items-center gap-2">
           <Link
-            href={appUrl(
-              editTo || `/class-vault/upload?edit=${encodeURIComponent(idStr)}`
-            )}
+            href={appUrl(editTo || `/class-vault/upload?edit=${encodeURIComponent(idStr)}`)}
             onClick={(e) => e.stopPropagation()}
             className="inline-flex items-center justify-center rounded-lg h-9 px-3 text-xs font-semibold
                     bg-[#e7edf4] dark:bg-[#172534] hover:brightness-105"
@@ -365,7 +361,6 @@ const ClassVaultCard: React.FC<{
           >
             Edit
           </Link>
-
 
           <button
             type="button"
@@ -536,7 +531,9 @@ const MyCourses: React.FC = () => {
         return;
       }
       const id = String(course.id);
-      const ok = window.confirm(`Delete "${course.title || 'this course'}"? This cannot be undone.`);
+      const ok = window.confirm(
+        `Delete "${course.title || 'this course'}"? This cannot be undone.`
+      );
       if (!ok) return;
 
       setDeletingCourseId(id);
@@ -585,7 +582,9 @@ const MyCourses: React.FC = () => {
         return;
       }
 
-      const ok = window.confirm(`Delete "${(item as any).title || 'this item'}"? This cannot be undone.`);
+      const ok = window.confirm(
+        `Delete "${(item as any).title || 'this item'}"? This cannot be undone.`
+      );
       if (!ok) return;
 
       const id = String(idNum);
@@ -674,7 +673,10 @@ const MyCourses: React.FC = () => {
 
         {role === 'tutor' ? (
           <>
-            <SectionShell title="Your ClassVault Videos & Notes" subtitle="Only your uploaded ClassVault content.">
+            <SectionShell
+              title="Your ClassVault Videos & Notes"
+              subtitle="Only your uploaded ClassVault content."
+            >
               {sections.createdClassVault.loading && createdVaultItems.length === 0 ? (
                 <p className="text-sm text-[#5e738f] dark:text-darkTextSecondary">Loading…</p>
               ) : sections.createdClassVault.error ? (
@@ -773,13 +775,19 @@ const MyCourses: React.FC = () => {
                 </div>
               )}
               {sections.aiCourses.hasMore && (
-                <LoadMoreButton onClick={sections.aiCourses.loadMore} disabled={sections.aiCourses.loading} />
+                <LoadMoreButton
+                  onClick={sections.aiCourses.loadMore}
+                  disabled={sections.aiCourses.loading}
+                />
               )}
             </SectionShell>
           </>
         ) : (
           <>
-            <SectionShell title="Purchased Videos & Notes" subtitle="Your ClassVault purchases live here.">
+            <SectionShell
+              title="Purchased Videos & Notes"
+              subtitle="Your ClassVault purchases live here."
+            >
               {sections.purchasedClassVault.loading && purchasedVaultItems.length === 0 ? (
                 <p className="text-sm text-[#5e738f] dark:text-darkTextSecondary">Loading…</p>
               ) : sections.purchasedClassVault.error ? (
@@ -816,12 +824,20 @@ const MyCourses: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {aiCourseItems.map((course: any) => (
-                    <CourseCard key={String(course.id)} course={course} onOpen={() => aiCourseCta(course)} label="AI" />
+                    <CourseCard
+                      key={String(course.id)}
+                      course={course}
+                      onOpen={() => aiCourseCta(course)}
+                      label="AI"
+                    />
                   ))}
                 </div>
               )}
               {sections.aiCourses.hasMore && (
-                <LoadMoreButton onClick={sections.aiCourses.loadMore} disabled={sections.aiCourses.loading} />
+                <LoadMoreButton
+                  onClick={sections.aiCourses.loadMore}
+                  disabled={sections.aiCourses.loading}
+                />
               )}
             </SectionShell>
 
@@ -846,12 +862,19 @@ const MyCourses: React.FC = () => {
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                   {normalCourseItems.map((course: any) => (
-                    <CourseCard key={String(course.id)} course={course} onOpen={() => openCourse(course)} />
+                    <CourseCard
+                      key={String(course.id)}
+                      course={course}
+                      onOpen={() => openCourse(course)}
+                    />
                   ))}
                 </div>
               )}
               {sections.normalCourses.hasMore && (
-                <LoadMoreButton onClick={sections.normalCourses.loadMore} disabled={sections.normalCourses.loading} />
+                <LoadMoreButton
+                  onClick={sections.normalCourses.loadMore}
+                  disabled={sections.normalCourses.loading}
+                />
               )}
             </SectionShell>
           </>
