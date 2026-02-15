@@ -59,10 +59,27 @@ const nextConfig = {
 
   async redirects() {
     return [
+      // ---------------------------------------------------------------------
+      // ✅ Canonical web-next auth + landings (avoid legacy "Redirecting..." shims)
+      // ---------------------------------------------------------------------
+      { source: '/app/login', destination: '/login', permanent: false },
+      { source: '/app/signup', destination: '/signup', permanent: false },
+      { source: '/app/institutions/login', destination: '/institutions/login', permanent: false },
+      { source: '/app/institutions', destination: '/institutions', permanent: false },
+      { source: '/app/org/login', destination: '/institutions/login?next=/org', permanent: false },
+
+      // RobotTeacher canonical landing is web-next now
+      { source: '/robot-teach', destination: '/robot-teacher', permanent: false },
+
+      // Legacy aliases you already had
       { source: '/institution', destination: '/institutions', permanent: false },
       { source: '/institution/login', destination: '/institutions/login', permanent: false },
       { source: '/institution/:path*', destination: '/institutions/:path*', permanent: false },
-      { source: '/robot-teach', destination: '/app/robot-teach', permanent: false },
+
+      // ---------------------------------------------------------------------
+      // ✅ Keep legacy app (apps/web) mounted under /app/*
+      // These are "pretty" routes that should continue to jump into /app/*
+      // ---------------------------------------------------------------------
       { source: '/org', destination: '/app/org', permanent: false },
       { source: '/messages', destination: '/app/messages', permanent: false },
       { source: '/settings/:path*', destination: '/app/settings/:path*', permanent: false },
@@ -70,7 +87,12 @@ const nextConfig = {
       { source: '/class-vault/:path*', destination: '/app/class-vault/:path*', permanent: false },
       { source: '/progress/:path*', destination: '/app/progress/:path*', permanent: false },
       { source: '/results', destination: '/app/results', permanent: false },
-      { source: '/profile/:path*', destination: '/app/profile/:path*', permanent: false },
+
+      // ---------------------------------------------------------------------
+      // ✅ IMPORTANT: Profile is being moved to web-next
+      // So DO NOT redirect /profile/* into /app/profile/*
+      // (Removed: { source: '/profile/:path*', destination: '/app/profile/:path*', permanent: false })
+      // ---------------------------------------------------------------------
     ];
   },
 
@@ -116,10 +138,7 @@ const nextConfig = {
     ];
 
     return [
-      {
-        source: '/:path*',
-        headers: securityHeaders,
-      },
+      { source: '/:path*', headers: securityHeaders },
       {
         source: '/_next/static/:path*',
         headers: [{ key: 'Cache-Control', value: 'public, max-age=31536000, immutable' }],

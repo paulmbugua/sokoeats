@@ -1,9 +1,10 @@
-// apps/web/src/components/Navbar.web.tsx
+// apps/web-next/src/components/legacy/Navbar.web.tsx
 'use client';
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import type { IconProp } from '@fortawesome/fontawesome-svg-core';
 import {
@@ -14,13 +15,14 @@ import {
   faMoon,
   faSun,
   faBuilding,
-  faUser,
   faChalkboardTeacher,
   faGraduationCap,
 } from '@fortawesome/free-solid-svg-icons';
+
 import { useChatContext, useShopContext } from '@mytutorapp/shared/context';
 import { useOrg } from '@mytutorapp/shared/hooks/useOrg';
 import { useTheme } from '@mytutorapp/shared/hooks';
+
 import {
   extractScopeHint,
   normalizeCountryLabel,
@@ -28,12 +30,11 @@ import {
   resolveSearchTarget,
   type SearchTarget,
 } from '@mytutorapp/shared/utils/smartSearchIntent';
-import { appUrl } from '@/lib/appOrigin';
+
+import { appUrl, siteUrl } from '@/lib/appOrigin';
 import { ROUTES } from '@/lib/routes';
 
-type Props = {
-  avatarUrl?: string;
-};
+type Props = { avatarUrl?: string };
 
 const FALLBACK_AVATAR = (name = 'You') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=223649&color=ffffff`;
@@ -41,7 +42,7 @@ const FALLBACK_AVATAR = (name = 'You') =>
 const Navbar: React.FC<Props> = ({ avatarUrl }) => {
   const { token, orgToken, backendUrl, profile, authMode } = useShopContext() as any;
 
-  const { role } = useOrg() ?? {};
+  const { role } = useOrg({ enabled: Boolean(orgToken) || authMode === 'org' } as any) ?? {};
   const pathname = usePathname() ?? '';
   const router = useRouter();
   const { unreadCount, chats } = useChatContext();
@@ -49,13 +50,15 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const mobileSearchRef = useRef<HTMLInputElement | null>(null);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchTarget, setSearchTarget] = useState<SearchTarget>('auto');
 
   const { theme, setTheme } = useTheme() as any;
 
+  // org-mode detection should be stable and not depend on window
   const isOrg = useMemo(() => {
-    const onOrgRoute = pathname.startsWith('/org');
+    const onOrgRoute = pathname.startsWith('/org') || pathname.startsWith('/app/org');
     return onOrgRoute || authMode === 'org';
   }, [pathname, authMode]);
 
@@ -63,9 +66,11 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
   const isLearnerRole = normalizedRole === 'learner' || normalizedRole === 'student';
   const isInstructorRole = normalizedRole === 'instructor' || normalizedRole === 'teacher';
 
-  const orgPortalHref = '/institutions';
-
-  const handleOrgButtonClick = () => {}; // deterministic no-op
+  // canonical web-next routes
+  const orgPortalHref = siteUrl('/institutions');
+  const loginHref = siteUrl('/login');
+  const profileHref = siteUrl('/profile/me');
+  const myCoursesHref = siteUrl('/courses'); // web-next now (since you're migrating)
 
   useEffect(() => {
     setMobileMenuOpen(false);
@@ -73,10 +78,9 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
   }, [pathname]);
 
   useEffect(() => {
-    if (mobileSearchOpen) {
-      const t = setTimeout(() => mobileSearchRef.current?.focus(), 50);
-      return () => clearTimeout(t);
-    }
+    if (!mobileSearchOpen) return;
+    const t = setTimeout(() => mobileSearchRef.current?.focus(), 50);
+    return () => clearTimeout(t);
   }, [mobileSearchOpen]);
 
   const profileAvatarRaw = (avatarUrl ||
@@ -88,26 +92,24 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
     | undefined;
 
   const resolvedAvatar = useMemo(() => {
-    if (!profileAvatarRaw || profileAvatarRaw.length === 0) {
-      return FALLBACK_AVATAR(profile?.name || 'You');
-    }
+    if (!profileAvatarRaw) return FALLBACK_AVATAR(profile?.name || 'You');
     if (profileAvatarRaw.startsWith('/') && backendUrl) {
-      return `${backendUrl.replace(/\/+$/, '')}${profileAvatarRaw}`;
+      return `${String(backendUrl).replace(/\/+$/, '')}${profileAvatarRaw}`;
     }
     return profileAvatarRaw;
   }, [profileAvatarRaw, backendUrl, profile?.name]);
 
+  // avatar click:
+  // - org users → legacy org dashboards under /app
+  // - normal users → web-next profile (since you're migrating profile to web-next)
   const avatarHref = useMemo(() => {
-   if (orgToken) {
-     if (isLearnerRole) return appUrl('/org/learn');
-     if (isInstructorRole) return appUrl('/org/instructor');
-     return appUrl('/org/profile');
-   }
-   return token ? appUrl('/profile/me') : '/login';
- }, [orgToken, isLearnerRole, isInstructorRole, token]);
-
- 
-  const myCoursesHref = '/courses';
+    if (orgToken) {
+      if (isLearnerRole) return appUrl('/org/learn');
+      if (isInstructorRole) return appUrl('/org/instructor');
+      return appUrl('/org/profile');
+    }
+    return token ? profileHref : loginHref;
+  }, [orgToken, isLearnerRole, isInstructorRole, token, profileHref, loginHref]);
 
   const handleSearchSubmit = (raw?: string) => {
     const query = String(raw ?? searchQuery ?? '').trim();
@@ -128,7 +130,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
 
     if (target === 'tutors') {
       if (country?.code) params.set('country', country.code);
-      router.push(`/find-tutor?${params.toString()}`);
+      router.push(siteUrl(`/find-tutor?${params.toString()}`));
       return;
     }
 
@@ -142,16 +144,16 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
       params.set('tab', 'courses');
     }
 
-    router.push(`/resources?${params.toString()}`);
+    router.push(siteUrl(`/resources?${params.toString()}`));
   };
 
   const handleThemeToggle = () => {
     const current = (theme || 'light').toString().toLowerCase();
-    const next = current === 'dark' ? 'light' : 'dark';
-    setTheme?.(next);
+    setTheme?.(current === 'dark' ? 'light' : 'dark');
   };
 
   const isDark = (theme || '').toString().toLowerCase() === 'dark';
+
   const totalUnreadCount = useMemo(() => {
     if (typeof unreadCount === 'number') return unreadCount;
     return chats.reduce((sum, chat) => sum + (chat.unreadCount || 0), 0);
@@ -160,18 +162,16 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
   const unreadBadgeLabel = totalUnreadCount > 99 ? '99+' : String(totalUnreadCount);
   const hasUnreadMessages = totalUnreadCount > 0;
 
+  // Messages live in legacy app
   const handleNotificationsClick = () => {
     const latestUnreadChat = chats.find((chat) => (chat.unreadCount || 0) > 0);
-    if (latestUnreadChat?.recipientId) {
-      window.location.href = appUrl(
-        `/messages?studentId=${encodeURIComponent(latestUnreadChat.recipientId)}`
-      );
-      return;
-    }
-    window.location.href = appUrl('/messages');
+    const href = latestUnreadChat?.recipientId
+      ? appUrl(`/messages?studentId=${encodeURIComponent(latestUnreadChat.recipientId)}`)
+      : appUrl('/messages');
+    window.location.assign(href);
   };
 
-  // One responsive pill style used by Org shortcuts everywhere
+  // compact org pill
   const ORG_PILL =
     'shrink-0 inline-flex items-center justify-center rounded-full ' +
     'h-10 px-3 sm:px-4 text-xs sm:text-sm font-semibold whitespace-nowrap ' +
@@ -179,7 +179,6 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
     'hover:bg-emerald-500 hover:ring-emerald-700/40 ' +
     'focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 ' +
     'dark:focus-visible:ring-offset-darkBg ' +
-    // allow truncation if container is tight
     'max-w-[12rem] sm:max-w-none';
 
   const orgPillMeta = useMemo(() => {
@@ -187,8 +186,8 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
 
     if (!orgToken) {
       return {
-        href: '/institutions/login',
-        label: 'Login',
+        href: siteUrl('/institutions/login?next=/org'),
+        label: 'Institution Login',
         icon: faBuilding,
         title: 'Institution login',
       };
@@ -221,13 +220,11 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
   }, [isOrg, orgToken, isLearnerRole, isInstructorRole]);
 
   return (
-   <header className="sticky top-0 z-50 bg-white dark:bg-darkBg border-b border-gray-200 dark:border-darkCard">
+    <header className="sticky top-0 z-50 bg-white dark:bg-darkBg border-b border-gray-200 dark:border-darkCard">
       <div className="mx-auto w-full max-w-screen-2xl px-3 sm:px-4 lg:px-8">
-        {/* Top bar */}
         <div className="flex h-14 sm:h-16 items-center justify-between gap-2">
           {/* Left */}
           <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            {/* Hamburger (mobile) */}
             <button
               type="button"
               className="md:hidden inline-flex items-center justify-center rounded-xl h-10 w-10 bg-gray-100 dark:bg-[#172534] ring-1 ring-gray-200 dark:ring-darkCard hover:ring-primary transition"
@@ -237,8 +234,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
               <FontAwesomeIcon icon={(mobileMenuOpen ? faXmark : faBars) as IconProp} />
             </button>
 
-            {/* Brand */}
-            <Link href="/" className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <Link href={siteUrl('/')} className="flex items-center gap-2 sm:gap-3 min-w-0">
               <span className="size-5 text-primary dark:text-darkTextPrimary shrink-0">
                 <svg viewBox="0 0 48 48" fill="currentColor" aria-hidden="true">
                   <path d="M36.7273 44C33.9891 44 31.6043 39.8386 30.3636 33.69C29.123 39.8386 26.7382 44 24 44C21.2618 44 18.877 39.8386 17.6364 33.69C16.3957 39.8386 14.0109 44 11.2727 44C7.25611 44 4 35.0457 4 24C4 12.9543 7.25611 4 11.2727 4C14.0109 4 16.3957 8.16144 17.6364 14.31C18.877 8.16144 21.2618 4 24 4C26.7382 4 29.123 8.16144 30.3636 14.31C31.6043 8.16144 33.9891 4 36.7273 4C40.7439 4 44 12.9543 44 24C44 35.0457 40.7439 44 36.7273 44Z" />
@@ -249,37 +245,35 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
               </h1>
             </Link>
 
-            {/* Desktop nav (collapses gracefully because left is min-w-0) */}
             <nav className="hidden md:flex items-center gap-6 ml-4">
               {token && (
                 <a href={appUrl('/home')} className="text-sm/6 hover:text-primary transition-colors">
                   Home
                 </a>
               )}
-              <Link href="/find-tutor" className="text-sm/6 hover:text-primary transition-colors">
+
+              <Link href={siteUrl('/find-tutor')} className="text-sm/6 hover:text-primary transition-colors">
                 Find Tutors
               </Link>
+
               <Link href={myCoursesHref} className="text-sm/6 hover:text-primary transition-colors">
                 My Courses
               </Link>
-              <Link href="/resources" className="text-sm/6 hover:text-primary transition-colors">
+
+              <Link href={siteUrl('/resources')} className="text-sm/6 hover:text-primary transition-colors">
                 Resources
               </Link>
-              <Link
-                href={ROUTES.robotTeacherLanding}
-                className="text-sm/6 hover:text-primary transition-colors"
-              >
+
+              <Link href={siteUrl(ROUTES.robotTeacherLanding)} className="text-sm/6 hover:text-primary transition-colors">
                 Learn with A.I
               </Link>
 
-              {/* For Institutions (desktop) */}
-              <a
+              <Link
                 href={orgPortalHref}
-                onClick={handleOrgButtonClick}
                 className="inline-flex items-center rounded-lg px-3 py-1.5 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition"
               >
                 For Institutions
-              </a>
+              </Link>
             </nav>
           </div>
 
@@ -338,9 +332,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
               aria-label={mobileSearchOpen ? 'Close search' : 'Open search'}
               onClick={() => setMobileSearchOpen((v) => !v)}
             >
-              <FontAwesomeIcon
-                icon={(mobileSearchOpen ? faXmark : faMagnifyingGlass) as IconProp}
-              />
+              <FontAwesomeIcon icon={(mobileSearchOpen ? faXmark : faMagnifyingGlass) as IconProp} />
             </button>
 
             {/* Bell */}
@@ -352,9 +344,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
             >
               <FontAwesomeIcon icon={faBell as IconProp} />
               {hasUnreadMessages && (
-                <span
-                  className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-[0.65rem] font-bold leading-5 text-center ring-2 ring-white dark:ring-darkBg"
-                >
+                <span className="absolute -top-1 -right-1 min-w-[1.25rem] h-5 px-1 rounded-full bg-red-500 text-white text-[0.65rem] font-bold leading-5 text-center ring-2 ring-white dark:ring-darkBg">
                   {unreadBadgeLabel}
                 </span>
               )}
@@ -371,17 +361,12 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
               <FontAwesomeIcon icon={(isDark ? faSun : faMoon) as IconProp} />
             </button>
 
-            {/* Responsive org/profile control (never overflows) */}
+            {/* Org pill OR Avatar */}
             {isOrg && orgPillMeta ? (
-              <a
-                href={orgPillMeta.href}
-                className={ORG_PILL}
-                title={orgPillMeta.title}
-              >
+              <a href={orgPillMeta.href} className={ORG_PILL} title={orgPillMeta.title}>
                 <span className="inline-flex items-center justify-center">
                   <FontAwesomeIcon icon={orgPillMeta.icon as IconProp} />
                 </span>
-                {/* show text from sm up; keep pill compact on tiny phones */}
                 <span className="hidden sm:inline ml-2 truncate">{orgPillMeta.label}</span>
               </a>
             ) : (
@@ -432,6 +417,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
                 )}
               </div>
             </label>
+
             <div className="flex items-center gap-2">
               <select
                 value={searchTarget}
@@ -444,6 +430,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
                 <option value="library">Videos/Notes</option>
                 <option value="tutors">Tutors</option>
               </select>
+
               <button
                 type="button"
                 onClick={() => handleSearchSubmit(searchQuery)}
@@ -472,42 +459,44 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
               Home
             </a>
           )}
+
           <Link
-            href="/find-tutor"
+            href={siteUrl('/find-tutor')}
             className="rounded-lg px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#172534]"
           >
             Find Tutors
           </Link>
+
           <Link
             href={myCoursesHref}
             className="rounded-lg px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#172534]"
           >
             My Courses
           </Link>
+
           <Link
-            href="/resources"
+            href={siteUrl('/resources')}
             className="rounded-lg px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#172534]"
           >
             Resources
           </Link>
+
           <Link
-            href={ROUTES.robotTeacherLanding}
+            href={siteUrl(ROUTES.robotTeacherLanding)}
             className="rounded-lg px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-[#172534]"
           >
             Learn with A.I
           </Link>
 
-          {/* For Institutions (mobile) */}
-          <a
+          <Link
             href={orgPortalHref}
-            onClick={handleOrgButtonClick}
             className="rounded-lg px-3 py-2 text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-500 transition"
           >
             <span className="inline-flex items-center gap-2">
               <FontAwesomeIcon icon={faBuilding as IconProp} />
               <span>For Institutions</span>
             </span>
-          </a>
+          </Link>
 
           {/* Org shortcuts (mobile) */}
           {orgToken && isLearnerRole && (
@@ -521,6 +510,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
               </span>
             </a>
           )}
+
           {orgToken && isInstructorRole && (
             <a
               href={appUrl('/org/instructor')}
@@ -532,6 +522,7 @@ const Navbar: React.FC<Props> = ({ avatarUrl }) => {
               </span>
             </a>
           )}
+
           {orgToken && !(isLearnerRole || isInstructorRole) && (
             <a
               href={appUrl('/org/profile')}
