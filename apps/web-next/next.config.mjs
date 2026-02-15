@@ -45,16 +45,7 @@ const nextConfig = {
       'react-native$': 'react-native-web',
       'react-native/Libraries/Utilities/Platform': 'react-native-web/dist/exports/Platform',
     },
-    resolveExtensions: [
-      '.web.tsx',
-      '.web.ts',
-      '.web.js',
-      '.tsx',
-      '.ts',
-      '.jsx',
-      '.js',
-      '.json',
-    ],
+    resolveExtensions: ['.web.tsx', '.web.ts', '.web.js', '.tsx', '.ts', '.jsx', '.js', '.json'],
   },
 
   async redirects() {
@@ -67,6 +58,9 @@ const nextConfig = {
       { source: '/app/institutions/login', destination: '/institutions/login', permanent: false },
       { source: '/app/institutions', destination: '/institutions', permanent: false },
       { source: '/app/org/login', destination: '/institutions/login?next=/org', permanent: false },
+      { source: '/app/profile/me', destination: '/profile/me', permanent: false },
+      { source: '/app/courses', destination: '/courses', permanent: false },
+      { source: '/app/courses/:courseId', destination: '/courses/:courseId', permanent: false },
 
       // RobotTeacher canonical landing is web-next now
       { source: '/robot-teach', destination: '/robot-teacher', permanent: false },
@@ -83,7 +77,6 @@ const nextConfig = {
       { source: '/org', destination: '/app/org', permanent: false },
       { source: '/messages', destination: '/app/messages', permanent: false },
       { source: '/settings/:path*', destination: '/app/settings/:path*', permanent: false },
-      { source: '/courses/:path*', destination: '/app/courses/:path*', permanent: false },
       { source: '/class-vault/:path*', destination: '/app/class-vault/:path*', permanent: false },
       { source: '/progress/:path*', destination: '/app/progress/:path*', permanent: false },
       { source: '/results', destination: '/app/results', permanent: false },
