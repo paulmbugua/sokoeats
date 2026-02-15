@@ -45,24 +45,47 @@ function mountUnder(prefix: string, input: string): string {
 
   const pn = pathname.startsWith('/') ? pathname : `/${pathname}`;
 
+  // already mounted
   if (pn === pfx || pn.startsWith(`${pfx}/`)) return `${pn}${search}${hash}`;
+
+  // mount under /app
   return `${pfx}${pn}${search}${hash}`;
 }
 
-/** web-next canonical routes (NO /app prefix) */
+/**
+ * ✅ web-next canonical routes (NO /app prefix)
+ * IMPORTANT: Must be deterministic for SSR + client hydration.
+ * - Always return a RELATIVE path ("/..."), never an absolute URL.
+ * - Never branch on window/location.
+ */
 export function siteUrl(path: string): string {
   const norm = normalizeToPathish(path);
+
+  // empty -> root
   if (!norm) return '/';
+
+  // query/hash only => attach to root
   if (norm.startsWith('?') || norm.startsWith('#')) return `/${norm}`;
+
+  // already a normal path
   return norm;
 }
 
-/** legacy app mounted under /app (apps/web) */
+/**
+ * ✅ legacy app mounted under /app
+ * IMPORTANT: Must be deterministic for SSR + client hydration.
+ * - Always return a RELATIVE path under "/app".
+ */
 export function appUrl(path: string): string {
   return mountUnder(APP_MOUNT, path);
 }
 
-/** (optional) absolute helpers, env-only so SSR-safe */
+/**
+ * Optional absolute helpers (env-only => SSR safe).
+ * These are allowed to include an origin for things like metadata, emails, etc.
+ * They MUST NOT be used for hrefs inside Client Components that SSR, unless you
+ * are 100% sure the same origin string is used server+client.
+ */
 export function absoluteSiteUrl(path: string): string {
   const origin = String(publicEnv?.siteUrl || '')
     .trim()
