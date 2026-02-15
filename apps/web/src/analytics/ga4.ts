@@ -36,12 +36,6 @@ export type LoginMethod = 'email' | 'google';
 export const trackLogin = (method: LoginMethod, extra: Record<string, any> = {}) =>
   trackEvent('login', { method, ...extra });
 
-export const trackSignUp = (method: LoginMethod, extra: Record<string, any> = {}) => {
-  const key = extra.user_id || extra.email_hash || extra.dedupe_key;
-  if (!key) return;
-  trackOnce('sign_up', { method, ...extra }, `signup:${String(key)}`, opts());
-};
-
 export type Ga4Item = {
   item_id: string;
   item_name: string;

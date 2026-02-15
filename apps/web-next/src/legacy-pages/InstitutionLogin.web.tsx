@@ -231,7 +231,7 @@ const navigateAfterAuth = useCallback(
         password,
         role: 'owner',
       } as any);
-      trackSignUp('email', { mode: 'org', kind: 'institution', role: 'owner', email_hash: emailHash(email) });
+      trackSignUp('institution', { mode: 'org', kind: 'institution', role: 'owner', email_hash: emailHash(email) });
 
     } catch (err: any) {
       setError(err?.message || 'Authentication failed');
