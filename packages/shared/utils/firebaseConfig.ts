@@ -1,18 +1,34 @@
 /* eslint-disable no-console */
 import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 
-const hasProcessEnv = typeof process !== 'undefined' && !!process.env;
-const viteEnv: Record<string, any> | undefined =
-  typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
+// ✅ Next.js-safe: literal reads so webpack can inline them into client bundle
+const NEXT_PUBLIC = {
+  FIREBASE_API_KEY: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  FIREBASE_AUTH_DOMAIN: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  FIREBASE_PROJECT_ID: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  FIREBASE_STORAGE_BUCKET: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  FIREBASE_MESSAGING_SENDER_ID: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  FIREBASE_APP_ID: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  FIREBASE_MEASUREMENT_ID: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+};
 
-const readProcessEnv = (key: string) => (hasProcessEnv ? process.env[key] : undefined);
+// Vite env (safe when running in Vite)
+const viteEnv: Record<string, any> | undefined =
+  typeof window !== 'undefined' ? (globalThis as any)?.import?.meta?.env : undefined;
 
 export const getFirebaseEnv = (key: string) => {
   const envKey = String(key || '').trim();
   if (!envKey) return '';
-  const nextValue = readProcessEnv(`NEXT_PUBLIC_${envKey}`);
-  const viteValue = viteEnv?.[`VITE_${envKey}`] ?? readProcessEnv(`VITE_${envKey}`);
-  const expoValue = readProcessEnv(`EXPO_PUBLIC_${envKey}`);
+
+  // ✅ Next (literal map)
+  const nextValue = (NEXT_PUBLIC as any)[envKey];
+
+  // ✅ Vite
+  const viteValue = (viteEnv as any)?.[`VITE_${envKey}`] ?? (process as any)?.env?.[`VITE_${envKey}`];
+
+  // ✅ Expo (best-effort; if you need it bulletproof too, do a similar literal map there)
+  const expoValue = (process as any)?.env?.[`EXPO_PUBLIC_${envKey}`];
+
   return String(nextValue ?? viteValue ?? expoValue ?? '').trim();
 };
 
@@ -68,43 +84,11 @@ export const getFirebaseAppSafe = (): FirebaseApp | null => {
 };
 
 export const getAuthOrThrow = async () => {
-  if (typeof window === 'undefined') {
-    throw new Error('Firebase auth is unavailable during SSR.');
-  }
+  if (typeof window === 'undefined') throw new Error('Firebase auth is unavailable during SSR.');
 
   const app = getFirebaseAppSafe();
-  if (!app) {
-    throw new Error('Missing Firebase web config.');
-  }
+  if (!app) throw new Error('Missing Firebase web config.');
 
   const { getAuth } = await import('firebase/auth');
   return getAuth(app);
 };
-
-export async function ensureBrowserPersistence() {
-  if (typeof window === 'undefined') return;
-
-  const app = getFirebaseAppSafe();
-  if (!app) return;
-
-  try {
-    const { getAuth, setPersistence, browserLocalPersistence, inMemoryPersistence } = await import(
-      'firebase/auth'
-    );
-    const auth = getAuth(app);
-    try {
-      await setPersistence(auth, browserLocalPersistence);
-    } catch {
-      await setPersistence(auth, inMemoryPersistence);
-    }
-  } catch (error) {
-    console.warn('[firebase] ensureBrowserPersistence failed:', error);
-  }
-}
-
-/**
- * Env requirements:
- * - apps/web-next: NEXT_PUBLIC_FIREBASE_API_KEY (+ other NEXT_PUBLIC_FIREBASE_* vars)
- * - apps/web (Vite): VITE_FIREBASE_API_KEY (+ other VITE_FIREBASE_* vars)
- * - apps/mobile (Expo): EXPO_PUBLIC_FIREBASE_API_KEY (+ other EXPO_PUBLIC_FIREBASE_* vars)
- */
