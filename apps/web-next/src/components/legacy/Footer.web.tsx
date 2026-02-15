@@ -1,52 +1,73 @@
-// apps/web/src/components/Footer.web.tsx (or wherever it lives)
+// apps/web/src/components/Footer.web.tsx
 'use client';
 
-import React from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useShopContext } from '@mytutorapp/shared/context';
-import { appUrl } from '@/lib/appOrigin';
+import { appUrl, siteUrl } from '@/lib/appOrigin';
 import { publicEnv } from '@/lib/env';
 
 const Footer: React.FC = () => {
   const router = useRouter();
   const { token, orgToken, logout, orgLogout } = useShopContext() as any;
+
+  // ✅ Hydration safety: tokens often come from client storage; keep SSR + first render stable
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const safeToken = mounted ? token : null;
+  const safeOrgToken = mounted ? orgToken : null;
+
+  const isAnyLoggedIn = Boolean(safeToken || safeOrgToken);
+
   const playStoreBadgeUrl =
     publicEnv.playStoreBadgeUrl ||
     'https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png';
 
+  /**
+   * ✅ "Become a Tutor" is legacy flow (/app/*).
+   * But if user is not logged in, send to canonical web-next /login (NOT /app/login).
+   */
   const handleJoinClick = () => {
-    // "Become a Tutor" should only care about normal user accounts
-    if (!token) {
-      window.location.href = '/login';
+    if (!safeToken) {
+      window.location.assign(siteUrl('/login'));
       return;
     }
-    window.location.href = appUrl('/become-tutor');
+    window.location.assign(appUrl('/become-tutor'));
   };
 
+  /**
+   * ✅ Footer auth button:
+   * - If logged in: logout + go home
+   * - If logged out: always go to canonical web-next login page
+   */
   const handleAuthClick = async () => {
-    const isAnyLoggedIn = Boolean(token || orgToken);
-
     if (isAnyLoggedIn) {
-      // Log out whichever identity is active
       try {
-        if (orgToken && typeof orgLogout === 'function') {
-          await orgLogout();
-        }
-        if (token && typeof logout === 'function') {
-          await logout();
-        }
+        if (safeOrgToken && typeof orgLogout === 'function') await orgLogout();
+        if (safeToken && typeof logout === 'function') await logout();
       } finally {
-        // After any logout, go back to main landing flow
-        router.replace('/');
+        router.replace(siteUrl('/'));
       }
-    } else {
-      // When it's showing "Login", always go to the normal user login page
-      window.location.href = '/login';
+      return;
     }
+
+    // ✅ Always canonical web-next auth
+    window.location.assign(siteUrl('/login'));
   };
 
-  const isAnyLoggedIn = Boolean(token || orgToken);
+  const helpHref = siteUrl('/help');
+  const findTutorHref = siteUrl('/find-tutor');
+
+  // Policy pages: if you moved them to web-next, keep them canonical with siteUrl()
+  const privacyHref = siteUrl('/privacy-policy');
+  const termsHref = siteUrl('/terms');
+  const antiSpamHref = siteUrl('/anti-spam-policy');
+  const complaintsHref = siteUrl('/complaints-feedback');
+  const refundsHref = siteUrl('/refunds');
+  const fulfillmentHref = siteUrl('/fulfillment');
+  const paymentFlowHref = siteUrl('/payment-flow');
 
   return (
     <footer className="bg-white text-darkText dark:bg-darkCard dark:text-darkTextPrimary border-t border-gray-200 dark:border-darkCard">
@@ -72,7 +93,7 @@ const Footer: React.FC = () => {
 
           <div className="text-center md:text-left">
             <p className="text-lg font-semibold">Need Assistance?</p>
-            <Link href="/help" className="mt-1 inline-block text-primary hover:underline">
+            <Link href={helpHref} className="mt-1 inline-block text-primary hover:underline">
               FAQ / Contact Support
             </Link>
           </div>
@@ -101,14 +122,15 @@ const Footer: React.FC = () => {
               <a href="tel:+254720423764">+254 720 423 764</a> •{' '}
               <a href="tel:+254758276900">+254 758 276 900</a>
               <br />
-              Email: <a href="mailto:support@daybreaklearner.com">support@daybreaklearner.com</a>
+              <span>Email: </span>
+              <a href="mailto:support@daybreaklearner.com">support@daybreaklearner.com</a>
             </p>
           </div>
 
           {/* Center buttons */}
           <div className="md:w-1/3 flex flex-col items-center justify-center gap-3">
             <Link
-              href="/find-tutor"
+              href={findTutorHref}
               className="px-4 py-2 rounded-md bg-primary text-white hover:opacity-90 transition"
             >
               Find Tutors
@@ -123,7 +145,6 @@ const Footer: React.FC = () => {
           </div>
 
           {/* Store badge */}
-  
           <div className="md:w-1/3 flex justify-center md:justify-end items-center">
             <a
               href="https://play.google.com/store/apps/details?id=com.paulmbugua2.mytutorapp"
@@ -139,31 +160,30 @@ const Footer: React.FC = () => {
               />
             </a>
           </div>
-
         </div>
 
         {/* Policy Links */}
         <div className="w-full text-center">
           <div className="grid grid-cols-2 place-items-center sm:flex sm:flex-wrap sm:justify-center gap-3 sm:gap-6 text-xs">
-            <Link href="/privacy-policy" className="hover:text-primary">
+            <Link href={privacyHref} className="hover:text-primary">
               Privacy Policy
             </Link>
-            <Link href="/terms" className="hover:text-primary">
+            <Link href={termsHref} className="hover:text-primary">
               Terms of Service
             </Link>
-            <Link href="/anti-spam-policy" className="hover:text-primary">
+            <Link href={antiSpamHref} className="hover:text-primary">
               Anti-Spam Policy
             </Link>
-            <Link href="/complaints-feedback" className="hover:text-primary">
+            <Link href={complaintsHref} className="hover:text-primary">
               Complaints & Feedback
             </Link>
-            <Link href="/refunds" className="hover:text-primary">
+            <Link href={refundsHref} className="hover:text-primary">
               Refund & Cancellation Policy
             </Link>
-            <Link href="/fulfillment" className="hover:text-primary">
+            <Link href={fulfillmentHref} className="hover:text-primary">
               Fulfillment & Delivery Policy
             </Link>
-            <Link href="/payment-flow" className="hover:text-primary">
+            <Link href={paymentFlowHref} className="hover:text-primary">
               How Payments Work
             </Link>
           </div>
@@ -183,7 +203,6 @@ const Footer: React.FC = () => {
           </p>
         </div>
 
-        {/* Final copyright */}
         <div className="mt-6 text-center text-xs text-mutedGray dark:text-darkTextSecondary">
           © 2024 DayBreakLearner. All rights reserved.
         </div>
