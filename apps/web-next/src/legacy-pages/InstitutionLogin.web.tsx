@@ -9,8 +9,6 @@ import { useShopContext } from '@mytutorapp/shared/context';
 import { trackEvent, trackLogin, trackSignUp } from '../analytics/ga4';
 import GlobalAuthRedirect from '@/legacy-pages/GlobalAuthRedirect';
 
-
-
 const LOGIN_BG =
   'https://images.unsplash.com/photo-1513258496099-48168024aec0?q=80&w=2000&auto=format&fit=crop';
 
@@ -48,7 +46,7 @@ const InstitutionLogin: React.FC = () => {
   // ✅ IMPORTANT: If already authenticated, only redirect for normal login (NOT reauth)
   useLayoutEffect(() => {
     if (!hydrated) return;
-    if (orgToken && !reauth) navigate('/org', { replace: true });
+    if (orgToken && !reauth) navigate('/org/profile', { replace: true });
   }, [orgToken, navigate, reauth, hydrated]);
 
   // —— Local state —— //
@@ -95,77 +93,76 @@ const InstitutionLogin: React.FC = () => {
   }, [canSignUp, authMode]);
 
   // —— Auth hook —— //
-const navigateAfterAuth = useCallback(
-  (dest?: string) => {
-    const clearReturnTo = () => {
-      try {
-        sessionStorage.removeItem('auth:returnTo');
-        sessionStorage.removeItem('auth:returnTo:org');
-      } catch {}
-    };
+  const navigateAfterAuth = useCallback(
+    (dest?: string) => {
+      const clearReturnTo = () => {
+        try {
+          sessionStorage.removeItem('auth:returnTo');
+          sessionStorage.removeItem('auth:returnTo:org');
+        } catch {}
+      };
 
-    // must-change always wins
-    try {
-      if (sessionStorage.getItem('org:mustChangePassword') === '1') {
+      // must-change always wins
+      try {
+        if (sessionStorage.getItem('org:mustChangePassword') === '1') {
+          clearReturnTo();
+          navigate('/org/change-password', { replace: true });
+          return;
+        }
+      } catch {}
+
+      // ✅ Read query params FIRST (important for reauth flows)
+      const search = new URLSearchParams(location.search);
+      const reauthQ = (search.get('reauth') || '').trim();
+      const orgIdQ = (search.get('orgId') || search.get('org_id') || '').trim();
+      const returnToQ = (search.get('returnTo') || search.get('return_to') || '').trim();
+
+      // ✅ If this was a fees reauth, mark the unlock NOW (even if dest exists)
+      if (reauthQ === 'fees' && orgIdQ) {
+        try {
+          sessionStorage.setItem(`org:feesUnlock:${orgIdQ}`, String(Date.now()));
+        } catch {}
+      }
+
+      // ✅ If caller provided explicit returnTo, ALWAYS honor it first
+      if (returnToQ) {
         clearReturnTo();
-        navigate('/org/change-password', { replace: true });
+        navigate(returnToQ, { replace: true });
         return;
       }
-    } catch {}
 
-    // ✅ Read query params FIRST (important for reauth flows)
-    const search = new URLSearchParams(location.search);
-    const reauthQ = (search.get('reauth') || '').trim();
-    const orgIdQ = (search.get('orgId') || search.get('org_id') || '').trim();
-    const returnToQ = (search.get('returnTo') || search.get('return_to') || '').trim();
-
-    // ✅ If this was a fees reauth, mark the unlock NOW (even if dest exists)
-    if (reauthQ === 'fees' && orgIdQ) {
+      // ✅ If we have a saved deep link, honor it
       try {
-        sessionStorage.setItem(`org:feesUnlock:${orgIdQ}`, String(Date.now()));
+        const saved = sessionStorage.getItem('auth:returnTo');
+        const savedOrg = sessionStorage.getItem('auth:returnTo:org');
+        const finalSaved = saved || savedOrg || '';
+        if (finalSaved) {
+          clearReturnTo();
+          navigate(finalSaved, { replace: true });
+          return;
+        }
       } catch {}
-    }
 
-    // ✅ If caller provided explicit returnTo, ALWAYS honor it first
-    if (returnToQ) {
-      clearReturnTo();
-      navigate(returnToQ, { replace: true });
-      return;
-    }
-
-    // ✅ If we have a saved deep link, honor it
-    try {
-      const saved = sessionStorage.getItem('auth:returnTo');
-      const savedOrg = sessionStorage.getItem('auth:returnTo:org');
-      const finalSaved = saved || savedOrg || '';
-      if (finalSaved) {
+      // ✅ Invite code next
+      const inviteCode = search.get('code');
+      if (inviteCode) {
         clearReturnTo();
-        navigate(finalSaved, { replace: true });
+        navigate(`/org/join/${inviteCode}`, { replace: true });
         return;
       }
-    } catch {}
 
-    // ✅ Invite code next
-    const inviteCode = search.get('code');
-    if (inviteCode) {
+      // ✅ Only now honor dest (normal login flows)
+      if (dest) {
+        clearReturnTo();
+        navigate(dest, { replace: true });
+        return;
+      }
+
       clearReturnTo();
-      navigate(`/org/join/${inviteCode}`, { replace: true });
-      return;
-    }
-
-    // ✅ Only now honor dest (normal login flows)
-    if (dest) {
-      clearReturnTo();
-      navigate(dest, { replace: true });
-      return;
-    }
-
-    clearReturnTo();
-    navigate('/org', { replace: true });
-  },
-  [navigate, location.search],
-);
-
+      navigate('/org/profile', { replace: true });
+    },
+    [navigate, location.search]
+  );
 
   const {
     handleGoogleLoginSuccess,
@@ -191,11 +188,10 @@ const navigateAfterAuth = useCallback(
           return;
         }
         trackEvent('org_login_start', {
-        kind: accountKind,
-        reauth: reauth || undefined,
-        org_id: orgIdParam || undefined,
-      });
-
+          kind: accountKind,
+          reauth: reauth || undefined,
+          org_id: orgIdParam || undefined,
+        });
 
         // ✅ NEW: pass reauth payload through (safe even if backend ignores)
         const extra =
@@ -232,8 +228,12 @@ const navigateAfterAuth = useCallback(
         password,
         role: 'owner',
       } as any);
-      trackSignUp('institution', { mode: 'org', kind: 'institution', role: 'owner', email_hash: emailHash(email) });
-
+      trackSignUp('institution', {
+        mode: 'org',
+        kind: 'institution',
+        role: 'owner',
+        email_hash: emailHash(email),
+      });
     } catch (err: any) {
       setError(err?.message || 'Authentication failed');
     } finally {
@@ -287,7 +287,6 @@ const navigateAfterAuth = useCallback(
     async (idToken: string) => {
       await handleGoogleLoginSuccess(idToken, name || undefined);
       trackLogin('google', { mode: 'org', kind: 'institution' });
-
     },
     [handleGoogleLoginSuccess, name]
   );
@@ -350,7 +349,12 @@ const navigateAfterAuth = useCallback(
             <div className="w-full rounded-2xl p-8 lg:p-10 bg-white/70 ring-1 ring-gray-200 shadow-sm backdrop-blur-sm dark:bg-[#0f1821]/70 dark:ring-darkCard">
               <div className="flex items-center gap-3">
                 <span className="h-10 w-10 text-indigo-600">
-                  <svg viewBox="0 0 48 48" fill="currentColor" className="h-full w-full" aria-hidden>
+                  <svg
+                    viewBox="0 0 48 48"
+                    fill="currentColor"
+                    className="h-full w-full"
+                    aria-hidden
+                  >
                     <path d="M36.7273 44C33.9891 44 31.6043 39.8386 30.3636 33.69C29.123 39.8386 26.7382 44 24 44C21.2618 44 18.877 39.8386 17.6364 33.69C16.3957 39.8386 14.0109 44 11.2727 44C7.25611 44 4 35.0457 4 24C4 12.9543 7.25611 4 11.2727 4C14.0109 4 16.3957 8.16144 17.6364 14.31C18.877 8.16144 21.2618 4 24 4C26.7382 4 29.123 8.16144 30.3636 14.31C31.6043 8.16144 33.9891 4 36.7273 4C40.7439 4 44 12.9543 44 24C44 35.0457 40.7439 44 36.7273 44Z" />
                   </svg>
                 </span>
@@ -358,7 +362,8 @@ const navigateAfterAuth = useCallback(
               </div>
 
               <p className="mt-4 text-sm text-gray-700 dark:text-darkTextSecondary">
-                This login is for institutions, instructors, and students using your organization&apos;s DayBreak portal.
+                This login is for institutions, instructors, and students using your
+                organization&apos;s DayBreak portal.
               </p>
 
               <ul className="mt-6 space-y-3 text-sm">
@@ -383,9 +388,12 @@ const navigateAfterAuth = useCallback(
               {/* ✅ NEW: Fees lock notice */}
               {isFeesReauth && (
                 <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 px-3 py-2 text-xs">
-                  🔒 Fees &amp; balances is protected. Please re-enter the <b>Instructor</b> login to continue.
+                  🔒 Fees &amp; balances is protected. Please re-enter the <b>Instructor</b> login
+                  to continue.
                   {!!returnToParam && (
-                    <div className="mt-1 opacity-80">You will be returned to your fees page after login.</div>
+                    <div className="mt-1 opacity-80">
+                      You will be returned to your fees page after login.
+                    </div>
                   )}
                 </div>
               )}
@@ -474,7 +482,9 @@ const navigateAfterAuth = useCallback(
                   </form>
                 ) : (
                   <form onSubmit={handleSendOtp} className="space-y-5">
-                    <h2 className="text-xl font-display font-semibold text-center">Reset Password</h2>
+                    <h2 className="text-xl font-display font-semibold text-center">
+                      Reset Password
+                    </h2>
                     <input
                       className="input"
                       type="email"
@@ -502,7 +512,9 @@ const navigateAfterAuth = useCallback(
                 )
               ) : (
                 <form onSubmit={onSubmit} className="space-y-5">
-                  <h2 className="text-xl font-display font-semibold text-center">{emailFormTitle}</h2>
+                  <h2 className="text-xl font-display font-semibold text-center">
+                    {emailFormTitle}
+                  </h2>
 
                   {authMode === 'Sign Up' && (
                     <input
@@ -615,7 +627,16 @@ const navigateAfterAuth = useCallback(
                     <div className="h-px flex-1 bg-gray-200 dark:bg-darkCard" />
                   </div>
                   <div className="flex justify-center">
-                    <CustomGoogleButtonLogin onSuccess={onGoogleSuccess} onFailure={onGoogleFailure} mode="institution" returnTo={location.search ? `/institutions/login${location.search}` : "/institutions/login"} />
+                    <CustomGoogleButtonLogin
+                      onSuccess={onGoogleSuccess}
+                      onFailure={onGoogleFailure}
+                      mode="institution"
+                      returnTo={
+                        location.search
+                          ? `/institutions/login${location.search}`
+                          : '/institutions/login'
+                      }
+                    />
                   </div>
                 </>
               )}
