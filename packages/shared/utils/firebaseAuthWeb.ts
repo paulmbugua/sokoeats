@@ -1,4 +1,9 @@
-import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut } from 'firebase/auth';
+import {
+  GoogleAuthProvider,
+  signInWithPopup,
+  signInWithRedirect,
+  signOut,
+} from 'firebase/auth';
 import { getAuthOrThrow, getFirebaseAppSafe } from './firebaseConfig';
 
 export const buildGoogleProviderSelectAccount = () => {
@@ -20,19 +25,20 @@ export const getAuthSafe = async () => {
     return null;
   }
 };
+
 export const signInGooglePopup = async () => {
-  const auth = getAuthOrThrow();
+  const auth = await getAuthOrThrow(); // ✅ await the Promise<Auth>
   const provider = buildGoogleProviderSelectAccount();
   return signInWithPopup(auth, provider);
 };
 
 export const signInGoogleRedirect = async () => {
-  const auth = getAuthOrThrow();
+  const auth = await getAuthOrThrow(); // ✅ await the Promise<Auth>
   const provider = buildGoogleProviderSelectAccount();
   return signInWithRedirect(auth, provider);
 };
 
 export const signOutCurrentUser = async () => {
-  const auth = getAuthOrThrow();
+  const auth = await getAuthOrThrow(); // ✅ await the Promise<Auth>
   return signOut(auth);
 };
