@@ -1,6 +1,12 @@
 /* eslint-disable no-console */
 //packages/shared/utils/firebaseAuthWeb.ts
-import { getAuthOrThrow, getFirebaseAppSafe } from './firebaseConfig';
+import {
+  debugFirebaseWebConfig,
+  getAuthOrThrow,
+  getFirebaseAppSafe,
+  getFirebaseMissingKeys,
+  getWebFirebaseConfigOrNull,
+} from './firebaseConfig';
 
 /**
  * Ensures Firebase Auth persistence in the browser.
@@ -120,3 +126,5 @@ export const subscribeAuthToken = async (
     }
   });
 };
+
+export { debugFirebaseWebConfig, getFirebaseMissingKeys, getWebFirebaseConfigOrNull };

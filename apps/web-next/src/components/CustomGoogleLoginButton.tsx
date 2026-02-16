@@ -2,10 +2,16 @@
 
 import React, { useState } from 'react';
 import { FcGoogle } from 'react-icons/fc';
-import { signInGooglePopup, signInGoogleRedirect } from '@mytutorapp/shared/utils/firebaseAuthWeb';
+import {
+  getWebFirebaseConfigOrNull,
+  signInGooglePopup,
+  signInGoogleRedirect,
+} from '@mytutorapp/shared/utils/firebaseAuthWeb';
 
 const REDIRECT_MARKER = 'auth:googleRedirect';
 const BUSY_KEY = 'auth:busy';
+const CONFIG_MISSING_MESSAGE =
+  'Auth is temporarily unavailable (missing web config). Please contact support@daybreaklearner.com.';
 
 export default function CustomGoogleLoginButton({
   onSuccess,
@@ -23,6 +29,14 @@ export default function CustomGoogleLoginButton({
   };
 
   const handleGoogleLogin = async () => {
+    const { cfg, missingKeys } = getWebFirebaseConfigOrNull();
+    if (!cfg) {
+      const err = new Error(`Missing Firebase web config (${missingKeys.join(', ')})`);
+      onFailure?.(err);
+      alert(CONFIG_MISSING_MESSAGE);
+      return;
+    }
+
     try {
       setLoading(true);
       try {
@@ -53,7 +67,8 @@ export default function CustomGoogleLoginButton({
       sessionStorage.removeItem(BUSY_KEY);
       setLoading(false);
       onFailure?.(err instanceof Error ? err : undefined);
-      alert('Failed to start Google sign-in.');
+      const message = err instanceof Error ? err.message : '';
+      alert(message.includes('Missing Firebase web config') ? CONFIG_MISSING_MESSAGE : 'Failed to start Google sign-in.');
     }
   };
 

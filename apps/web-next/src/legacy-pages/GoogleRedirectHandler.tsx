@@ -20,6 +20,8 @@ type Props = {
 const REDIRECT_MARKER = 'auth:googleRedirect';
 const REDIRECT_STARTED = 'auth:googleRedirect:started';
 const BUSY_KEY = 'auth:busy';
+const CONFIG_MISSING_MESSAGE =
+  'Auth is temporarily unavailable (missing web config). Please contact support@daybreaklearner.com.';
 
 const isNextRoute = (href: string) => {
   const [path] = href.split(/[?#]/);
@@ -82,7 +84,7 @@ export default function GoogleRedirectHandler({ onSuccess, onFailure }: Props) {
       if (!auth) {
         const err = new Error('Missing Firebase web config');
         onFailure(err);
-        setError(err.message);
+        setError(CONFIG_MISSING_MESSAGE);
         clearBusy();
         return;
       }

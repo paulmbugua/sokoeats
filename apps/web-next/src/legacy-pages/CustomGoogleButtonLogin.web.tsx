@@ -3,15 +3,20 @@
 import React, { useState } from 'react';
 import { FcGoogle } from 'react-icons/fc';
 import { useRouter } from 'next/navigation';
-import { signInGooglePopup } from '@mytutorapp/shared/utils/firebaseAuthWeb';
+import {
+  debugFirebaseWebConfig,
+  getWebFirebaseConfigOrNull,
+  signInGooglePopup,
+} from '@mytutorapp/shared/utils/firebaseAuthWeb';
 import { siteUrl } from '@/lib/appOrigin';
-import { publicEnv } from '@/lib/env';
 
 type LoginMode = 'consumer' | 'institution';
 
 const REDIRECT_MARKER = 'auth:googleRedirect';
 const REDIRECT_STARTED = 'auth:googleRedirect:started';
 const BUSY_KEY = 'auth:busy';
+const CONFIG_MISSING_MESSAGE =
+  'Auth is temporarily unavailable (missing web config). Please contact support@daybreaklearner.com.';
 
 export default function CustomGoogleButtonLogin({
   onSuccess,
@@ -28,18 +33,10 @@ export default function CustomGoogleButtonLogin({
   const router = useRouter();
 
   const startRedirectFlow = () => {
-    console.log('[google-login] startRedirectFlow()', { mode, returnTo });
-
     try {
       sessionStorage.setItem(REDIRECT_MARKER, '1');
       sessionStorage.setItem(BUSY_KEY, '1');
       sessionStorage.removeItem(REDIRECT_STARTED);
-
-      console.log('[google-login] session markers set', {
-        [REDIRECT_MARKER]: sessionStorage.getItem(REDIRECT_MARKER),
-        [BUSY_KEY]: sessionStorage.getItem(BUSY_KEY),
-        [REDIRECT_STARTED]: sessionStorage.getItem(REDIRECT_STARTED),
-      });
     } catch (e) {
       console.warn('[google-login] sessionStorage failed (private mode?)', e);
     }
@@ -47,63 +44,36 @@ export default function CustomGoogleButtonLogin({
     const params = new URLSearchParams({ provider: 'google', mode });
     if (returnTo) params.set('returnTo', returnTo);
 
-    const redirectUrl = siteUrl(`/auth/google/callback?${params.toString()}`);
-    console.log('[google-login] redirecting to:', redirectUrl);
-
-    router.replace(redirectUrl);
+    router.replace(siteUrl(`/auth/google/callback?${params.toString()}`));
   };
 
   const handleGoogleLogin = async () => {
-    console.log('[google-login] click', {
-      mode,
-      returnTo,
-      isClient: typeof window !== 'undefined',
+    debugFirebaseWebConfig('google-login');
+    const { cfg, missingKeys } = getWebFirebaseConfigOrNull();
+    console.log('[google-login] firebase env resolver', {
+      hasConfig: Boolean(cfg),
+      missingKeys,
     });
 
-    // Check what Next bundled for client-side env (presence only).
-    // If apiKey=false here, web-next is NOT loading the env file at build time.
-    console.log('[google-login] env presence', {
-      apiKey: Boolean(publicEnv.firebaseApiKey),
-      authDomain: Boolean(publicEnv.firebaseAuthDomain),
-      projectId: Boolean(publicEnv.firebaseProjectId),
-      appId: Boolean(publicEnv.firebaseAppId),
-      senderId: Boolean(publicEnv.firebaseMessagingSenderId),
-    });
+    if (!cfg) {
+      const err = new Error(`Missing Firebase web config (${missingKeys.join(', ')})`);
+      onFailure?.(err);
+      alert(CONFIG_MISSING_MESSAGE);
+      return;
+    }
 
     try {
       setLoading(true);
-      console.log('[google-login] loading=true');
-
       try {
-        console.log('[google-login] calling signInGooglePopup()');
         const result = await signInGooglePopup();
-        console.log('[google-login] signInGooglePopup() resolved', {
-          hasUser: Boolean(result?.user),
-          uid: result?.user?.uid,
-          email: result?.user?.email,
-          providerData: result?.user?.providerData?.map((p) => p?.providerId),
-        });
-
         if (!result?.user) throw new Error('Missing Firebase web config');
-
-        console.log('[google-login] fetching idToken...');
         const idToken = await result.user.getIdToken(true);
-        console.log('[google-login] got idToken (length only)', {
-          len: idToken?.length,
-        });
-
-        console.log('[google-login] calling onSuccess(idToken)');
         await onSuccess(idToken);
-
-        console.log('[google-login] success, loading=false');
         setLoading(false);
         return;
       } catch (e: any) {
-        // This block is specifically for popup failures / unsupported env fallback to redirect
         const code = e?.code || '';
         const message = e?.message || String(e);
-        console.warn('[google-login] popup attempt failed', { code, message, e });
-
         const popupBlocked =
           code === 'auth/popup-blocked' ||
           code === 'auth/cancelled-popup-request' ||
@@ -113,53 +83,41 @@ export default function CustomGoogleButtonLogin({
           code === 'auth/operation-not-supported-in-this-environment' ||
           code === 'auth/operation-not-allowed';
 
-        // A very common misconfig: unauthorized domain / bad authDomain
-        // These errors matter because they indicate Firebase Auth settings issue.
         const likelyDomainIssue =
           code === 'auth/unauthorized-domain' ||
           /unauthorized domain/i.test(message) ||
           /authDomain/i.test(message);
 
         if (likelyDomainIssue) {
-          console.warn(
-            '[google-login] likely Firebase Auth domain/authorized-domains issue',
-            { code, message }
-          );
+          console.warn('[google-login] likely Firebase Auth domain/authorized-domains issue', {
+            code,
+            message,
+          });
         }
 
-        console.log('[google-login] decision flags', {
-          popupBlocked,
-          unsupported,
-          likelyDomainIssue,
-        });
-
         if (popupBlocked || unsupported) {
-          console.log('[google-login] falling back to redirect flow');
           startRedirectFlow();
           return;
         }
 
-        // Anything else: rethrow to outer catch
         throw e;
       }
     } catch (err) {
-      console.error('[google-login] hard failure (outer catch)', err);
+      console.error('[google-login] hard failure', err);
 
       try {
         sessionStorage.removeItem(REDIRECT_MARKER);
         sessionStorage.removeItem(BUSY_KEY);
         sessionStorage.removeItem(REDIRECT_STARTED);
-
-        console.log('[google-login] cleared session markers');
       } catch (e) {
         console.warn('[google-login] failed to clear session markers', e);
       }
 
       setLoading(false);
-      console.log('[google-login] loading=false');
 
       onFailure?.(err instanceof Error ? err : undefined);
-      alert('Failed to start Google sign-in.');
+      const message = err instanceof Error ? err.message : '';
+      alert(message.includes('Missing Firebase web config') ? CONFIG_MISSING_MESSAGE : 'Failed to start Google sign-in.');
     }
   };
 
