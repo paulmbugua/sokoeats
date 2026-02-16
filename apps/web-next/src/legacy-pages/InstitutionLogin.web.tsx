@@ -10,7 +10,7 @@ import CustomGoogleButtonLogin from '@/legacy-pages/CustomGoogleButtonLogin.web'
 import { useShopContext } from '@mytutorapp/shared/context';
 import { trackEvent, trackLogin, trackSignUp } from '../analytics/ga4';
 import GlobalAuthRedirect from '@/legacy-pages/GlobalAuthRedirect';
-import { siteUrl } from '@/lib/appOrigin';
+import { appUrl, siteUrl } from '@/lib/appOrigin';
 
 const LOGIN_BG =
   'https://images.unsplash.com/photo-1513258496099-48168024aec0?q=80&w=2000&auto=format&fit=crop';
@@ -106,9 +106,34 @@ const InstitutionLogin: React.FC = () => {
   }, [canSignUp, authMode]);
 
   const normalizeInternalDest = (d: string) => {
-    // ✅ critical: kill legacy basename redirects
-    if (d.startsWith('/app/')) return d.replace(/^\/app\//, '/');
-    return d;
+    const raw = (d || '').trim();
+    if (!raw) return '/org/profile';
+
+    let pathish = raw;
+    if (/^https?:\/\//i.test(pathish)) {
+      try {
+        const u = new URL(pathish);
+        pathish = `${u.pathname || '/'}${u.search || ''}${u.hash || ''}`;
+      } catch {
+        // keep raw input
+      }
+    }
+
+    if (pathish === '/org/profile' || pathish.startsWith('/org/profile?')) {
+      return siteUrl(pathish);
+    }
+
+    // Keep explicit /app deep links untouched.
+    if (pathish === '/app' || pathish.startsWith('/app/')) {
+      return pathish;
+    }
+
+    // Remaining /org/* tools still live in legacy SPA.
+    if (pathish === '/org' || pathish.startsWith('/org/')) {
+      return appUrl(pathish);
+    }
+
+    return pathish;
   };
 
   // —— Auth hook —— //

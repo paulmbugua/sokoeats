@@ -1,20 +1,22 @@
 /* eslint-disable no-console */
 import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 
-// ✅ Next.js-safe: literal reads so webpack can inline them into client bundle
+const processEnv = typeof process !== 'undefined' ? process.env : undefined;
+
+// ✅ Next.js-safe in web-next and guarded for Vite/browser runtimes
 const NEXT_PUBLIC = {
-  FIREBASE_API_KEY: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  FIREBASE_AUTH_DOMAIN: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  FIREBASE_PROJECT_ID: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  FIREBASE_STORAGE_BUCKET: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  FIREBASE_MESSAGING_SENDER_ID: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  FIREBASE_APP_ID: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
-  FIREBASE_MEASUREMENT_ID: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+  FIREBASE_API_KEY: processEnv?.NEXT_PUBLIC_FIREBASE_API_KEY,
+  FIREBASE_AUTH_DOMAIN: processEnv?.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  FIREBASE_PROJECT_ID: processEnv?.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  FIREBASE_STORAGE_BUCKET: processEnv?.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  FIREBASE_MESSAGING_SENDER_ID: processEnv?.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  FIREBASE_APP_ID: processEnv?.NEXT_PUBLIC_FIREBASE_APP_ID,
+  FIREBASE_MEASUREMENT_ID: processEnv?.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 // Vite env (safe when running in Vite)
 const viteEnv: Record<string, any> | undefined =
-  typeof window !== 'undefined' ? (globalThis as any)?.import?.meta?.env : undefined;
+  typeof import.meta !== 'undefined' ? ((import.meta as any)?.env ?? undefined) : undefined;
 
 export const getFirebaseEnv = (key: string) => {
   const envKey = String(key || '').trim();
@@ -24,10 +26,10 @@ export const getFirebaseEnv = (key: string) => {
   const nextValue = (NEXT_PUBLIC as any)[envKey];
 
   // ✅ Vite
-  const viteValue = (viteEnv as any)?.[`VITE_${envKey}`] ?? (process as any)?.env?.[`VITE_${envKey}`];
+  const viteValue = (viteEnv as any)?.[`VITE_${envKey}`] ?? processEnv?.[`VITE_${envKey}`];
 
   // ✅ Expo (best-effort)
-  const expoValue = (process as any)?.env?.[`EXPO_PUBLIC_${envKey}`];
+  const expoValue = processEnv?.[`EXPO_PUBLIC_${envKey}`];
 
   return String(nextValue ?? viteValue ?? expoValue ?? '').trim();
 };

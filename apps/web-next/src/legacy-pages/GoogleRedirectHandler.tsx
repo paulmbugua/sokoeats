@@ -27,6 +27,7 @@ const isNextRoute = (href: string) => {
     path === '/' ||
     path === '/login' ||
     path === '/institutions/login' ||
+    path === '/org/profile' ||
     path === '/profile/me' ||
     path === '/find-tutor' ||
     path === '/resources' ||

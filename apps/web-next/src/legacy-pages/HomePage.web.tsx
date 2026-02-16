@@ -309,7 +309,7 @@ const getHrefForItem = (c: any) => {
 // Dev logger that STILL returns href in prod
 const debugHrefFor = (item: any, section: string) => {
   const href = getHrefForItem(item);
-  if (process.env.NODE_ENV === 'development') {
+  if (publicEnv.debugHttp) {
     console.log('[HomePage] hrefForItem', {
       section,
       id: idOrSlug(item),

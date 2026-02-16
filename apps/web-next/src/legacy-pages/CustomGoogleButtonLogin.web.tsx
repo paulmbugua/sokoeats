@@ -5,6 +5,7 @@ import { FcGoogle } from 'react-icons/fc';
 import { useRouter } from 'next/navigation';
 import { signInGooglePopup } from '@mytutorapp/shared/utils/firebaseAuthWeb';
 import { siteUrl } from '@/lib/appOrigin';
+import { publicEnv } from '@/lib/env';
 
 type LoginMode = 'consumer' | 'institution';
 
@@ -62,11 +63,11 @@ export default function CustomGoogleButtonLogin({
     // Check what Next bundled for client-side env (presence only).
     // If apiKey=false here, web-next is NOT loading the env file at build time.
     console.log('[google-login] env presence', {
-      apiKey: Boolean(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
-      authDomain: Boolean(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN),
-      projectId: Boolean(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
-      appId: Boolean(process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
-      senderId: Boolean(process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
+      apiKey: Boolean(publicEnv.firebaseApiKey),
+      authDomain: Boolean(publicEnv.firebaseAuthDomain),
+      projectId: Boolean(publicEnv.firebaseProjectId),
+      appId: Boolean(publicEnv.firebaseAppId),
+      senderId: Boolean(publicEnv.firebaseMessagingSenderId),
     });
 
     try {

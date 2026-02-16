@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import ProfileDetailPage from '@/legacy-pages/ProfileDetailPage.web';
-import { siteUrl } from '@/lib/site';
+import { siteUrl } from '@/lib/appOrigin';
 import { publicEnv } from '@/lib/env';
 
 const descriptionFallback =
@@ -28,11 +28,16 @@ async function fetchProfileName(id: string) {
   return null;
 }
 
-export async function generateMetadata({ params }: { params: { id: string } }): Promise<Metadata> {
-  const name = await fetchProfileName(params.id);
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}): Promise<Metadata> {
+  const { id } = await params;
+  const name = await fetchProfileName(id);
   const title = name ? `Tutor Profile: ${name} | DayBreak` : 'Tutor Profile | DayBreak';
   const description = descriptionFallback;
-  const canonical = siteUrl(`/profile/${params.id}`);
+  const canonical = siteUrl(`/profile/${id}`);
 
   return {
     title,
