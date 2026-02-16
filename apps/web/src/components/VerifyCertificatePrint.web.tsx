@@ -173,7 +173,7 @@ const PrintableContent: React.FC<{
 
         <div className="mt-10 text-center text-xs text-[#94a3b8]">
           To verify offline, scan the QR code on the certificate or visit
-          https://yourdomain.example/verify/{certId}
+          https://daybreaklearner.com/verify/{certId}
         </div>
       </div>
 

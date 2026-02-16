@@ -8,6 +8,7 @@ import {
   getCertificate,
   verifyCertificate,
   verifyCertificateByNumber,
+  redirectVerifyByNumber,
   ogPreview,
   downloadCertificate,
   getStatus,
@@ -26,6 +27,7 @@ const CERTNO_RE = '[A-Za-z]{1,6}-[0-9]{8}';
 
 // ---- Public (no auth) ----
 router.get(`/verify/no/:certNo(${CERTNO_RE})`, verifyCertificateByNumber);
+router.get(`/verify/no/:certNo(${CERTNO_RE})/ui`, redirectVerifyByNumber);
 router.get(`/verify/:id(${UUID_RE})`, verifyCertificate);
 router.get(`/:id(${UUID_RE})/og`, ogPreview);
 

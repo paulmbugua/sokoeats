@@ -47,17 +47,22 @@ const VerifyCertificatePage: React.FC = () => {
   ];
 
   const printId = certIdFromData || certificateId; // print route expects UUID
+  
+  const canonicalPath = certNo
+  ? `/verify/no/${encodeURIComponent(certNo)}`
+  : certificateId
+    ? `/verify/${certificateId}`
+    : '/verify';
 
   return (
     <div className="min-h-screen bg-slate-50 text-[#0d141c]">
-      <SeoHead
+     <SeoHead
         title={pageTitle}
         description={pageDescription}
-        canonicalPath={`/verify/${certLabel || certificateId || ''}`}
+        canonicalPath={canonicalPath}
         ogImage={ogImage || undefined}
         jsonLd={jsonLd}
       />
-
       <div className="max-w-2xl mx-auto px-4 py-10">
         <header className="flex items-center gap-3 mb-8">
           <span className="size-6 text-[#0d141c]">

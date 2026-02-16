@@ -1,4 +1,5 @@
 /* eslint-disable no-console */
+//packages/shared/utils/firebaseAuthWeb.ts
 import { getAuthOrThrow, getFirebaseAppSafe } from './firebaseConfig';
 
 /**

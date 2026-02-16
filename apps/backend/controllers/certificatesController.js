@@ -873,38 +873,42 @@ export async function ogPreview(req, res) {
   }
 }
 
+// apps/backend/controllers/certificatesController.js
 export async function generateCertificate(req, res) {
   const t0 = Date.now();
+
+  // ✅ Base URLs (define ONCE to avoid "Cannot redeclare siteBase")
+  const apiBase = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const siteBase =
+    String(process.env.PUBLIC_SITE_URL || '').trim().replace(/\/+$/, '') || 'https://daybreaklearner.com';
+
   try {
     const { error, value } = generateSchema.validate(req.body);
     if (error) {
-      console.warn('[cert] generateCertificate validation failed', {
-        details: error.message,
-      });
+      console.warn('[cert] generateCertificate validation failed', { details: error.message });
       return res.status(400).json({ error: error.message });
     }
 
     const studentId = req.user.id;
     const { courseId } = value;
     console.log('[cert] generateCertificate start', { studentId, courseId });
+
     const authUuid = pickAuthUuidFromReqUser(req.user);
 
     const resolvedTrack = await resolveProgramTrack({
-  courseId,
-  authUuid,
-  reqTrack: value.programTrack,
-});
+      courseId,
+      authUuid,
+      reqTrack: value.programTrack,
+    });
 
-// ✅ never allow null (this is why your DB shows blanks)
-const programTrack = resolvedTrack || 'certificate';
-
+    // ✅ never allow null
+    const programTrack = resolvedTrack || 'certificate';
 
     console.log('[cert] resolved programTrack', {
       courseId,
       programTrack,
       hasAuthUuid: Boolean(authUuid),
     });
-
 
     // 0) Quick Cloudinary config sanity log
     const cldcfg = cloudinary.config() || {};
@@ -914,182 +918,171 @@ const programTrack = resolvedTrack || 'certificate';
       has_api_secret: !!cldcfg.api_secret,
     });
 
-    // 1) If a cert already exists, return it
+    // 1) If a cert already exists, return it (only if it's still "correct")
     console.time('[cert] generate:existing');
-   const existing = await pool.query(
-  `
-  SELECT *
-    FROM certificates
-   WHERE student_id = $1 AND course_id = $2
-   ORDER BY (url IS NOT NULL AND url <> '') DESC,
-            issued_at DESC NULLS LAST,
-            id DESC
-   LIMIT 1
-  `,
-  [studentId, courseId],
-);
 
-const existingRow = existing.rows[0] || null;
+    const existing = await pool.query(
+      `
+      SELECT *
+        FROM certificates
+       WHERE student_id = $1 AND course_id = $2
+       ORDER BY (url IS NOT NULL AND url <> '') DESC,
+                issued_at DESC NULLS LAST,
+                id DESC
+       LIMIT 1
+      `,
+      [studentId, courseId]
+    );
 
-// Compute the org brand we would like to use now (same as later in the handler)
-let currentOrgBrand = null;
-try {
-  currentOrgBrand = await getOrgBrandForCourse(studentId, courseId);
-} catch {}
+    const existingRow = existing.rows[0] || null;
 
-const desiredLogoId = publicIdFromPublicIdOrUrl(
-  currentOrgBrand?.logo_url || process.env.CERT_LOGO_PUBLIC_ID || '',
-);
-
-const hasCorrectBrand =
-  existingRow?.brand_logo_public_id &&
-  desiredLogoId &&
-  existingRow.brand_logo_public_id === desiredLogoId;
-
-// ✅ ADD THIS BLOCK (right here)
-const hasTrackCol =
-  existingRow && Object.prototype.hasOwnProperty.call(existingRow, 'program_track');
-
-const existingTrack = hasTrackCol
-  ? normalizeProgramTrack(existingRow.program_track)
-  : null;
-
-const hasPdfVerCol =
-  existingRow && Object.prototype.hasOwnProperty.call(existingRow, 'pdf_template_version');
-
-const existingPdfVer = hasPdfVerCol ? Number(existingRow.pdf_template_version || 0) : null;
-const pdfIsCurrent = !hasPdfVerCol || existingPdfVer >= CERT_PDF_TEMPLATE_VERSION;
-
-// ✅ Only reuse if: has file + correct brand + current template + track matches
-const shouldReuseExisting =
-  !!existingRow &&
-  !!existingRow.url &&
-  hasCorrectBrand &&
-  pdfIsCurrent &&
-  (!hasTrackCol || existingTrack === programTrack);
-
-if (shouldReuseExisting) {
-  const base =
-    process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
-
-  const brandNameForNo =
-    (currentOrgBrand?.name && String(currentOrgBrand.name).trim()) ||
-    process.env.CERT_BRAND_NAME ||
-    'DayBreak Academy';
-
-  let certNo = existingRow.certificate_number;
-
-  // Best-effort: ensure certificate_number is present for verify/no endpoint
-  if (!certNo) {
-    const issuedAt = existingRow?.issued_at
-      ? new Date(existingRow.issued_at)
-      : new Date();
-
-    const [uQ, cQ] = await Promise.all([
-      pool.query(`SELECT name FROM users WHERE id = $1`, [studentId]),
-      pool.query(`SELECT title FROM courses WHERE id = $1`, [courseId]),
-    ]);
-
-    const studentNameForNo = uQ.rows?.[0]?.name || 'Student';
-    const courseTitleForNo = cQ.rows?.[0]?.title || 'Course';
-
-    certNo = generateCertificateNumber({
-      brandName: brandNameForNo,
-      studentName: studentNameForNo,
-      courseTitle: courseTitleForNo,
-      issuedAt,
-      certificateId: existingRow.id,
-    });
-
+    // Compute the org brand we would like to use now (same as later in the handler)
+    let currentOrgBrand = null;
     try {
-      await pool.query(
-        `UPDATE certificates SET certificate_number = $1 WHERE id = $2`,
-        [certNo, existingRow.id],
-      );
-    } catch (e) {
-      if (String(e?.code) !== '42703') throw e;
+      currentOrgBrand = await getOrgBrandForCourse(studentId, courseId);
+    } catch {}
+
+    const desiredLogoId = publicIdFromPublicIdOrUrl(
+      currentOrgBrand?.logo_url || process.env.CERT_LOGO_PUBLIC_ID || ''
+    );
+
+    const hasCorrectBrand =
+      existingRow?.brand_logo_public_id &&
+      desiredLogoId &&
+      existingRow.brand_logo_public_id === desiredLogoId;
+
+    const hasTrackCol =
+      existingRow && Object.prototype.hasOwnProperty.call(existingRow, 'program_track');
+    const existingTrack = hasTrackCol ? normalizeProgramTrack(existingRow.program_track) : null;
+
+    const hasPdfVerCol =
+      existingRow && Object.prototype.hasOwnProperty.call(existingRow, 'pdf_template_version');
+    const existingPdfVer = hasPdfVerCol ? Number(existingRow.pdf_template_version || 0) : null;
+    const pdfIsCurrent = !hasPdfVerCol || existingPdfVer >= CERT_PDF_TEMPLATE_VERSION;
+
+    // ✅ Only reuse if: has file + correct brand + current template + track matches
+    const shouldReuseExisting =
+      !!existingRow &&
+      !!existingRow.url &&
+      hasCorrectBrand &&
+      pdfIsCurrent &&
+      (!hasTrackCol || existingTrack === programTrack);
+
+    console.timeEnd('[cert] generate:existing');
+
+    if (shouldReuseExisting) {
+      const brandNameForNo =
+        (currentOrgBrand?.name && String(currentOrgBrand.name).trim()) ||
+        process.env.CERT_BRAND_NAME ||
+        'DayBreak Academy';
+
+      let certNo = existingRow.certificate_number;
+
+      // Best-effort: ensure certificate_number exists (for /verify/no)
+      if (!certNo) {
+        const issuedAt = existingRow?.issued_at ? new Date(existingRow.issued_at) : new Date();
+
+        const [uQ, cQ] = await Promise.all([
+          pool.query(`SELECT name FROM users WHERE id = $1`, [studentId]),
+          pool.query(`SELECT title FROM courses WHERE id = $1`, [courseId]),
+        ]);
+
+        const studentNameForNo = uQ.rows?.[0]?.name || 'Student';
+        const courseTitleForNo = cQ.rows?.[0]?.title || 'Course';
+
+        certNo = generateCertificateNumber({
+          brandName: brandNameForNo,
+          studentName: studentNameForNo,
+          courseTitle: courseTitleForNo,
+          issuedAt,
+          certificateId: existingRow.id,
+        });
+
+        try {
+          await pool.query(`UPDATE certificates SET certificate_number = $1 WHERE id = $2`, [
+            certNo,
+            existingRow.id,
+          ]);
+        } catch (e) {
+          if (String(e?.code) !== '42703') throw e;
+        }
+      }
+
+      const download_url = `${apiBase}/api/certificates/${existingRow.id}/download`;
+      const verify_page_url = `${siteBase}/verify/${existingRow.id}`;
+      const verify_api_url = `${apiBase}/api/certificates/verify/${existingRow.id}`;
+
+      // API verify by cert no (JSON)
+      const verify_no_url = certNo
+        ? `${apiBase}/api/certificates/verify/no/${encodeURIComponent(certNo)}`
+        : null;
+
+      // ✅ UI redirect endpoint for cert no
+      const verify_no_ui_url = certNo
+        ? `${apiBase}/api/certificates/verify/no/${encodeURIComponent(certNo)}/ui`
+        : null;
+
+      return res.json({
+        ...existingRow,
+        certificate_number: certNo || existingRow.certificate_number || null,
+        download_url,
+        verify_page_url,
+        verify_api_url,
+        ...(verify_no_url ? { verify_no_url } : {}),
+        ...(verify_no_ui_url ? { verify_no_ui_url } : {}),
+      });
     }
-  }
-
-  return res.json({
-    ...existingRow,
-    certificate_number: certNo || existingRow.certificate_number || null,
-    download_url: `${base}/api/certificates/${existingRow.id}/download`,
-    ...(certNo
-      ? { verify_url: `${base}/api/certificates/verify/no/${encodeURIComponent(certNo)}` }
-      : {}),
-  });
-}
-
-
-
-    // else: fall through to regenerate & overwrite to pick up org branding
 
     // 2) Eligibility
     console.time('[cert] generate:eligibility');
     const eligible = await isEligibleForCertificate(studentId, courseId);
     console.timeEnd('[cert] generate:eligibility');
+
     if (!eligible) {
-      console.warn('[cert] generateCertificate -> not eligible', {
-        studentId,
-        courseId,
-      });
-      return res
-        .status(400)
-        .json({ error: 'Not eligible for certificate yet' });
+      console.warn('[cert] generateCertificate -> not eligible', { studentId, courseId });
+      return res.status(400).json({ error: 'Not eligible for certificate yet' });
     }
 
     // 2.25) Determine purchase/enrollment + org coverage
-    const [purchased, enrolled] = await Promise.all([
-      hasPurchasedCourse(studentId, courseId),
-      hasEnrollment(studentId, courseId),
+    await Promise.all([
+      hasPurchasedCourse(studentId, courseId).catch(() => false),
+      hasEnrollment(studentId, courseId).catch(() => false),
     ]);
-    const orgCovered = await hasOrgCoverForCourse(studentId, courseId).catch(
-      () => false,
-    );
+
+    const orgCovered = await hasOrgCoverForCourse(studentId, courseId).catch(() => false);
+
     if (orgCovered) {
       try {
-        await upsertEntitlement(pool, {
-          userId: studentId,
-          courseId,
-          extended: true,
-        });
+        await upsertEntitlement(pool, { userId: studentId, courseId, extended: true });
       } catch {}
     }
 
-    // 2.5) Certificate generation is free after passing the quiz.
-
+    // 2.5) Certificate generation requires passing quiz
     const coursePassMark = await resolveCoursePassMark(courseId);
-const quizResult = await getLatestQuizResult({
-  studentId,
-  authUuid,
-  courseId,
-  requiredPassMark: coursePassMark,
-});
+    const quizResult = await getLatestQuizResult({
+      studentId,
+      authUuid,
+      courseId,
+      requiredPassMark: coursePassMark,
+    });
 
-console.log('[cert] quizResult', {
-  coursePassMark,
-  quizResult,
-});
+    console.log('[cert] quizResult', { coursePassMark, quizResult });
 
-if (!quizResult.passed) {
-  return res.status(409).json({
-    error: 'PASS_REQUIRED',
-    message: `Pass the quiz (≥ ${quizResult.passMark}%) to generate your certificate.`,
-    scorePct: quizResult.scorePct,
-    passMark: quizResult.passMark,
-  });
-}
-
+    if (!quizResult.passed) {
+      return res.status(409).json({
+        error: 'PASS_REQUIRED',
+        message: `Pass the quiz (≥ ${quizResult.passMark}%) to generate your certificate.`,
+        scorePct: quizResult.scorePct,
+        passMark: quizResult.passMark,
+      });
+    }
 
     // 3) Names + per-course/tutor signature
     console.time('[cert] generate:lookupUserCourse');
-    const u = await pool.query(`SELECT name FROM users WHERE id = $1`, [
-      studentId,
-    ]);
+    const u = await pool.query(`SELECT name FROM users WHERE id = $1`, [studentId]);
     const c = await pool.query(
       `SELECT title, signature_public_id, tutor_id FROM courses WHERE id = $1`,
-      [courseId],
+      [courseId]
     );
     console.timeEnd('[cert] generate:lookupUserCourse');
 
@@ -1102,7 +1095,7 @@ if (!quizResult.passed) {
         console.time('[cert] generate:lookupTutorSig');
         const prof = await pool.query(
           `SELECT signature_public_id FROM profiles WHERE user_id = $1`,
-          [c.rows[0].tutor_id],
+          [c.rows[0].tutor_id]
         );
         console.timeEnd('[cert] generate:lookupTutorSig');
         tutorSignaturePublicId = prof.rows[0]?.signature_public_id || null;
@@ -1111,7 +1104,7 @@ if (!quizResult.passed) {
       }
     }
 
-    // 3.5) Org branding override (if user/course was covered by an org)
+    // 3.5) Org branding override
     let orgBrand = null;
     try {
       orgBrand = await getOrgBrandForCourse(studentId, courseId);
@@ -1119,102 +1112,76 @@ if (!quizResult.passed) {
       console.warn('[cert] org brand lookup failed', e?.message);
     }
 
-    // Prefer org values; fall back to ENV
     const brandName =
       (orgBrand?.name && String(orgBrand.name).trim()) ||
       process.env.CERT_BRAND_NAME ||
       'DayBreak Academy';
 
-    // Accept public_id OR full URL (the PDF service handles both)
     const logoSource = orgBrand?.logo_url || process.env.CERT_LOGO_PUBLIC_ID;
-    const registrarSigSource =
-      orgBrand?.signature_url || process.env.CERT_SIGNATURE_PUBLIC_ID;
+    const registrarSigSource = orgBrand?.signature_url || process.env.CERT_SIGNATURE_PUBLIC_ID;
+
     if (orgBrand?.instructor_signature_url) {
       tutorSignaturePublicId = orgBrand.instructor_signature_url;
     }
 
-    const headerTitle =
-      orgBrand?.certificate_title || 'Certificate of Completion';
+    const headerTitle = orgBrand?.certificate_title || 'Certificate of Completion';
 
-    // Build a single brand object so we reuse it for PDF and OG storage
     const brand = {
       name: brandName,
       logoPublicId: logoSource,
       signaturePublicId: registrarSigSource,
     };
 
-    // 4) Create DB row to get UUID (handle rare duplicate by reselecting)
-    console.time('[cert] generate:insertRow');
-    // 4) Use existing row if present (prevents duplicates / empty-url rows)
-let cert = existingRow;
+    // 4) Use existing row if present, else insert
+    let cert = existingRow;
 
-if (!cert) {
-  console.time('[cert] generate:insertRow');
-  let inserted;
-  try {
-    inserted = await pool.query(
-      `INSERT INTO certificates (id, student_id, course_id, url)
-       VALUES (gen_random_uuid(), $1, $2, '')
-       RETURNING *`,
-      [studentId, courseId],
-    );
-  } catch (e) {
-    console.warn('[cert] insert race? reselecting existing row', e?.message);
-    inserted = await pool.query(
-      `
-      SELECT *
-        FROM certificates
-       WHERE student_id = $1 AND course_id = $2
-       ORDER BY (url IS NOT NULL AND url <> '') DESC,
-                issued_at DESC NULLS LAST,
-                id DESC
-       LIMIT 1
-      `,
-      [studentId, courseId],
-    );
-    if (inserted.rowCount === 0) throw e;
-  }
-  console.timeEnd('[cert] generate:insertRow');
-  cert = inserted.rows[0];
-}
+    if (!cert) {
+      console.time('[cert] generate:insertRow');
+      let inserted;
+      try {
+        inserted = await pool.query(
+          `INSERT INTO certificates (id, student_id, course_id, url)
+           VALUES (gen_random_uuid(), $1, $2, '')
+           RETURNING *`,
+          [studentId, courseId]
+        );
+      } catch (e) {
+        console.warn('[cert] insert race? reselecting existing row', e?.message);
+        inserted = await pool.query(
+          `
+          SELECT *
+            FROM certificates
+           WHERE student_id = $1 AND course_id = $2
+           ORDER BY (url IS NOT NULL AND url <> '') DESC,
+                    issued_at DESC NULLS LAST,
+                    id DESC
+           LIMIT 1
+          `,
+          [studentId, courseId]
+        );
+        if (inserted.rowCount === 0) throw e;
+      }
+      console.timeEnd('[cert] generate:insertRow');
+      cert = inserted.rows[0];
+    }
 
-console.log('[cert] generateCertificate row', { certId: cert.id });
+    console.log('[cert] generateCertificate row', { certId: cert.id });
 
-    // 5) Build a public verification URL (no auth)
-    const base =
-  process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+    // 5) IssuedAt + Certificate Number + ✅ FRONTEND verify URL (QR points here)
+    const issuedAt = cert?.issued_at ? new Date(cert.issued_at) : new Date();
 
-// Use DB issued_at if present; else now
-const issuedAt = cert?.issued_at ? new Date(cert.issued_at) : new Date();
+    const certificateNumber = generateCertificateNumber({
+      brandName,
+      studentName,
+      courseTitle,
+      issuedAt,
+      certificateId: cert.id, // ✅ guarantees uniqueness
+    });
 
-// ✅ Generate the Cert No ONCE and persist it
-const certificateNumber = generateCertificateNumber({
-  brandName: brandName,        // or brand.name (same value)
-  studentName,
-  courseTitle,
-  issuedAt,
-  certificateId: cert.id,      // ✅ guarantees uniqueness
-});
+    // ✅ QR points to FRONTEND page by UUID (not server JSON)
+    const verificationUrl = `${siteBase}/verify/${cert.id}`;
 
-// ✅ QR & public verify should use Cert No (short)
-const verificationUrl = `${base}/api/certificates/verify/no/${encodeURIComponent(
-  certificateNumber,
-)}`;
-
-
-
-
-// ✅ Reuse stored certificate_number if your table already has it
-const storedCertNumber =
-  existingRow?.certificate_number ||
-  cert?.certificate_number ||
-  null;
-
-// ✅ Only generate when missing (uses your existing function)
-
-
-
-    // 6) Create in-memory PDF (branded for org when present)
+    // 6) Render PDF
     console.time('[cert] generate:renderPdf');
     const buffer = await generateCertificatePdfBuffer({
       studentName,
@@ -1224,61 +1191,44 @@ const storedCertNumber =
       programTrack,
       verificationUrl,
       titleText: headerTitle,
-      brand, // <-- unified brand payload
+      brand,
       tutorSignaturePublicId,
     });
     console.timeEnd('[cert] generate:renderPdf');
-    console.log('[cert] pdf buffer bytes', { size: buffer?.byteLength ?? 0 });
 
     if (!buffer || !buffer.length) {
       console.error('[cert] empty PDF buffer generated');
-      return res
-        .status(500)
-        .json({ error: 'Failed to generate certificate PDF' });
+      return res.status(500).json({ error: 'Failed to generate certificate PDF' });
     }
 
     // 7) Upload to Cloudinary
     console.time('[cert] generate:cloudinaryUpload');
+
     const uploadPromise = new Promise((resolve, reject) => {
       const upload = cloudinary.uploader.upload_stream(
         {
-          resource_type: 'image', // supports pg_1 & overlays on PDFs
+          resource_type: 'image',
           folder: 'certificates',
           public_id: cert.id,
           format: 'pdf',
           overwrite: true,
         },
         (err, result) => {
-          if (err) {
-            console.error('[cert] cloudinary upload error', err);
-            reject(err);
-          } else {
-            console.log('[cert] cloudinary upload success', {
-              public_id: result?.public_id,
-              version: result?.version,
-              secure_url: result?.secure_url,
-            });
-            resolve(result.secure_url);
-          }
-        },
+          if (err) return reject(err);
+          resolve(result?.secure_url);
+        }
       );
       Readable.from(buffer).pipe(upload);
     });
 
     const uploadTimeoutMs = Number(process.env.CERT_UPLOAD_TIMEOUT_MS || 45000);
-    const timeoutPromise = new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error('Cloudinary upload timed out')),
-        uploadTimeoutMs,
-      );
+    const url = await Promise.race([
+      uploadPromise,
+      new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Cloudinary upload timed out')), uploadTimeoutMs)
+      ),
+    ]);
 
-      uploadPromise.finally(() => {
-        clearTimeout(timer);
-        resolve(null);
-      });
-    });
-
-    const url = await Promise.race([uploadPromise, timeoutPromise]);
     console.timeEnd('[cert] generate:cloudinaryUpload');
 
     if (!url) {
@@ -1286,60 +1236,75 @@ const storedCertNumber =
       return res.status(502).json({ error: 'Upload failed' });
     }
 
-    // 8) Save URL + per-certificate brand logo public_id for OG previews
-    // Prefer a real public_id derived from what we actually used; fallback to env default.
-   const brandLogoPublicIdForOg =
-  publicIdFromPublicIdOrUrl(brand.logoPublicId) ||
-  process.env.CERT_LOGO_PUBLIC_ID ||
-  'branding/logo';
+    // 8) Persist URL + brand logo public_id for OG + cert number + track/template
+    const brandLogoPublicIdForOg =
+      publicIdFromPublicIdOrUrl(brand.logoPublicId) ||
+      process.env.CERT_LOGO_PUBLIC_ID ||
+      'branding/logo';
 
-console.time('[cert] generate:updateUrl');
+    console.time('[cert] generate:updateUrl');
 
-let updated;
-try {
-  updated = await pool.query(
-  `
-  UPDATE certificates
-     SET url = $1,
-         brand_logo_public_id = $2,
-         certificate_number = COALESCE(certificate_number, $3),
-         program_track = COALESCE($4, program_track),
-         pdf_template_version = GREATEST(COALESCE(pdf_template_version, 0), $5)
-   WHERE id = $6
-   RETURNING *
-  `,
-  [url, brandLogoPublicIdForOg, certificateNumber, programTrack, CERT_PDF_TEMPLATE_VERSION, cert.id],
-);
+    let updated;
+    try {
+      updated = await pool.query(
+        `
+        UPDATE certificates
+           SET url = $1,
+               brand_logo_public_id = $2,
+               certificate_number = COALESCE(certificate_number, $3),
+               program_track = COALESCE($4, program_track),
+               pdf_template_version = GREATEST(COALESCE(pdf_template_version, 0), $5)
+         WHERE id = $6
+         RETURNING *
+        `,
+        [url, brandLogoPublicIdForOg, certificateNumber, programTrack, CERT_PDF_TEMPLATE_VERSION, cert.id]
+      );
+    } catch (e) {
+      if (String(e?.code) === '42703') {
+        updated = await pool.query(
+          `
+          UPDATE certificates
+             SET url = $1,
+                 brand_logo_public_id = $2
+           WHERE id = $3
+           RETURNING *
+          `,
+          [url, brandLogoPublicIdForOg, cert.id]
+        );
+      } else {
+        throw e;
+      }
+    }
 
-} catch (e) {
-  // If your certificates table doesn't have these columns in some envs, don't break generation.
-  if (String(e?.code) === '42703') {
-    updated = await pool.query(
-      `
-      UPDATE certificates
-         SET url = $1,
-             brand_logo_public_id = $2
-       WHERE id = $3
-       RETURNING *
-      `,
-      [url, brandLogoPublicIdForOg, cert.id],
-    );
-  } else {
-    throw e;
-  }
-}
-
-console.timeEnd('[cert] generate:updateUrl');
+    console.timeEnd('[cert] generate:updateUrl');
 
     const row = updated.rows[0];
-    const download_url = `${base}/api/certificates/${row.id}/download`;
 
-    console.log('[cert] generateCertificate done', {
-      certId: cert.id,
-      totalMs: Date.now() - t0,
+    // ✅ Return both UI + API verify URLs + cert-no JSON + cert-no UI redirect
+    const download_url = `${apiBase}/api/certificates/${row.id}/download`;
+    const verify_page_url = `${siteBase}/verify/${row.id}`;
+    const verify_api_url = `${apiBase}/api/certificates/verify/${row.id}`;
+
+    // JSON API (by cert number)
+    const verify_no_url = certificateNumber
+      ? `${apiBase}/api/certificates/verify/no/${encodeURIComponent(certificateNumber)}`
+      : null;
+
+    // ✅ UI redirect endpoint (by cert number)
+    const verify_no_ui_url = certificateNumber
+      ? `${apiBase}/api/certificates/verify/no/${encodeURIComponent(certificateNumber)}/ui`
+      : null;
+
+    console.log('[cert] generateCertificate done', { certId: cert.id, totalMs: Date.now() - t0 });
+
+    return res.json({
+      ...row,
+      download_url,
+      verify_page_url,
+      verify_api_url,
+      ...(verify_no_url ? { verify_no_url } : {}),
+      ...(verify_no_ui_url ? { verify_no_ui_url } : {}),
     });
-
-    return res.json({ ...row, download_url });
   } catch (err) {
     try {
       const cfg = cloudinary.config();
@@ -1351,9 +1316,7 @@ console.timeEnd('[cert] generate:updateUrl');
     } catch {
       console.error('[cert] generateCertificate error (no cfg)', err);
     }
-    return res
-      .status(500)
-      .json({ error: err?.message || 'Failed to generate certificate' });
+    return res.status(500).json({ error: err?.message || 'Failed to generate certificate' });
   }
 }
 
@@ -1986,5 +1949,42 @@ export async function verifyCertificateByNumber(req, res) {
   } catch (err) {
     logErr('[cert] verifyCertificateByNumber error', err);
     return res.status(500).json({ valid: false, error: err.message });
+  }
+}
+
+export async function redirectVerifyByNumber(req, res) {
+  try {
+    const certNo = normalizeCertNo(req.params.certNo);
+
+    if (!isValidCertNo(certNo)) {
+      // If someone scans garbage, send them to a friendly UI page (optional)
+      const siteBase =
+        String(process.env.PUBLIC_SITE_URL || '').trim().replace(/\/+$/, '') ||
+        'https://daybreaklearner.com';
+      return res.redirect(302, `${siteBase}/verify?error=invalid`);
+    }
+
+    const { rows } = await pool.query(
+      `SELECT id FROM certificates WHERE certificate_number = $1 LIMIT 1`,
+      [certNo]
+    );
+
+    const siteBase =
+      String(process.env.PUBLIC_SITE_URL || '').trim().replace(/\/+$/, '') ||
+      'https://daybreaklearner.com';
+
+    if (!rows.length) {
+      // Optional: a UI route that shows "not found"
+      return res.redirect(302, `${siteBase}/verify?error=not_found&no=${encodeURIComponent(certNo)}`);
+    }
+
+    // ✅ Redirect scanners to the pretty UI verify page by UUID
+    return res.redirect(302, `${siteBase}/verify/${rows[0].id}`);
+  } catch (err) {
+    console.error('[cert] redirectVerifyByNumber error', err);
+    const siteBase =
+      String(process.env.PUBLIC_SITE_URL || '').trim().replace(/\/+$/, '') ||
+      'https://daybreaklearner.com';
+    return res.redirect(302, `${siteBase}/verify?error=server`);
   }
 }

@@ -1,17 +1,20 @@
 /* eslint-disable no-console */
+//packages/shared/utils/firebaseConfig.ts
 import { getApp, getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 
-const processEnv = typeof process !== 'undefined' ? process.env : undefined;
+// ✅ Safe env object (won’t throw in browser)
+const nodeEnv: Record<string, any> =
+  (typeof globalThis !== 'undefined' && (globalThis as any).process?.env) ? (globalThis as any).process.env : {};
 
-// ✅ Next.js-safe in web-next and guarded for Vite/browser runtimes
+// ✅ Next.js values (works in Next build; safe in Vite because nodeEnv is {})
 const NEXT_PUBLIC = {
-  FIREBASE_API_KEY: processEnv?.NEXT_PUBLIC_FIREBASE_API_KEY,
-  FIREBASE_AUTH_DOMAIN: processEnv?.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  FIREBASE_PROJECT_ID: processEnv?.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  FIREBASE_STORAGE_BUCKET: processEnv?.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  FIREBASE_MESSAGING_SENDER_ID: processEnv?.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  FIREBASE_APP_ID: processEnv?.NEXT_PUBLIC_FIREBASE_APP_ID,
-  FIREBASE_MEASUREMENT_ID: processEnv?.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
+  FIREBASE_API_KEY: nodeEnv.NEXT_PUBLIC_FIREBASE_API_KEY,
+  FIREBASE_AUTH_DOMAIN: nodeEnv.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  FIREBASE_PROJECT_ID: nodeEnv.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  FIREBASE_STORAGE_BUCKET: nodeEnv.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  FIREBASE_MESSAGING_SENDER_ID: nodeEnv.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  FIREBASE_APP_ID: nodeEnv.NEXT_PUBLIC_FIREBASE_APP_ID,
+  FIREBASE_MEASUREMENT_ID: nodeEnv.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID,
 };
 
 // Vite env (safe when running in Vite)
@@ -22,17 +25,19 @@ export const getFirebaseEnv = (key: string) => {
   const envKey = String(key || '').trim();
   if (!envKey) return '';
 
-  // ✅ Next (literal map)
   const nextValue = (NEXT_PUBLIC as any)[envKey];
 
-  // ✅ Vite
-  const viteValue = (viteEnv as any)?.[`VITE_${envKey}`] ?? processEnv?.[`VITE_${envKey}`];
+  // ✅ Vite (ONLY import.meta.env; do NOT touch process.env here)
+  const viteValue = (viteEnv as any)?.[`VITE_${envKey}`];
 
-  // ✅ Expo (best-effort)
-  const expoValue = processEnv?.[`EXPO_PUBLIC_${envKey}`];
+  // ✅ Expo / RN (best-effort; safe)
+  const expoValue = nodeEnv?.[`EXPO_PUBLIC_${envKey}`];
 
-  return String(nextValue ?? viteValue ?? expoValue ?? '').trim();
+  const v = String(nextValue ?? viteValue ?? expoValue ?? '').trim();
+  if (v === 'undefined' || v === 'null') return '';
+  return v;
 };
+
 
 export const firebaseEnv = {
   apiKey: getFirebaseEnv('FIREBASE_API_KEY'),
@@ -85,10 +90,6 @@ export const getFirebaseAppSafe = (): FirebaseApp | null => {
   }
 };
 
-/**
- * ONLY returns an auth instance on the client.
- * NOTE: persistence is handled in firebaseAuthWeb.ts (Option A)
- */
 export const getAuthOrThrow = async () => {
   if (typeof window === 'undefined') throw new Error('Firebase auth is unavailable during SSR.');
 
