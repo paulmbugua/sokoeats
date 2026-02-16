@@ -14,12 +14,6 @@ import OrgShareDialog from '@/components/org/OrgShareDialog';
 
 import ControlsPanel, { type SizePresetKey, type TrackKey } from './RobotTeacherControls';
 import LessonAndQuizPane from './RobotTeacherLessonAndQuiz';
-import HeroStudioHeader from './robot-teacher/HeroStudioHeader';
-import StickyStartBar from './robot-teacher/StickyStartBar';
-import CourseCardGrid from './robot-teacher/CourseCardGrid';
-import StudioSidePanel from './robot-teacher/StudioSidePanel';
-import WhyChooseSection from './robot-teacher/WhyChooseSection';
-import StatsCards from './robot-teacher/StatsCards';
 import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
 import { getProgramTrackRequirements } from '@mytutorapp/shared/utils/programTrack';
 import { getRequiredWeeks, normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrackRequirements';
@@ -287,47 +281,129 @@ function CourseList({
         )}
       </div>
 
-      <div className="hidden md:block">
-        <div
-          className="space-y-2 max-h-[70vh] overflow-auto pr-1"
-          style={{ scrollbarWidth: 'thin' }}
-        >
-          {visible.length ? (
-            visible.map((l, i) => {
-              const active = l.id === activeId;
-              return (
-                <button
-                  key={l.id}
-                  onClick={() => onSelect(l.id)}
-                  className={`w-full text-left px-3 py-2 rounded-lg transition
-                  ${
-                    active
-                      ? 'bg-indigo-50 text-indigo-700 ring-1 ring-indigo-200 dark:bg-indigo-600/40 dark:text-white dark:ring-indigo-500'
-                      : 'bg-white ring-1 ring-gray-200 hover:bg-gray-50 dark:bg-white/5 dark:ring-white/10 dark:text-white/90 dark:hover:bg-white/10'
-                  }`}
-                  title={l.blurb || l.title}
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-gray-500 dark:text-white/60">
-                      {String(i + 1).padStart(2, '0')}
-                    </span>
-                    <span className="truncate">{l.title}</span>
-                  </div>
-                  {l.blurb ? (
-                    <div className="text-[11px] text-gray-500 dark:text-white/60 line-clamp-2 mt-0.5">
-                      {l.blurb}
+<div className="hidden md:block">
+  <div
+    className="grid grid-cols-1 gap-3 max-h-[70vh] overflow-auto pr-1"
+    style={{ scrollbarWidth: 'thin' }}
+  >
+    {visible.length ? (
+      visible.map((l, i) => {
+        const active = l.id === activeId;
+
+        return (
+          <button
+            key={l.id}
+            onClick={() => onSelect(l.id)}
+            title={l.blurb || l.title}
+            className={[
+              'group relative w-full text-left rounded-2xl p-3 transition',
+              'ring-1 shadow-sm',
+              active
+                ? 'bg-indigo-50 ring-indigo-200 shadow-indigo-100/60 dark:bg-indigo-500/15 dark:ring-indigo-400/25'
+                : 'bg-white ring-gray-200 hover:ring-gray-300 hover:-translate-y-[1px] hover:shadow dark:bg-white/5 dark:ring-white/10 dark:hover:bg-white/8',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60',
+            ].join(' ')}
+          >
+            {/* subtle corner glow */}
+            <div
+              className={[
+                'pointer-events-none absolute inset-0 rounded-2xl opacity-0 transition-opacity',
+                active ? 'opacity-100' : 'group-hover:opacity-100',
+              ].join(' ')}
+              style={{
+                background:
+                  'radial-gradient(600px circle at 20% 0%, rgba(99,102,241,0.15), transparent 45%)',
+              }}
+            />
+
+            <div className="relative flex items-start gap-3">
+              {/* left index / icon */}
+              <div
+                className={[
+                  'mt-0.5 flex h-9 w-9 items-center justify-center rounded-xl ring-1 text-xs font-black',
+                  active
+                    ? 'bg-indigo-600 text-white ring-indigo-500/40'
+                    : 'bg-gray-50 text-gray-700 ring-gray-200 dark:bg-white/5 dark:text-white/80 dark:ring-white/10',
+                ].join(' ')}
+              >
+                {String(i + 1).padStart(2, '0')}
+              </div>
+
+              <div className="min-w-0 flex-1">
+                {/* top row: title + active badge */}
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div
+                      className={[
+                        'font-extrabold tracking-tight',
+                        active ? 'text-indigo-800 dark:text-indigo-100' : 'text-gray-900 dark:text-white',
+                      ].join(' ')}
+                    >
+                      <span className="line-clamp-2">{l.title}</span>
                     </div>
-                  ) : null}
-                </button>
-              );
-            })
-          ) : (
-            <div className="text-sm text-gray-500 dark:text-white/60">
-              No courses found. Try another search.
+
+                    {l.blurb ? (
+                      <div className="mt-1 text-[12px] leading-snug text-gray-600 dark:text-white/65 line-clamp-2">
+                        {l.blurb}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-[12px] text-gray-500 dark:text-white/55">
+                        Audio + captions + quiz + certificate
+                      </div>
+                    )}
+                  </div>
+
+                  {active ? (
+                    <span className="shrink-0 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold
+                                     bg-indigo-600 text-white ring-1 ring-indigo-500/40">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-300" />
+                      Selected
+                    </span>
+                  ) : (
+                    <span className="shrink-0 inline-flex items-center rounded-full px-2 py-1 text-[10px] font-semibold
+                                     bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200
+                                     dark:bg-emerald-500/10 dark:text-emerald-200 dark:ring-emerald-400/20">
+                      NEW
+                    </span>
+                  )}
+                </div>
+
+                {/* badges row */}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold
+                                   bg-gray-50 text-gray-700 ring-1 ring-gray-200
+                                   dark:bg-white/5 dark:text-white/70 dark:ring-white/10">
+                    🎧 Audio
+                  </span>
+
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold
+                                   bg-gray-50 text-gray-700 ring-1 ring-gray-200
+                                   dark:bg-white/5 dark:text-white/70 dark:ring-white/10">
+                    📝 Quiz
+                  </span>
+
+                  <span className="inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-semibold
+                                   bg-gray-50 text-gray-700 ring-1 ring-gray-200
+                                   dark:bg-white/5 dark:text-white/70 dark:ring-white/10">
+                    🏅 Certificate
+                  </span>
+
+                  <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-semibold text-gray-500 dark:text-white/55">
+                    <span className="opacity-70">Start →</span>
+                  </span>
+                </div>
+              </div>
             </div>
-          )}
-        </div>
+          </button>
+        );
+      })
+    ) : (
+      <div className="text-sm text-gray-500 dark:text-white/60">
+        No courses found. Try another search.
       </div>
+    )}
+  </div>
+</div>
     </div>
   );
 }
@@ -2024,74 +2100,12 @@ fireAiGenerateLessonOnce({
     await onStart();
   }, [selectedCourse, clearSelectedCourseCacheNow, selectCourse, onStart]);
 
-  const viewMode = hasAIContent ? 'studio' : 'discover';
-  const programTrackLabel = getProgramTrackRequirements(programTrack).label;
-  const stepLabel = grade?.passed
-    ? 'Certificate unlocked'
-    : grade
-      ? 'Quiz graded'
-      : quiz?.questions?.length
-        ? 'Quiz ready'
-        : hasAIContent
-          ? 'Lesson ready'
-          : step === 'narrating'
-            ? 'Narrating'
-            : step === 'outlining'
-              ? 'Building outline'
-              : 'Ready';
-  const recommendedCourses = (topCourses || []).slice(0, 8).map((c: TopCourse) => ({
-    id: c.id,
-    title: c.title,
-    blurb: getCourseBlurb(c),
-    tag: 'Recommended',
-  }));
-  const popularCourses = (topCourses || []).slice(8, 16).map((c: TopCourse) => ({
-    id: c.id,
-    title: c.title,
-    blurb: getCourseBlurb(c),
-    tag: 'Popular now',
-  }));
-  const allCoursesRef = useRef<HTMLDivElement | null>(null);
-  const selectCourseUi = (id: string) => {
-    const found = (topCourses || []).find((c) => c.id === id) || null;
-    dlog('CourseList.onSelect', { id, title: found?.title });
-    setPreparing(false);
-    setActiveRunId(null);
-    setBlockedUntilStart(true);
-    setLockedSsml(null);
-    selectedCourseIdRef.current = found?.id ? normId(found.id) : normId(id);
-    selectCourse(found);
-  };
-
   return (
-    <div className="text-darkText dark:text-white pb-24 md:pb-0">
-      <HeroStudioHeader
-        title="AI Tutor Studio"
-        subtitle="Create and learn with premium AI lessons, instant quizzes, and certificate-ready outcomes."
-        pills={[
-          { label: 'Audio + captions', icon: '🎧' },
-          { label: 'Quiz + grading', icon: '📝' },
-          { label: 'Certificate-ready', icon: '🏅' },
-          { label: 'Org classroom flow', icon: '🏫' },
-        ]}
-        nowStudying={{
-          title: displayTitle,
-          blurb: selectedCourse ? getCourseBlurb(selectedCourse) : undefined,
-          stepLabel,
-          progressHint: hasAIContent ? `Lesson ${currentIdx + 1} of ${Math.max(1, outline.length || safeLessons)}` : 'Pick a course or enter a custom topic to begin.',
-          programTrackLabel,
-          minutesEffective,
-          lessonsEffective: safeLessons,
-          quizEffective: safeQuiz,
-        }}
-        isOrgFlow={isOrgFlow}
-        isSandbox={isSandboxSource}
-        degraded={Boolean(gateNotice)}
-      />
-      <div className={`mt-4 grid grid-cols-1 gap-4 sm:gap-6 ${viewMode === 'studio' ? 'md:grid-cols-12' : ''}`}>
+    <div className="text-darkText dark:text-white">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6">
         {/* LEFT */}
         <div
-          className={`order-1 space-y-4 sm:space-y-6 ${viewMode === 'studio' ? (!isLockedLearner ? 'md:col-span-8' : 'md:col-span-12') : 'md:col-span-12'}`}
+          className={`order-1 space-y-4 sm:space-y-6 ${!isLockedLearner ? 'md:col-span-8' : 'md:col-span-12'}`}
         >
           <header className="space-y-1">
             <div className="space-y-2">
@@ -2360,37 +2374,7 @@ onSelectCourse={(id) => {
 />
 
 
-          {viewMode === 'discover' ? (
-            <>
-              <CourseCardGrid
-                title="Recommended"
-                items={recommendedCourses}
-                activeId={selectedCourse?.id || null}
-                onSelect={selectCourseUi}
-                onStartSelected={async (id) => {
-                  selectCourseUi(id);
-                  await onStart();
-                }}
-              />
-              {popularCourses.length ? (
-                <CourseCardGrid
-                  title="Popular now"
-                  items={popularCourses}
-                  activeId={selectedCourse?.id || null}
-                  onSelect={selectCourseUi}
-                  onStartSelected={async (id) => {
-                    selectCourseUi(id);
-                    await onStart();
-                  }}
-                />
-              ) : null}
-              <StatsCards courseCount={topCourses?.length || 0} />
-              <WhyChooseSection />
-            </>
-          ) : null}
-
           {/* Classroom + Outline + Quiz */}
-          {viewMode === 'studio' ? (
           <LessonAndQuizPane
             compactPlayer={compactPlayer}
             showCourseList={!isLockedLearner}
@@ -2489,35 +2473,12 @@ onSelectCourse={(id) => {
               });
             }}
           />
-          ) : null}
         </div>
 
-        {viewMode === 'studio' ? (
+        {/* RIGHT: course list */}
+        {!isLockedLearner && (
           <aside className="md:col-span-4 order-2">
-            <StudioSidePanel
-              displayTitle={displayTitle}
-              programTrackLabel={programTrackLabel}
-              minutes={minutesEffective}
-              lessons={safeLessons}
-              quiz={safeQuiz}
-              step={step}
-              grade={grade as any}
-              outline={outline as any[]}
-              currentIdx={currentIdx}
-              onJumpToIndex={(idx) => setCurrentIdx(idx)}
-              canShareUi={canShareUi}
-              onOpenShare={() => {
-                setIsMaximized(false);
-                setShareOpen(true);
-              }}
-              isLockedLearner={isLockedLearner}
-              showDegradedNotice={Boolean(gateNotice)}
-            />
-          </aside>
-        ) : (
-          <aside className="order-2 md:col-span-12" ref={allCoursesRef}>
-            <div className="space-y-3">
-              <h3 className="text-lg font-semibold">All courses</h3>
+            <div className="md:sticky md:top-20 space-y-3">
               <CourseList
                 items={(topCourses || []).map((c: TopCourse) => ({
                   id: c.id,
@@ -2525,7 +2486,19 @@ onSelectCourse={(id) => {
                   blurb: getCourseBlurb(c),
                 }))}
                 activeId={selectedCourse?.id || null}
-                onSelect={selectCourseUi}
+                onSelect={(id) => {
+                const found = (topCourses || []).find((c) => c.id === id) || null;
+
+                dlog('CourseList.onSelect', { id, title: found?.title });
+                setPreparing(false);
+                setActiveRunId(null);
+                setBlockedUntilStart(true);
+                setLockedSsml(null);
+
+                selectedCourseIdRef.current = found?.id ? normId(found.id) : normId(id); // ✅ lock immediately
+                selectCourse(found);
+              }}
+
                 onRefresh={refreshCourseList}
                 onLoadMore={handleLoadMore}
                 hasMore={Boolean(hasMoreCourses)}
@@ -2534,23 +2507,7 @@ onSelectCourse={(id) => {
           </aside>
         )}
       </div>
-
-      <StickyStartBar
-        show={viewMode === 'discover'}
-        canStartNow={canStartNow}
-        busy={ctaBusy}
-        title={displayTitle}
-        meta={{
-          programTrackLabel,
-          minutes: minutesEffective,
-          lessons: safeLessons,
-          quiz: safeQuiz,
-        }}
-        onStart={onStart}
-        onOpenAllCourses={() => allCoursesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-      />
   
-
  {llUnlockOpen && llUnlockCtx ? (
   <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
     {/* Backdrop */}
