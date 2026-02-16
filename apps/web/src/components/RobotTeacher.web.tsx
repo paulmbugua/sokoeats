@@ -14,6 +14,12 @@ import OrgShareDialog from '@/components/org/OrgShareDialog';
 
 import ControlsPanel, { type SizePresetKey, type TrackKey } from './RobotTeacherControls';
 import LessonAndQuizPane from './RobotTeacherLessonAndQuiz';
+import HeroStudioHeader from './robot-teacher/HeroStudioHeader';
+import StickyStartBar from './robot-teacher/StickyStartBar';
+import CourseCardGrid from './robot-teacher/CourseCardGrid';
+import StudioSidePanel from './robot-teacher/StudioSidePanel';
+import WhyChooseSection from './robot-teacher/WhyChooseSection';
+import StatsCards from './robot-teacher/StatsCards';
 import { resolveCourseTitleInfo } from '@mytutorapp/shared/utils/resolveCourseTitle';
 import { getProgramTrackRequirements } from '@mytutorapp/shared/utils/programTrack';
 import { getRequiredWeeks, normalizeProgramTrack } from '@mytutorapp/shared/utils/programTrackRequirements';
@@ -2018,12 +2024,74 @@ fireAiGenerateLessonOnce({
     await onStart();
   }, [selectedCourse, clearSelectedCourseCacheNow, selectCourse, onStart]);
 
+  const viewMode = hasAIContent ? 'studio' : 'discover';
+  const programTrackLabel = getProgramTrackRequirements(programTrack).label;
+  const stepLabel = grade?.passed
+    ? 'Certificate unlocked'
+    : grade
+      ? 'Quiz graded'
+      : quiz?.questions?.length
+        ? 'Quiz ready'
+        : hasAIContent
+          ? 'Lesson ready'
+          : step === 'narrating'
+            ? 'Narrating'
+            : step === 'outlining'
+              ? 'Building outline'
+              : 'Ready';
+  const recommendedCourses = (topCourses || []).slice(0, 8).map((c: TopCourse) => ({
+    id: c.id,
+    title: c.title,
+    blurb: getCourseBlurb(c),
+    tag: 'Recommended',
+  }));
+  const popularCourses = (topCourses || []).slice(8, 16).map((c: TopCourse) => ({
+    id: c.id,
+    title: c.title,
+    blurb: getCourseBlurb(c),
+    tag: 'Popular now',
+  }));
+  const allCoursesRef = useRef<HTMLDivElement | null>(null);
+  const selectCourseUi = (id: string) => {
+    const found = (topCourses || []).find((c) => c.id === id) || null;
+    dlog('CourseList.onSelect', { id, title: found?.title });
+    setPreparing(false);
+    setActiveRunId(null);
+    setBlockedUntilStart(true);
+    setLockedSsml(null);
+    selectedCourseIdRef.current = found?.id ? normId(found.id) : normId(id);
+    selectCourse(found);
+  };
+
   return (
-    <div className="text-darkText dark:text-white">
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-4 sm:gap-6">
+    <div className="text-darkText dark:text-white pb-24 md:pb-0">
+      <HeroStudioHeader
+        title="AI Tutor Studio"
+        subtitle="Create and learn with premium AI lessons, instant quizzes, and certificate-ready outcomes."
+        pills={[
+          { label: 'Audio + captions', icon: '🎧' },
+          { label: 'Quiz + grading', icon: '📝' },
+          { label: 'Certificate-ready', icon: '🏅' },
+          { label: 'Org classroom flow', icon: '🏫' },
+        ]}
+        nowStudying={{
+          title: displayTitle,
+          blurb: selectedCourse ? getCourseBlurb(selectedCourse) : undefined,
+          stepLabel,
+          progressHint: hasAIContent ? `Lesson ${currentIdx + 1} of ${Math.max(1, outline.length || safeLessons)}` : 'Pick a course or enter a custom topic to begin.',
+          programTrackLabel,
+          minutesEffective,
+          lessonsEffective: safeLessons,
+          quizEffective: safeQuiz,
+        }}
+        isOrgFlow={isOrgFlow}
+        isSandbox={isSandboxSource}
+        degraded={Boolean(gateNotice)}
+      />
+      <div className={`mt-4 grid grid-cols-1 gap-4 sm:gap-6 ${viewMode === 'studio' ? 'md:grid-cols-12' : ''}`}>
         {/* LEFT */}
         <div
-          className={`order-1 space-y-4 sm:space-y-6 ${!isLockedLearner ? 'md:col-span-8' : 'md:col-span-12'}`}
+          className={`order-1 space-y-4 sm:space-y-6 ${viewMode === 'studio' ? (!isLockedLearner ? 'md:col-span-8' : 'md:col-span-12') : 'md:col-span-12'}`}
         >
           <header className="space-y-1">
             <div className="space-y-2">
@@ -2292,7 +2360,37 @@ onSelectCourse={(id) => {
 />
 
 
+          {viewMode === 'discover' ? (
+            <>
+              <CourseCardGrid
+                title="Recommended"
+                items={recommendedCourses}
+                activeId={selectedCourse?.id || null}
+                onSelect={selectCourseUi}
+                onStartSelected={async (id) => {
+                  selectCourseUi(id);
+                  await onStart();
+                }}
+              />
+              {popularCourses.length ? (
+                <CourseCardGrid
+                  title="Popular now"
+                  items={popularCourses}
+                  activeId={selectedCourse?.id || null}
+                  onSelect={selectCourseUi}
+                  onStartSelected={async (id) => {
+                    selectCourseUi(id);
+                    await onStart();
+                  }}
+                />
+              ) : null}
+              <StatsCards courseCount={topCourses?.length || 0} />
+              <WhyChooseSection />
+            </>
+          ) : null}
+
           {/* Classroom + Outline + Quiz */}
+          {viewMode === 'studio' ? (
           <LessonAndQuizPane
             compactPlayer={compactPlayer}
             showCourseList={!isLockedLearner}
@@ -2391,12 +2489,35 @@ onSelectCourse={(id) => {
               });
             }}
           />
+          ) : null}
         </div>
 
-        {/* RIGHT: course list */}
-        {!isLockedLearner && (
+        {viewMode === 'studio' ? (
           <aside className="md:col-span-4 order-2">
-            <div className="md:sticky md:top-20 space-y-3">
+            <StudioSidePanel
+              displayTitle={displayTitle}
+              programTrackLabel={programTrackLabel}
+              minutes={minutesEffective}
+              lessons={safeLessons}
+              quiz={safeQuiz}
+              step={step}
+              grade={grade as any}
+              outline={outline as any[]}
+              currentIdx={currentIdx}
+              onJumpToIndex={(idx) => setCurrentIdx(idx)}
+              canShareUi={canShareUi}
+              onOpenShare={() => {
+                setIsMaximized(false);
+                setShareOpen(true);
+              }}
+              isLockedLearner={isLockedLearner}
+              showDegradedNotice={Boolean(gateNotice)}
+            />
+          </aside>
+        ) : (
+          <aside className="order-2 md:col-span-12" ref={allCoursesRef}>
+            <div className="space-y-3">
+              <h3 className="text-lg font-semibold">All courses</h3>
               <CourseList
                 items={(topCourses || []).map((c: TopCourse) => ({
                   id: c.id,
@@ -2404,19 +2525,7 @@ onSelectCourse={(id) => {
                   blurb: getCourseBlurb(c),
                 }))}
                 activeId={selectedCourse?.id || null}
-                onSelect={(id) => {
-                const found = (topCourses || []).find((c) => c.id === id) || null;
-
-                dlog('CourseList.onSelect', { id, title: found?.title });
-                setPreparing(false);
-                setActiveRunId(null);
-                setBlockedUntilStart(true);
-                setLockedSsml(null);
-
-                selectedCourseIdRef.current = found?.id ? normId(found.id) : normId(id); // ✅ lock immediately
-                selectCourse(found);
-              }}
-
+                onSelect={selectCourseUi}
                 onRefresh={refreshCourseList}
                 onLoadMore={handleLoadMore}
                 hasMore={Boolean(hasMoreCourses)}
@@ -2425,7 +2534,23 @@ onSelectCourse={(id) => {
           </aside>
         )}
       </div>
+
+      <StickyStartBar
+        show={viewMode === 'discover'}
+        canStartNow={canStartNow}
+        busy={ctaBusy}
+        title={displayTitle}
+        meta={{
+          programTrackLabel,
+          minutes: minutesEffective,
+          lessons: safeLessons,
+          quiz: safeQuiz,
+        }}
+        onStart={onStart}
+        onOpenAllCourses={() => allCoursesRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+      />
   
+
  {llUnlockOpen && llUnlockCtx ? (
   <div className="fixed inset-0 z-[90] flex items-center justify-center p-4">
     {/* Backdrop */}
