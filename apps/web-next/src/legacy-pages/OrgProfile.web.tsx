@@ -11,8 +11,7 @@ import { getMyOrgOrBootstrap, getOrgUsage, uploadAsset } from '@mytutorapp/share
 import { setOrgLearnerPhotoByAdmission } from '@mytutorapp/shared/api/orgLearnersApi';
 
 import ThemeToggle from '@/components/ThemeToggle.web';
-import Navbar from '@/components/legacy/Navbar.web';
-import Footer from '@/components/legacy/Footer.web';
+
 import { siteUrl } from '@/lib/appOrigin';
 
 const FALLBACK = (n = 'Org') =>
@@ -187,7 +186,7 @@ const OrgProfilePage: React.FC = () => {
   /* -------------------------------- render -------------------------------- */
   return (
     <>
-      <Navbar />
+   
       <div className="min-h-screen bg-slate-50 dark:bg-darkBg text-[#0d141c] dark:text-darkTextPrimary">
         {/* Hero */}
         <div className="relative">
@@ -802,7 +801,7 @@ const OrgProfilePage: React.FC = () => {
           </button>
         </div>
       </div>
-      <Footer />
+   
     </>
   );
 };

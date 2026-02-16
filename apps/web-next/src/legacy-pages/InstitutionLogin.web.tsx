@@ -1,13 +1,16 @@
 'use client';
 
-// apps/web/src/pages/org/InstitutionLogin.web.tsx
+// apps/web-next/src/legacy-pages/InstitutionLogin.web.tsx
 import React, { useEffect, useMemo, useState, useCallback, useLayoutEffect } from 'react';
-import { Link, useNavigate, useLocation } from '@/lib/react-router-dom';
+import Link from 'next/link';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+
 import useInstitutionAuth from '@mytutorapp/shared/hooks/useInstitutionAuth';
 import CustomGoogleButtonLogin from '@/legacy-pages/CustomGoogleButtonLogin.web';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { trackEvent, trackLogin, trackSignUp } from '../analytics/ga4';
 import GlobalAuthRedirect from '@/legacy-pages/GlobalAuthRedirect';
+import { siteUrl } from '@/lib/appOrigin';
 
 const LOGIN_BG =
   'https://images.unsplash.com/photo-1513258496099-48168024aec0?q=80&w=2000&auto=format&fit=crop';
@@ -25,36 +28,46 @@ const emailHash = (email: string) => {
 };
 
 const InstitutionLogin: React.FC = () => {
-  const navigate = useNavigate();
-  const location = useLocation();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const { orgToken, hydrated } = useShopContext() as any;
 
-  // ✅ NEW: read query params (supports step-up / reauth flows)
-  const qs = useMemo(() => new URLSearchParams(location.search), [location.search]);
-  const reauth = (qs.get('reauth') || '').trim(); // e.g. "fees"
-  const isFeesReauth = reauth === 'fees';
-  const orgIdParam = (qs.get('orgId') || qs.get('org_id') || '').trim();
-  const returnToParam = (qs.get('returnTo') || qs.get('return_to') || '').trim();
+  // ✅ Hydration safety: Next SSR + client storage tokens
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  const forcedKindRaw = (qs.get('kind') || '').toLowerCase().trim();
+  // ✅ Query params (Next)
+  const reauth = (searchParams?.get('reauth') || '').trim(); // e.g. "fees"
+  const isFeesReauth = reauth === 'fees';
+  const orgIdParam = (searchParams?.get('orgId') || searchParams?.get('org_id') || '').trim();
+  const returnToParam = (searchParams?.get('returnTo') || searchParams?.get('return_to') || '').trim();
+
+  const forcedKindRaw = (searchParams?.get('kind') || '').toLowerCase().trim();
   const forcedKind: AccountKind | null =
     forcedKindRaw === 'institution' || forcedKindRaw === 'instructor' || forcedKindRaw === 'learner'
       ? (forcedKindRaw as AccountKind)
       : null;
 
-  // ✅ IMPORTANT: If already authenticated, only redirect for normal login (NOT reauth)
+  const searchStr = useMemo(() => {
+    const s = searchParams?.toString() || '';
+    return s ? `?${s}` : '';
+  }, [searchParams]);
+
+  // ✅ If already authenticated, only redirect for normal login (NOT reauth)
   useLayoutEffect(() => {
+    if (!mounted) return;
     if (!hydrated) return;
-    if (orgToken && !reauth) navigate('/org/profile', { replace: true });
-  }, [orgToken, navigate, reauth, hydrated]);
+    if (orgToken && !reauth) router.replace('/org/profile');
+  }, [orgToken, router, reauth, hydrated, mounted]);
 
   // —— Local state —— //
   const [authMode, setAuthMode] = useState<AuthMode>('Login');
   const [resetMode, setResetMode] = useState<ResetMode>('idle');
   const [otpSent, setOtpSent] = useState(false);
 
-  // ✅ CHANGED: initialize accountKind from ?kind=... (or default institution)
+  // ✅ initialize accountKind from ?kind=... (or default institution)
   const [accountKind, setAccountKind] = useState<AccountKind>(forcedKind || 'institution');
 
   const [name, setName] = useState(''); // sign-up only
@@ -92,6 +105,12 @@ const InstitutionLogin: React.FC = () => {
     if (!canSignUp && authMode === 'Sign Up') setAuthMode('Login');
   }, [canSignUp, authMode]);
 
+  const normalizeInternalDest = (d: string) => {
+    // ✅ critical: kill legacy basename redirects
+    if (d.startsWith('/app/')) return d.replace(/^\/app\//, '/');
+    return d;
+  };
+
   // —— Auth hook —— //
   const navigateAfterAuth = useCallback(
     (dest?: string) => {
@@ -106,62 +125,60 @@ const InstitutionLogin: React.FC = () => {
       try {
         if (sessionStorage.getItem('org:mustChangePassword') === '1') {
           clearReturnTo();
-          navigate('/org/change-password', { replace: true });
+          router.replace('/org/change-password');
           return;
         }
       } catch {}
 
-      // ✅ Read query params FIRST (important for reauth flows)
-      const search = new URLSearchParams(location.search);
-      const reauthQ = (search.get('reauth') || '').trim();
-      const orgIdQ = (search.get('orgId') || search.get('org_id') || '').trim();
-      const returnToQ = (search.get('returnTo') || search.get('return_to') || '').trim();
+      const reauthQ = (searchParams?.get('reauth') || '').trim();
+      const orgIdQ = (searchParams?.get('orgId') || searchParams?.get('org_id') || '').trim();
+      const returnToQ = (searchParams?.get('returnTo') || searchParams?.get('return_to') || '').trim();
 
-      // ✅ If this was a fees reauth, mark the unlock NOW (even if dest exists)
+      // fees reauth unlock marker
       if (reauthQ === 'fees' && orgIdQ) {
         try {
           sessionStorage.setItem(`org:feesUnlock:${orgIdQ}`, String(Date.now()));
         } catch {}
       }
 
-      // ✅ If caller provided explicit returnTo, ALWAYS honor it first
+      // query returnTo first
       if (returnToQ) {
         clearReturnTo();
-        navigate(returnToQ, { replace: true });
+        router.replace(normalizeInternalDest(returnToQ));
         return;
       }
 
-      // ✅ If we have a saved deep link, honor it
+      // saved deep link
       try {
         const saved = sessionStorage.getItem('auth:returnTo');
         const savedOrg = sessionStorage.getItem('auth:returnTo:org');
         const finalSaved = saved || savedOrg || '';
         if (finalSaved) {
           clearReturnTo();
-          navigate(finalSaved, { replace: true });
+          router.replace(normalizeInternalDest(finalSaved));
           return;
         }
       } catch {}
 
-      // ✅ Invite code next
-      const inviteCode = search.get('code');
+      // invite code
+      const inviteCode = searchParams?.get('code');
       if (inviteCode) {
         clearReturnTo();
-        navigate(`/org/join/${inviteCode}`, { replace: true });
+        router.replace(`/org/join/${inviteCode}`);
         return;
       }
 
-      // ✅ Only now honor dest (normal login flows)
+      // dest fallback
       if (dest) {
         clearReturnTo();
-        navigate(dest, { replace: true });
+        router.replace(normalizeInternalDest(dest));
         return;
       }
 
       clearReturnTo();
-      navigate('/org/profile', { replace: true });
+      router.replace('/org/profile');
     },
-    [navigate, location.search]
+    [router, searchParams]
   );
 
   const {
@@ -193,7 +210,6 @@ const InstitutionLogin: React.FC = () => {
           org_id: orgIdParam || undefined,
         });
 
-        // ✅ NEW: pass reauth payload through (safe even if backend ignores)
         const extra =
           reauth && orgIdParam
             ? ({ reauth, orgId: orgIdParam } as any)
@@ -203,11 +219,9 @@ const InstitutionLogin: React.FC = () => {
 
         await loginWithEmail({ email: email.trim(), password, ...extra } as any);
         trackLogin('email', { mode: 'org', kind: accountKind, reauth: reauth || undefined });
-
         return;
       }
 
-      // Sign Up (disabled for fees reauth and non-institution)
       if (!canSignUp) {
         setError('Sign up is only available for Institution accounts.');
         return;
@@ -317,18 +331,18 @@ const InstitutionLogin: React.FC = () => {
   ];
 
   const switchAccountKind = (kind: AccountKind) => {
-    if (isFeesReauth) return; // ✅ lock in fees reauth
+    if (isFeesReauth) return;
     setAccountKind(kind);
     clearErrors();
     setResetMode('idle');
   };
 
-  // In fees reauth mode we do not allow reset screens
   const effectiveResetMode: ResetMode = isFeesReauth ? 'idle' : resetMode;
 
   return (
     <div className="relative min-h-screen overflow-hidden text-darkText dark:text-darkTextPrimary">
       <GlobalAuthRedirect mode="institution" />
+
       {/* BG */}
       <div
         className="absolute inset-0 bg-cover bg-center"
@@ -344,17 +358,12 @@ const InstitutionLogin: React.FC = () => {
       {/* Content */}
       <div className="relative mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 py-16 md:py-24">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-stretch">
-          {/* Left: copy for institutions (desktop only) */}
+          {/* Left */}
           <aside className="hidden md:flex md:col-span-6">
             <div className="w-full rounded-2xl p-8 lg:p-10 bg-white/70 ring-1 ring-gray-200 shadow-sm backdrop-blur-sm dark:bg-[#0f1821]/70 dark:ring-darkCard">
               <div className="flex items-center gap-3">
                 <span className="h-10 w-10 text-indigo-600">
-                  <svg
-                    viewBox="0 0 48 48"
-                    fill="currentColor"
-                    className="h-full w-full"
-                    aria-hidden
-                  >
+                  <svg viewBox="0 0 48 48" fill="currentColor" className="h-full w-full" aria-hidden>
                     <path d="M36.7273 44C33.9891 44 31.6043 39.8386 30.3636 33.69C29.123 39.8386 26.7382 44 24 44C21.2618 44 18.877 39.8386 17.6364 33.69C16.3957 39.8386 14.0109 44 11.2727 44C7.25611 44 4 35.0457 4 24C4 12.9543 7.25611 4 11.2727 4C14.0109 4 16.3957 8.16144 17.6364 14.31C18.877 8.16144 21.2618 4 24 4C26.7382 4 29.123 8.16144 30.3636 14.31C31.6043 8.16144 33.9891 4 36.7273 4C40.7439 4 44 12.9543 44 24C44 35.0457 40.7439 44 36.7273 44Z" />
                   </svg>
                 </span>
@@ -362,8 +371,7 @@ const InstitutionLogin: React.FC = () => {
               </div>
 
               <p className="mt-4 text-sm text-gray-700 dark:text-darkTextSecondary">
-                This login is for institutions, instructors, and students using your
-                organization&apos;s DayBreak portal.
+                This login is for institutions, instructors, and students using your organization&apos;s DayBreak portal.
               </p>
 
               <ul className="mt-6 space-y-3 text-sm">
@@ -375,30 +383,25 @@ const InstitutionLogin: React.FC = () => {
 
               <div className="mt-8 text-sm">
                 Need a regular DayBreak account?{' '}
-                <Link to="/login?switch=1" className="underline hover:text-indigo-600">
+                <Link href="/login?switch=1" className="underline hover:text-indigo-600">
                   Sign in as Learner/Tutor
                 </Link>
               </div>
             </div>
           </aside>
 
-          {/* Right: auth card */}
+          {/* Right */}
           <section className="md:col-span-6 flex">
             <div className="w-full rounded-2xl bg-white ring-1 ring-gray-200 shadow-sm p-6 sm:p-8 lg:p-10 backdrop-blur-sm dark:bg-[#0f1821] dark:ring-darkCard">
-              {/* ✅ NEW: Fees lock notice */}
               {isFeesReauth && (
                 <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-100 px-3 py-2 text-xs">
-                  🔒 Fees &amp; balances is protected. Please re-enter the <b>Instructor</b> login
-                  to continue.
+                  🔒 Fees &amp; balances is protected. Please re-enter the <b>Instructor</b> login to continue.
                   {!!returnToParam && (
-                    <div className="mt-1 opacity-80">
-                      You will be returned to your fees page after login.
-                    </div>
+                    <div className="mt-1 opacity-80">You will be returned to your fees page after login.</div>
                   )}
                 </div>
               )}
 
-              {/* Account type toggle (hidden during fees reauth) */}
               {!isFeesReauth && (
                 <div className="mb-5">
                   <p className="text-xs font-medium text-gray-500 dark:text-darkTextSecondary mb-2 text-center">
@@ -443,7 +446,6 @@ const InstitutionLogin: React.FC = () => {
                 </div>
               )}
 
-              {/* Forms */}
               {effectiveResetMode !== 'idle' ? (
                 otpSent ? (
                   <form onSubmit={handleResetPassword} className="space-y-5">
@@ -482,9 +484,7 @@ const InstitutionLogin: React.FC = () => {
                   </form>
                 ) : (
                   <form onSubmit={handleSendOtp} className="space-y-5">
-                    <h2 className="text-xl font-display font-semibold text-center">
-                      Reset Password
-                    </h2>
+                    <h2 className="text-xl font-display font-semibold text-center">Reset Password</h2>
                     <input
                       className="input"
                       type="email"
@@ -512,9 +512,7 @@ const InstitutionLogin: React.FC = () => {
                 )
               ) : (
                 <form onSubmit={onSubmit} className="space-y-5">
-                  <h2 className="text-xl font-display font-semibold text-center">
-                    {emailFormTitle}
-                  </h2>
+                  <h2 className="text-xl font-display font-semibold text-center">{emailFormTitle}</h2>
 
                   {authMode === 'Sign Up' && (
                     <input
@@ -562,7 +560,6 @@ const InstitutionLogin: React.FC = () => {
                     {authMode === 'Login' ? (isFeesReauth ? 'Unlock fees' : 'Login') : 'Sign Up'}
                   </button>
 
-                  {/* Links row (hidden during fees reauth) */}
                   {!isFeesReauth && (
                     <div className="flex justify-between text-sm">
                       <button
@@ -605,8 +602,7 @@ const InstitutionLogin: React.FC = () => {
 
                   {!isFeesReauth && accountKind !== 'institution' && (
                     <p className="mt-3 text-[11px] text-gray-500 dark:text-darkTextSecondary text-center">
-                      Instructors and learners: please log in using the email/ID and password shared
-                      by your school or the invite link.
+                      Instructors and learners: please log in using the email/ID and password shared by your school or the invite link.
                     </p>
                   )}
 
@@ -631,11 +627,7 @@ const InstitutionLogin: React.FC = () => {
                       onSuccess={onGoogleSuccess}
                       onFailure={onGoogleFailure}
                       mode="institution"
-                      returnTo={
-                        location.search
-                          ? `/institutions/login${location.search}`
-                          : '/institutions/login'
-                      }
+                      returnTo={pathname ? `${pathname}${searchStr}` : `/institutions/login${searchStr}`}
                     />
                   </div>
                 </>
@@ -644,22 +636,22 @@ const InstitutionLogin: React.FC = () => {
               {/* Mobile-only helper link */}
               <div className="mt-6 text-center text-sm md:hidden">
                 Need a normal DayBreak account?{' '}
-                <Link to="/login?switch=1" className="underline hover:text-indigo-600">
+                <Link href="/login?switch=1" className="underline hover:text-indigo-600">
                   Sign in as Learner/Tutor
                 </Link>
               </div>
 
               <p className="mt-6 text-center text-xs text-gray-500 dark:text-darkTextSecondary">
                 By continuing, you agree to our{' '}
-                <Link to="/terms" className="underline hover:text-indigo-600">
+                <Link href="/terms" className="underline hover:text-indigo-600">
                   Terms
                 </Link>{' '}
                 and{' '}
-                <Link to="/privacy-policy" className="underline hover:text-indigo-600">
+                <Link href="/privacy-policy" className="underline hover:text-indigo-600">
                   Privacy Policy
                 </Link>{' '}
                 and{' '}
-                <Link to="/refunds" className="underline hover:text-primary">
+                <Link href="/refunds" className="underline hover:text-primary">
                   Refunds
                 </Link>
                 .
@@ -667,10 +659,20 @@ const InstitutionLogin: React.FC = () => {
               <p className="mt-2 text-center text-[11px] text-gray-500 dark:text-darkTextSecondary">
                 Official DayBreak Learner page · support@daybreaklearner.com
               </p>
+
+              {/* Optional: explicit canonical login escape hatch */}
+              {!mounted ? null : !hydrated ? null : null}
             </div>
           </section>
         </div>
       </div>
+
+      {/* If someone hits this page without any Next routing (rare), force canonical */}
+      {!mounted ? null : (
+        <noscript>
+          <meta httpEquiv="refresh" content={`0;url=${siteUrl('/institutions/login')}`} />
+        </noscript>
+      )}
     </div>
   );
 };
