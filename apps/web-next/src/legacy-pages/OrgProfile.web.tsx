@@ -12,7 +12,7 @@ import { setOrgLearnerPhotoByAdmission } from '@mytutorapp/shared/api/orgLearner
 
 import ThemeToggle from '@/components/ThemeToggle.web';
 
-import { siteUrl } from '@/lib/appOrigin';
+import { appUrl, siteUrl } from '@/lib/appOrigin';
 
 const FALLBACK = (n = 'Org') =>
   `https://ui-avatars.com/api/?name=${encodeURIComponent(n)}&background=047857&color=ffffff`;
@@ -240,14 +240,14 @@ const OrgProfilePage: React.FC = () => {
                   </div>
 
                   <Link
-                    href={siteUrl('/org/portal')}
+                    href={appUrl('/org/portal')}
                     className="inline-flex h-10 px-4 items-center rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
                   >
                     Open E-Learning Portal
                   </Link>
 
                   <Link
-                    href={siteUrl('/org/roster')}
+                    href={appUrl('/org/roster')}
                     className="inline-flex h-10 px-4 items-center rounded-xl bg-[#e7edf4] dark:bg-[#172534] font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                   >
                     Open Roster
@@ -306,7 +306,7 @@ const OrgProfilePage: React.FC = () => {
                         {(org?.tier || 'starter').toUpperCase()}
                       </div>
                       <Link
-                        href={siteUrl('/org/portal?tab=branding')}
+                        href={appUrl('/org/portal?tab=branding')}
                         className="mt-2 inline-flex h-8 px-3 items-center rounded-lg bg-[#e7edf4] dark:bg-[#172534] text-sm font-semibold"
                       >
                         Manage plan
@@ -353,7 +353,7 @@ const OrgProfilePage: React.FC = () => {
                 </p>
               </div>
               <Link
-                href={siteUrl('/org/portal?tab=tools')}
+                href={appUrl('/org/portal?tab=tools')}
                 className="inline-flex h-10 items-center rounded-xl bg-[#3d99f5] px-4 text-sm font-semibold text-white shadow hover:bg-[#2e7ad2] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#3d99f5]"
               >
                 Open in portal
@@ -363,7 +363,7 @@ const OrgProfilePage: React.FC = () => {
             <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">
               {/* Attendance */}
               <Link
-                href={siteUrl('/org/attendance')}
+                href={appUrl('/org/attendance')}
                 className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
               >
                 <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
@@ -384,7 +384,7 @@ const OrgProfilePage: React.FC = () => {
 
               {/* Fees */}
               <Link
-                href={siteUrl('/org/fees')}
+                href={appUrl('/org/fees')}
                 className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
               >
                 <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
@@ -405,7 +405,7 @@ const OrgProfilePage: React.FC = () => {
 
               {/* Newsletters */}
               <Link
-                href={siteUrl('/org/newsletters')}
+                href={appUrl('/org/newsletters')}
                 className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
               >
                 <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
@@ -426,7 +426,7 @@ const OrgProfilePage: React.FC = () => {
 
               {/* Announcements */}
               <Link
-                href={siteUrl('/org/announcements')}
+                href={appUrl('/org/announcements')}
                 className="rounded-xl border border-[#e7edf4] bg-white p-3 text-left shadow-sm hover:-translate-y-0.5 hover:shadow-md transition dark:border-white/10 dark:bg-[#0b1420]"
               >
                 <div className="flex flex-col items-center text-center gap-2 sm:flex-row sm:items-start sm:text-left sm:justify-between">
@@ -613,7 +613,7 @@ const OrgProfilePage: React.FC = () => {
               <div className="flex items-center justify-between gap-2">
                 <h2 className="text-lg font-bold">Branding</h2>
                 <Link
-                  href={siteUrl('/org/portal?tab=branding')}
+                  href={appUrl('/org/portal?tab=branding')}
                   className="inline-flex h-9 px-3 items-center rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
                 >
                   Edit Branding
@@ -747,13 +747,13 @@ const OrgProfilePage: React.FC = () => {
           {/* Quick actions */}
           <div className="mt-4 flex flex-col sm:flex-row flex-wrap gap-2">
             <Link
-              href={siteUrl('/org/portal')}
+              href={appUrl('/org/portal')}
               className="inline-flex h-10 px-4 items-center rounded-xl bg-indigo-600 text-white font-semibold hover:bg-indigo-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500"
             >
               Open Portal
             </Link>
             <Link
-              href={siteUrl('/org/portal?tab=assign')}
+              href={appUrl('/org/portal?tab=assign')}
               className="inline-flex h-10 px-4 items-center rounded-xl bg-[#e7edf4] dark:bg-[#172534] font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
             >
               Create Assignment
@@ -781,7 +781,7 @@ const OrgProfilePage: React.FC = () => {
         <div className="sm:hidden fixed bottom-4 inset-x-4 z-40 space-y-2">
           <div className="rounded-2xl shadow-lg shadow-emerald-500/20 ring-1 ring-emerald-300/30 overflow-hidden">
             <Link
-              href={siteUrl('/org/portal')}
+              href={appUrl('/org/portal')}
               className="block text-center py-3 font-semibold bg-gradient-to-r from-emerald-500 via-emerald-600 to-emerald-500 text-white"
             >
               Manage in Portal

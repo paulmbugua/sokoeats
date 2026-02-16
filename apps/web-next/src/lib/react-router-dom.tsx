@@ -30,6 +30,7 @@ const isNextRoute = (href: string) => {
   if (path.startsWith('/institutions/')) return true;
   if (path === '/robot-teacher') return true;
   if (path === '/org/login') return true;
+  if (path === '/org/profile') return true;
   if (path === '/terms') return true;
   if (path === '/privacy-policy') return true;
   if (path === '/refunds') return true;

@@ -24,6 +24,11 @@ export const publicEnv = {
     trimEnv(process.env.NEXT_PUBLIC_OG_IMAGE) ||
     'https://lh3.googleusercontent.com/aida-public/AB6AXuBgvEqh6MrQ7dVW2qwj-qjGCafebAnWEjA7iwu4aBwvJfiAvneGQcD6xH14zDIWcFdHIVF1yUOtvsMVPHKrnuxAXdqlOKj_Gbf_VBvdobGFojOpO0seljMPOx0GUF1LSkYcCU8Gd_0jz1BC4GkilnIWIs9ZGuqzsN4pO4t8xzWY2uouVckDUvvqonRhWPECRGpV5W0kGh3MF3FPXFtbXyU0DuxtazBEu50XMuUrx4CovU0y47zF1YjXjrNQg6DUZcEu_uJ1um9oLpY',
   playStoreBadgeUrl: trimEnv(process.env.NEXT_PUBLIC_PLAY_STORE_BADGE_URL),
+  firebaseApiKey: trimEnv(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
+  firebaseAuthDomain: trimEnv(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN),
+  firebaseProjectId: trimEnv(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
+  firebaseAppId: trimEnv(process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
+  firebaseMessagingSenderId: trimEnv(process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID),
 };
 
 export const isAbsoluteUrl = (value: string) => /^https?:\/\//i.test(value);
