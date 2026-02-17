@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import TrustBlock from '@/components/TrustBlock';
+import StablePageShell from '@/components/layout/StablePageShell';
 import { siteUrl } from '@/lib/site';
 import FindTutorClient from './FindTutorClient';
 
@@ -14,5 +16,12 @@ export const metadata: Metadata = {
 };
 
 export default function FindTutorPage() {
-  return <FindTutorClient />;
+  return (
+    <StablePageShell>
+      <div className="px-4 pb-10 pt-4">
+        <FindTutorClient />
+        <TrustBlock />
+      </div>
+    </StablePageShell>
+  );
 }

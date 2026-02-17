@@ -57,7 +57,9 @@ const nextConfig = {
       { source: '/app/signup', destination: '/signup', permanent: false },
       { source: '/app/institutions/login', destination: '/institutions/login', permanent: false },
       { source: '/app/institutions', destination: '/institutions', permanent: false },
-      { source: '/app/org/login', destination: '/institutions/login?next=/org', permanent: false },
+      { source: '/app/find-tutor', destination: '/find-tutor', permanent: true },
+      { source: '/app/resources', destination: '/resources', permanent: true },
+      { source: '/app/org/login/:path*', destination: '/institutions', permanent: true },
       { source: '/app/profile/me', destination: '/profile/me', permanent: false },
       { source: '/app/courses', destination: '/courses', permanent: false },
       { source: '/app/courses/:courseId', destination: '/courses/:courseId', permanent: false },
@@ -69,6 +71,11 @@ const nextConfig = {
       { source: '/institution', destination: '/institutions', permanent: false },
       { source: '/institution/login', destination: '/institutions/login', permanent: false },
       { source: '/institution/:path*', destination: '/institutions/:path*', permanent: false },
+
+      // Public policy short-links used in trust surfaces
+      { source: '/privacy', destination: '/privacy-policy', permanent: false },
+      { source: '/anti-spam', destination: '/anti-spam-policy', permanent: false },
+      { source: '/complaints', destination: '/complaints-feedback', permanent: false },
 
       // ---------------------------------------------------------------------
       // ✅ Keep legacy app (apps/web) mounted under /app/*

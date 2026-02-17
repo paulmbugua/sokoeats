@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import TrustBlock from '@/components/TrustBlock';
+import StablePageShell from '@/components/layout/StablePageShell';
 import { siteUrl } from '@/lib/site';
 import ResourcesClient from './ResourcesClient';
 
@@ -14,5 +16,12 @@ export const metadata: Metadata = {
 };
 
 export default function ResourcesPage() {
-  return <ResourcesClient />;
+  return (
+    <StablePageShell>
+      <div className="px-4 pb-10 pt-4">
+        <ResourcesClient />
+        <TrustBlock />
+      </div>
+    </StablePageShell>
+  );
 }
