@@ -14,6 +14,7 @@
 # OPTIONAL (recommended): ensure auth happens only on www
 # -----------------------------------------------------------------------------
 
+# ✅ Remove auth UI from app subdomain (must)
 [[redirects]]
   from = "/login"
   to = "https://www.daybreaklearner.com/login"
@@ -29,6 +30,13 @@
 [[redirects]]
   from = "/org/login"
   to = "https://www.daybreaklearner.com/institutions"
+  status = 301
+  force = true
+
+# Optional catch-all for auth paths
+[[redirects]]
+  from = "/auth/*"
+  to = "https://www.daybreaklearner.com/login"
   status = 301
   force = true
 
