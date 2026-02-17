@@ -11,10 +11,10 @@
   VITE_BRIDGED = "0"
 
 # -----------------------------------------------------------------------------
-# OPTIONAL (recommended): ensure auth happens only on www
+# ✅ CRITICAL: remove all auth UI from app.daybreaklearner.com
+# Any auth-like route must permanently redirect to www.daybreaklearner.com
 # -----------------------------------------------------------------------------
 
-# ✅ Remove auth UI from app subdomain (must)
 [[redirects]]
   from = "/login"
   to = "https://www.daybreaklearner.com/login"
@@ -28,26 +28,56 @@
   force = true
 
 [[redirects]]
+  from = "/register"
+  to = "https://www.daybreaklearner.com/signup"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/sign-up"
+  to = "https://www.daybreaklearner.com/signup"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/sign-in"
+  to = "https://www.daybreaklearner.com/login"
+  status = 301
+  force = true
+
+[[redirects]]
   from = "/org/login"
   to = "https://www.daybreaklearner.com/institutions"
   status = 301
   force = true
 
-# Optional catch-all for auth paths
+[[redirects]]
+  from = "/institutions/login"
+  to = "https://www.daybreaklearner.com/institutions"
+  status = 301
+  force = true
+
+# Optional catch-all for auth paths (kept narrow to avoid breaking app routes)
 [[redirects]]
   from = "/auth/*"
   to = "https://www.daybreaklearner.com/login"
   status = 301
   force = true
 
-# ✅ Serve static assets as files (avoid any accidental SPA rewrite)
+# -----------------------------------------------------------------------------
+# Static assets (avoid SPA fallback catching these)
+# -----------------------------------------------------------------------------
+
 [[redirects]]
   from = "/assets/*"
   to = "/assets/:splat"
   status = 200
   force = true
 
-# ✅ SPA fallback (must be last)
+# -----------------------------------------------------------------------------
+# ✅ SPA fallback (MUST be last)
+# -----------------------------------------------------------------------------
+
 [[redirects]]
   from = "/*"
   to = "/index.html"
