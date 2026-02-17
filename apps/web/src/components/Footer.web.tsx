@@ -163,7 +163,7 @@ const Footer: React.FC = () => {
         <div className="mt-8 text-center space-y-2 text-xs text-mutedGray dark:text-darkTextSecondary">
           <h3 className="text-sm font-semibold">EXPERIENCE LIVE TUTORING ONLINE</h3>
           <p>
-            Connecting with skilled tutors is easy on DayBreak.com; use any device to join a live
+            Connecting with skilled tutors is easy on www.daybreaklearner.com; use any device to join a live
             session for personalized learning.
           </p>
           <p className="font-medium">HOW DOES LIVE TUTORING WORK?</p>
