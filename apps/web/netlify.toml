@@ -10,6 +10,28 @@
   # ✅ Force legacy app build base "/" on the app subdomain
   VITE_BRIDGED = "0"
 
+# -----------------------------------------------------------------------------
+# OPTIONAL (recommended): ensure auth happens only on www
+# -----------------------------------------------------------------------------
+
+[[redirects]]
+  from = "/login"
+  to = "https://www.daybreaklearner.com/login"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/signup"
+  to = "https://www.daybreaklearner.com/signup"
+  status = 301
+  force = true
+
+[[redirects]]
+  from = "/org/login"
+  to = "https://www.daybreaklearner.com/institutions"
+  status = 301
+  force = true
+
 # ✅ Serve static assets as files (avoid any accidental SPA rewrite)
 [[redirects]]
   from = "/assets/*"

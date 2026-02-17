@@ -29,6 +29,49 @@
   force  = true
 
 # -----------------------------------------------------------------------------
+# ✅ CRITICAL: Phishing-suspension hardening
+# Make legacy Google Ads /app/* entry URLs redirect to safe public pages
+# (single-hop, same-domain, NOT login-first, NOT to app.daybreaklearner.com)
+# -----------------------------------------------------------------------------
+
+[[redirects]]
+  from   = "/app/find-tutor"
+  to     = "/find-tutor"
+  status = 301
+  force  = true
+
+[[redirects]]
+  from   = "/app/resources"
+  to     = "/resources"
+  status = 301
+  force  = true
+
+[[redirects]]
+  from   = "/app/org/login"
+  to     = "/institutions"
+  status = 301
+  force  = true
+
+# Optional safety for trailing slash variants
+[[redirects]]
+  from   = "/app/find-tutor/"
+  to     = "/find-tutor"
+  status = 301
+  force  = true
+
+[[redirects]]
+  from   = "/app/resources/"
+  to     = "/resources"
+  status = 301
+  force  = true
+
+[[redirects]]
+  from   = "/app/org/login/"
+  to     = "/institutions"
+  status = 301
+  force  = true
+
+# -----------------------------------------------------------------------------
 # Legacy Vite app proxy under /app/*
 # (legacy app is built with base "/" on app.daybreaklearner.com)
 # -----------------------------------------------------------------------------
@@ -47,6 +90,7 @@
   force  = true
 
 # ✅ pages under /app/*
+# NOTE: keep this BELOW the hardening redirects above so they win.
 [[redirects]]
   from   = "/app/*"
   to     = "https://app.daybreaklearner.com/:splat"
