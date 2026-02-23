@@ -6,7 +6,7 @@ import { cookies } from 'next/headers';
 import Providers from './providers';
 import GaRouteTracker from './_components/GaRouteTracker';
 
-import { publicEnv } from '@/lib/env';
+import { isAbsoluteUrl, publicEnv } from '@/lib/env';
 import { SITE_URL, siteUrl } from '@/lib/site';
 import NavbarLegacy from '@/components/legacy/Navbar.web';
 import FooterLegacy from '@/components/legacy/Footer.web';
@@ -18,6 +18,11 @@ export const metadata: Metadata = {
     default: 'DayBreak Learner',
     template: '%s | DayBreak',
   },
+  description:
+    'DayBreak helps learners and institutions with tutors, AI-assisted lessons, and virtual classroom workflows.',
+  alternates: {
+    canonical: siteUrl('/'),
+  },
   icons: {
     icon: 'https://www.daybreaklearner.com/favicon.ico',
   },
@@ -25,11 +30,11 @@ export const metadata: Metadata = {
     type: 'website',
     url: SITE_URL,
     siteName: 'DayBreak',
-    images: [{ url: siteUrl(publicEnv.ogImage) }],
+    images: [{ url: isAbsoluteUrl(publicEnv.ogImage) ? publicEnv.ogImage : siteUrl(publicEnv.ogImage) }],
   },
   twitter: {
     card: 'summary_large_image',
-    images: [siteUrl(publicEnv.ogImage)],
+    images: [isAbsoluteUrl(publicEnv.ogImage) ? publicEnv.ogImage : siteUrl(publicEnv.ogImage)],
   },
 };
 

@@ -21,3 +21,4 @@ Disallow: /paystack/callback/redirect
 Disallow: /org/join/
 
 # Sitemap link (must use absolute URL)
+Sitemap: https://app.daybreaklearner.com/sitemap.xml

@@ -6,13 +6,12 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(__dirname, '../public');
 const robotsTemplatePath = path.resolve(__dirname, './robots.template.txt');
 
-const rawSiteUrl = process.env.VITE_SITE_URL || process.env.SITE_URL || '';
+const rawSiteUrl =
+  process.env.VITE_SITE_URL || process.env.SITE_URL || 'https://app.daybreaklearner.com';
 const siteUrl = rawSiteUrl ? rawSiteUrl.replace(/\/+$/, '') : '';
 
 if (!siteUrl) {
-  console.warn(
-    '[seo] VITE_SITE_URL or SITE_URL is not set. Generating sitemap/robots without absolute URLs.'
-  );
+  console.warn('[seo] Failed to resolve site URL; falling back to app origin in sitemap/robots.');
 }
 
 const today = new Date().toISOString().split('T')[0];
@@ -71,14 +70,7 @@ const sitemapXml = [
 const robotsTemplate = await fs.readFile(robotsTemplatePath, 'utf8');
 let robotsTxt = robotsTemplate;
 
-if (siteUrl) {
-  robotsTxt = robotsTemplate.replace(/\{SITE_URL\}/g, siteUrl);
-} else {
-  robotsTxt = robotsTemplate
-    .split('\n')
-    .filter((line) => !line.trim().startsWith('Sitemap:'))
-    .join('\n');
-}
+robotsTxt = robotsTemplate.replace(/\{SITE_URL\}/g, siteUrl || 'https://app.daybreaklearner.com');
 
 await fs.mkdir(publicDir, { recursive: true });
 await Promise.all([

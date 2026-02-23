@@ -12,7 +12,9 @@ export const publicEnv = {
     trimEnv(process.env.NEXT_PUBLIC_APP_ORIGIN) ||
     trimEnv(process.env.NEXT_PUBLIC_LEGACY_APP_ORIGIN),
   legacyAppOrigin: trimEnv(process.env.NEXT_PUBLIC_LEGACY_APP_ORIGIN),
-  ga4MeasurementId: trimEnv(process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID),
+  ga4MeasurementId:
+    trimEnv(process.env.NEXT_PUBLIC_GA4_MEASUREMENT_ID) ||
+    trimEnv(process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID),
   heroBg: trimEnv(process.env.NEXT_PUBLIC_HERO_BG),
   landingBg: trimEnv(process.env.NEXT_PUBLIC_LANDING_BG),
 
