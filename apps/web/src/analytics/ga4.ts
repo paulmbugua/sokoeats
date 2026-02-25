@@ -7,7 +7,23 @@ const isDebug = () => import.meta.env.DEV || hasDebugFlag();
 
 const opts = () => ({ measurementId: GA4_MEASUREMENT_ID, debugMode: isDebug() });
 
-export const initGA4 = () => initGa4(opts());
+
+const ensureGaScript = (measurementId?: string) => {
+  if (!measurementId || typeof document === 'undefined') return;
+  if (document.querySelector(`script[src="https://www.googletagmanager.com/gtag/js?id=${measurementId}"]`)) {
+    return;
+  }
+
+  const script = document.createElement('script');
+  script.async = true;
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${measurementId}`;
+  script.setAttribute('data-ga4-loader', 'web-standalone');
+  document.head.appendChild(script);
+};
+export const initGA4 = () => {
+  ensureGaScript(GA4_MEASUREMENT_ID);
+  initGa4(opts());
+};
 
 let lastPvKey = '';
 let lastPvAt = 0;
