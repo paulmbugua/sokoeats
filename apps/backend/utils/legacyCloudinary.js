@@ -1,31 +1,44 @@
+import {
+  buildOptimizedCloudinaryUrl,
+  isCloudinaryUrl,
+  optimizeCloudinaryDeliveryUrl,
+  parseCloudinaryUrl,
+} from '../../../packages/shared/utils/cloudinaryDelivery.js';
+
 const LEGACY_CLOUD_NAME = String(
   process.env.LEGACY_CLOUDINARY_CLOUD_NAME || process.env.CLOUDINARY_CLOUD_NAME || ''
 ).trim();
 
 export function isLegacyCloudinaryUrl(value) {
-  return typeof value === 'string' && /res\.cloudinary\.com/i.test(value);
+  return isCloudinaryUrl(value);
 }
 
 export function buildLegacyCloudinaryUrl(publicId, opts = {}) {
   if (!LEGACY_CLOUD_NAME || !publicId) return null;
-  const resourceType = opts.resourceType || 'image';
-  const cleaned = String(publicId).replace(/^\/+/, '');
-  return `https://res.cloudinary.com/${LEGACY_CLOUD_NAME}/${resourceType}/upload/${cleaned}`;
+  const resourceType = opts.resourceType === 'video' ? 'video' : 'image';
+  return buildOptimizedCloudinaryUrl({
+    cloudName: LEGACY_CLOUD_NAME,
+    resourceType,
+    publicId: String(publicId).replace(/^\/+/, ''),
+    width: opts.width,
+    height: opts.height,
+  });
 }
 
 export function resolveLegacyCloudinaryUrl(value, opts = {}) {
-  if (!value) return null;
-  if (typeof value !== 'string') return null;
-  if (/^https?:\/\//i.test(value)) return value;
+  if (!value || typeof value !== 'string') return null;
+  if (/^https?:\/\//i.test(value)) {
+    return optimizeCloudinaryDeliveryUrl(value, {
+      width: opts.width,
+      height: opts.height,
+      resourceTypeHint: opts.resourceType,
+      cloudNameFallback: LEGACY_CLOUD_NAME,
+    });
+  }
   return buildLegacyCloudinaryUrl(value, opts);
 }
 
 export function extractLegacyPublicId(url) {
   if (!isLegacyCloudinaryUrl(url)) return null;
-  const clean = url.split('?')[0];
-  const parts = clean.split('/upload/');
-  if (parts.length < 2) return null;
-  let after = parts[1];
-  after = after.replace(/^v\d+\//, '');
-  return after.replace(/\.[^/.]+$/, '');
+  return parseCloudinaryUrl(url)?.publicId || null;
 }

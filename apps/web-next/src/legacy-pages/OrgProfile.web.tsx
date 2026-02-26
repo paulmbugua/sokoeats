@@ -9,6 +9,7 @@ import { CalendarCheck2, Wallet, Mail, Megaphone } from 'lucide-react';
 import { useShopContext } from '@mytutorapp/shared/context';
 import { getMyOrgOrBootstrap, getOrgUsage, uploadAsset } from '@mytutorapp/shared/api';
 import { setOrgLearnerPhotoByAdmission } from '@mytutorapp/shared/api/orgLearnersApi';
+import { optimizeMediaUrl } from '@mytutorapp/shared/utils/mediaUrl';
 
 import ThemeToggle from '@/components/ThemeToggle.web';
 
@@ -20,7 +21,7 @@ const FALLBACK = (n = 'Org') =>
 const resolveAsset = (raw?: string, backendUrl?: string, fallbackName?: string) => {
   if (!raw) return FALLBACK(fallbackName ?? 'Org');
   if (raw.startsWith('/') && backendUrl) return `${backendUrl.replace(/\/+$/, '')}${raw}`;
-  return raw;
+  return optimizeMediaUrl(raw, { width: 256 });
 };
 
 const tierBadge = (t?: string) => {

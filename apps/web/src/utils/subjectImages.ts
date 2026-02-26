@@ -1,5 +1,6 @@
 // apps/web/src/utils/subjectImages.ts
 import type { Course } from '@mytutorapp/shared/types';
+import { optimizeMediaUrl } from '@mytutorapp/shared/utils/mediaUrl';
 
 /** --------------------------------------------------------
  * Canonical subjects → images  (curated for clarity & legibility)
@@ -219,7 +220,7 @@ export const SUBJECT_PRIORITY = [
 const resolveBackendPath = (url: string | undefined, backendUrl?: string) => {
   if (!url) return '';
   if (url.startsWith('/')) return (backendUrl ?? '').replace(/\/+$/, '') + url;
-  return url;
+  return optimizeMediaUrl(url, { width: 960 });
 };
 
 // Accept a looser course shape so TS is happy and we can read subject/category safely.

@@ -1,5 +1,6 @@
 import { publicEnv, isAbsoluteUrl } from './env';
 import { BRAND_NAME, SITE_URL, siteUrl } from './site';
+import { optimizeMediaUrl } from '@mytutorapp/shared/utils/mediaUrl';
 
 export const landingTitle =
   `AI Learning for Individuals & Institutions | ${BRAND_NAME} — Expert Tutors & E-Learning Platform`;
@@ -11,7 +12,7 @@ const fallbackOgImage =
   'https://lh3.googleusercontent.com/aida-public/AB6AXuBgvEqh6MrQ7dVW2qwj-qjGCafebAnWEjA7iwu4aBwvJfiAvneGQcD6xH14zDIWcFdHIVF1yUOtvsMVPHKrnuxAXdqlOKj_Gbf_VBvdobGFojOpO0seljMPOx0GUF1LSkYcCU8Gd_0jz1BC4GkilnIWIs9ZGuqzsN4pO4t8xzWY2uouVckDUvvqonRhWPECRGpV5W0kGh3MF3FPXFtbXyU0DuxtazBEu50XMuUrx4CovU0y47zF1YjXjrNQg6DUZcEu_uJ1um9oLpY';
 const ogImage = publicEnv.heroBg || publicEnv.ogImage || fallbackOgImage;
 
-export const landingOgImage = isAbsoluteUrl(ogImage) ? ogImage : siteUrl(ogImage);
+export const landingOgImage = optimizeMediaUrl(isAbsoluteUrl(ogImage) ? ogImage : siteUrl(ogImage), { width: 1600 });
 
 export const landingJsonLd = {
   organization: {

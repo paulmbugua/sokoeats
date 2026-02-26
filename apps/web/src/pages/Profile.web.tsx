@@ -14,6 +14,7 @@ import type {
   Transaction,
   EarningsSummary,
 } from '@mytutorapp/shared/types';
+import { optimizeMediaUrl } from '@mytutorapp/shared/utils/mediaUrl';
 
 import PaymentWidget from '../components/PaymentWidget.web';
 import ThemeToggle from '../components/ThemeToggle.web';
@@ -49,7 +50,7 @@ const FALLBACK_AVATAR = (n = 'You') =>
 const resolveAsset = (raw?: string, backendUrl?: string, fallbackName?: string) => {
   if (!raw) return FALLBACK_AVATAR(fallbackName ?? 'You');
   if (raw.startsWith('/') && backendUrl) return `${backendUrl.replace(/\/+$/, '')}${raw}`;
-  return raw;
+  return optimizeMediaUrl(raw, { width: 256 });
 };
 
 const toNum = (v: unknown, fb = 0): number =>
