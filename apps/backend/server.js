@@ -20,6 +20,7 @@ import bodyParser from 'body-parser';
 import refundRoutes from './routes/refundRoutes.js';
 import emailUnsubscribeRoutes from './routes/emailUnsubscribe.js';
 import { normalizeCourseSize } from './middleware/normalizeCourseSize.js';
+import { installCloudinaryResponseOptimizer } from './utils/optimizeMediaUrlsDeep.js';
 import { ensureSeedSuperadmin } from './controllers/sessionController.js';
 import progressWatchRoutes from './routes/progressWatchRoutes.js';
 import progressReadRoutes from './routes/progressReadRoutes.js';
@@ -263,6 +264,7 @@ app.use(helmetMiddleware);
 app.use(morganMiddleware);
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(installCloudinaryResponseOptimizer());
 app.set('trust proxy', 1);
 
 // 🔒 Mild global soft limiter (keeps surprise fan-outs in check)

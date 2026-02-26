@@ -6,6 +6,7 @@ import { appUrl } from '@/lib/appOrigin';
 import useProfileDetail from '@mytutorapp/shared/hooks/useProfileDetail';
 import useProfileCard from '@mytutorapp/shared/hooks/useProfileCard';
 import { useShopContext } from '@mytutorapp/shared/context';
+import { optimizeMediaUrl } from '@mytutorapp/shared/utils/mediaUrl';
 import type { TutorProfile } from '@mytutorapp/shared/types';
 import Spinner from '../components/Spinner.web';
 import ProfileActions from '../components/ProfileActions.web';
@@ -82,7 +83,8 @@ const ProfileDetailPage: React.FC = () => {
     myProfile,
   } = useProfileDetail(id!, backendUrl);
 
-  const resolveAsset = (raw: string) => (raw?.startsWith('/') ? `${backendUrl}${raw}` : raw);
+  const resolveAsset = (raw: string) =>
+    optimizeMediaUrl(raw?.startsWith('/') ? `${backendUrl}${raw}` : raw, { width: 960 });
 
   const profile: TutorProfile = useMemo(() => {
     const tp = tutorProfile as Partial<TutorProfile> | undefined;

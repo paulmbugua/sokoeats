@@ -1,6 +1,7 @@
 // apps/web/src/pages/org/portal/OrgProfileShared.web.tsx
 import React, { useState } from 'react';
 import { CheckSquare, Pencil, Square } from 'lucide-react';
+import { optimizeMediaUrl } from '@mytutorapp/shared/utils/mediaUrl';
 
 /* ----------------------------- shared types ----------------------------- */
 
@@ -34,7 +35,7 @@ const FALLBACK = (n = 'Org') =>
 export const resolveAsset = (raw?: string, backendUrl?: string, fallbackName?: string) => {
   if (!raw) return FALLBACK(fallbackName ?? 'Org');
   if (raw.startsWith('/') && backendUrl) return `${backendUrl.replace(/\/+$/, '')}${raw}`;
-  return raw;
+  return optimizeMediaUrl(raw, { width: 256 });
 };
 
 export const getInitials = (name?: string, email?: string) => {

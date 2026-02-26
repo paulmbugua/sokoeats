@@ -1,6 +1,7 @@
 // apps/web/src/components/CourseHero.tsx
 import React, { useMemo } from 'react';
 import type { Course } from '@mytutorapp/shared/types';
+import { optimizeMediaUrl } from '@mytutorapp/shared/utils/mediaUrl';
 import { pickImageForCourse } from '../utils/subjectImages';
 
 type Props = {
@@ -13,9 +14,9 @@ type Props = {
 const CourseHero: React.FC<Props> = ({ course, backendUrl = '', className, alt }) => {
   const toAbs = (u?: string) => {
     if (!u) return '';
-    if (/^https?:\/\//i.test(u)) return u;
+    if (/^https?:\/\//i.test(u)) return optimizeMediaUrl(u, { width: 1400 });
     // if backendUrl is missing, return the relative path unmodified
-    return backendUrl ? `${backendUrl.replace(/\/+$/, '')}${u}` : u;
+    return optimizeMediaUrl(backendUrl ? `${backendUrl.replace(/\/+$/, '')}${u}` : u, { width: 1400 });
   };
 
   const url = useMemo(() => {
