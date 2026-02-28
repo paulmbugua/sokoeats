@@ -18,16 +18,16 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import tw from '../../tailwind';
 import { assets } from '../../assets/assets';
-import useAuth from '@mytutorapp/shared/hooks/useAuth';
+import useAuth from '@myhandymanapp/shared/hooks/useAuth';
 import CustomGoogleLoginButtonNative from './CustomGoogleLoginButton.native';
-import { useShopContext } from '@mytutorapp/shared/context';
+import { useShopContext } from '@myhandymanapp/shared/context';
 import type { MainStackParamList } from '../navigation/types';
-import { COUNTRIES } from '@mytutorapp/shared/utils/countries';
+import { COUNTRIES } from '@myhandymanapp/shared/utils/countries';
 import SelectField, { type Option } from './SelectField.native';
 
 // 🔹 parity with web (Cancel role flow)
 import { signOut } from 'firebase/auth';
-import { getAuthOrThrow } from '@mytutorapp/shared/utils/firebaseConfig';
+import { getAuthOrThrow } from '@myhandymanapp/shared/utils/firebaseConfig';
 import { useThemePref } from '../theme/ThemeContext';
 
 type LoginNavProp = StackNavigationProp<MainStackParamList>;

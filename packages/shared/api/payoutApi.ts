@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { WithdrawalRequestBody, WithdrawalResponse } from '@mytutorapp/shared/types';
+import type { WithdrawalRequestBody, WithdrawalResponse } from '@myhandymanapp/shared/types';
 
 export const requestWithdrawal = async (
   backendUrl: string,

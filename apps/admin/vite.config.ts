@@ -33,17 +33,17 @@ export default defineConfig({
       { find: /^@shared$/, replacement: path.resolve(__dirname, '../../packages/shared/index.ts') },
       { find: /^@shared\/(.*)$/, replacement: path.resolve(__dirname, '../../packages/shared/$1') },
       {
-        find: /^@mytutorapp\/shared$/,
+        find: /^@myhandymanapp\/shared$/,
         replacement: path.resolve(__dirname, '../../packages/shared/index.ts'),
       },
       {
-        find: /^@mytutorapp\/shared\/(.*)$/,
+        find: /^@myhandymanapp\/shared\/(.*)$/,
         replacement: path.resolve(__dirname, '../../packages/shared/$1'),
       },
 
       // explicit types barrel (matches web)
       {
-        find: /^@mytutorapp\/shared\/types$/,
+        find: /^@myhandymanapp\/shared\/types$/,
         replacement: path.resolve(__dirname, '../../packages/shared/types/index.ts'),
       },
       {

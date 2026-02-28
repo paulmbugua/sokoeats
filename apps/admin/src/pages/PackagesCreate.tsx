@@ -1,7 +1,7 @@
 // apps/admin/src/pages/PackagesCreate.tsx
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { useShopContext } from '@mytutorapp/shared/context/ShopContext';
+import { useShopContext } from '@myhandymanapp/shared/context/ShopContext';
 
 type Props = {
   /** Optional: if omitted we use the context token */

@@ -26,14 +26,14 @@ import {
   NavigationProp,
 } from '@react-navigation/native';
 import { FontAwesome } from '@expo/vector-icons';
-import { useMessages } from '@mytutorapp/shared/hooks';
+import { useMessages } from '@myhandymanapp/shared/hooks';
 import { notifyNow } from '../../utils/notifications';
 import tw from '../../tailwind';
 import chat from '../../assets/chat.png';
-import type { ChatMessage as SharedChatMessage } from '@mytutorapp/shared/types/ShopContextTypes';
+import type { ChatMessage as SharedChatMessage } from '@myhandymanapp/shared/types/ShopContextTypes';
 import type { MainStackParamList } from '../navigation/types';
-import { getTutorProfile } from '@mytutorapp/shared/api/profileDetailApi';
-import { useChatContext, useShopContext } from '@mytutorapp/shared/context';
+import { getTutorProfile } from '@myhandymanapp/shared/api/profileDetailApi';
+import { useChatContext, useShopContext } from '@myhandymanapp/shared/context';
 
 interface RouteParams {
   studentId?: string;

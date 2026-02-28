@@ -1,6 +1,6 @@
 // packages/shared/api/paymentApi.ts
 import axios from 'axios';
-import type { PaymentPackage } from '@mytutorapp/shared/types';
+import type { PaymentPackage } from '@myhandymanapp/shared/types';
 
 function clientPlatformHeader() {
   const isNative = typeof navigator !== 'undefined' && (navigator as any).product === 'ReactNative';

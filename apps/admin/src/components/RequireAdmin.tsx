@@ -1,7 +1,7 @@
 // apps/admin/src/components/RequireAdmin.tsx
 import React from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useShopContext } from '@mytutorapp/shared/context';
+import { useShopContext } from '@myhandymanapp/shared/context';
 
 export default function RequireAdmin({ children }: { children: React.ReactNode }) {
   const { token, role, initializing } = useShopContext();

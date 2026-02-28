@@ -1,7 +1,0 @@
-/login        https://www.daybreaklearner.com/login        301!
-/signup       https://www.daybreaklearner.com/signup       301!
-/org/login    https://www.daybreaklearner.com/institutions 301!
-/auth/*       https://www.daybreaklearner.com/login        301!
-
-/assets/*     /assets/:splat                               200
-/*            /index.html                                  200

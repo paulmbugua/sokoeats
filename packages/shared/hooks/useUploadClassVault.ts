@@ -1,12 +1,12 @@
 // packages/shared/hooks/useUploadClassVault.ts
 import { useMemo } from 'react';
-import { useShopContext } from '@mytutorapp/shared/context';
+import { useShopContext } from '@myhandymanapp/shared/context';
 import useAppQuery from './useAppQuery';
 import { useMutation, useQueryClient, QueryKey, MutationFunction } from '@tanstack/react-query';
-import { fetchUserRole } from '@mytutorapp/shared/api/profileApi';
-import { uploadClassVaultAsset } from '@mytutorapp/shared/api/classVaultUploadApi';
-import { createVideoJson } from '@mytutorapp/shared/api/classVaultApi';
-import type { RecordedVideo } from '@mytutorapp/shared/types';
+import { fetchUserRole } from '@myhandymanapp/shared/api/profileApi';
+import { uploadClassVaultAsset } from '@myhandymanapp/shared/api/classVaultUploadApi';
+import { createVideoJson } from '@myhandymanapp/shared/api/classVaultApi';
+import type { RecordedVideo } from '@myhandymanapp/shared/types';
 
 // Pick the fields needed to create a new RecordedVideo
 export type CreateRecordedVideoPayload = Pick<

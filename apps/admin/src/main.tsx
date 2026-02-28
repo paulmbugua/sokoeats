@@ -4,8 +4,8 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter, useNavigate } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools';
-import { ShopContextProvider } from '@mytutorapp/shared/context';
-import { queryClient } from '@mytutorapp/shared/utils/queryClient';
+import { ShopContextProvider } from '@myhandymanapp/shared/context';
+import { queryClient } from '@myhandymanapp/shared/utils/queryClient';
 import App from './App';
 import './index.css';
 

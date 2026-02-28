@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { CreditCard, Receipt, RefreshCw } from 'lucide-react';
-import { useShopContext } from '@mytutorapp/shared/context';
+import { useShopContext } from '@myhandymanapp/shared/context';
 
 type Tx = {
   id: string;

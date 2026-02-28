@@ -10,6 +10,14 @@ export default function expoConfig({ config }) {
   const enableGooglePlugin = isProduction || isDevClient;
 
   // ─────────────────────────────────────────────────────────
+  // ✅ EAS Project (Ekazi)
+  // ─────────────────────────────────────────────────────────
+  const EAS_PROJECT_ID =
+    process.env.EXPO_PUBLIC_EAS_PROJECT_ID ||
+    process.env.EAS_PROJECT_ID ||
+    '53179ce6-acfb-43a8-bbe1-f55fee0667f4';
+
+  // ─────────────────────────────────────────────────────────
   // Multi-backend catalog (deterministic via EXPO_PUBLIC vars)
   // ─────────────────────────────────────────────────────────
   const BACKENDS = {
@@ -17,7 +25,8 @@ export default function expoConfig({ config }) {
     iosSim: 'http://localhost:4000',
     hotspot: 'http://10.254.198.47:4000',
     lan1: process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://192.168.137.1:4000',
-    prod: process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.daybreaklearner.com',
+    // ✅ Update this when you deploy Ekazi backend
+    prod: process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.ekazi.app',
   };
 
   // ✅ Always respect EXPO_PUBLIC_DEFAULT_BACKEND if provided
@@ -53,10 +62,11 @@ export default function expoConfig({ config }) {
   return {
     ...config,
 
-    name: 'DayBreak',
-    slug: 'funzasasa',
+    owner: 'paulmbugua2',
+    name: 'Ekazi',
+    slug: 'ekazi',
     version: '1.0.8',
-    scheme: 'daybreak',
+    scheme: 'ekazi',
 
     runtimeVersion: { policy: 'appVersion' },
     userInterfaceStyle: 'automatic',
@@ -75,13 +85,14 @@ export default function expoConfig({ config }) {
 
     android: {
       ...config.android,
-      package: 'com.paulmbugua2.mytutorapp',
+      package: 'com.paulmbugua2.ekazi',
 
       // ✅ Remove foreground-service media playback permission (injected by some deps)
       blockedPermissions: Array.from(
         new Set([
           ...(config.android?.blockedPermissions ?? []),
           'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
+          // If you actually need location later, remove these from blockedPermissions
           'android.permission.ACCESS_COARSE_LOCATION',
           'android.permission.ACCESS_FINE_LOCATION',
         ]),
@@ -90,13 +101,12 @@ export default function expoConfig({ config }) {
       // ✅ Keep only what you need (deps may still add others automatically)
       permissions: ['INTERNET', 'POST_NOTIFICATIONS'],
 
-     googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
-
+      // ✅ Prefer env override; fallback file in repo
+      googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
 
       notification: {
         icon: './assets/notification-icon.png',
         color: '#A057ff',
-
         defaultChannel: 'default',
       },
 
@@ -106,14 +116,14 @@ export default function expoConfig({ config }) {
         backgroundColor: '#FFFFFF',
       },
 
-      // Deep link: daybreak://paystack/callback
+      // Deep link: ekazi://paystack/callback
       intentFilters: [
         {
           action: 'VIEW',
           category: ['BROWSABLE', 'DEFAULT'],
           data: [
             {
-              scheme: 'daybreak',
+              scheme: 'ekazi',
               host: 'paystack',
               pathPrefix: '/callback',
             },
@@ -124,7 +134,7 @@ export default function expoConfig({ config }) {
 
     ios: {
       ...config.ios,
-      bundleIdentifier: 'com.paulmbugua2.mytutorapp',
+      bundleIdentifier: 'com.paulmbugua2.ekazi',
 
       // ✅ Ensure we do NOT declare background audio playback
       infoPlist: {
@@ -207,18 +217,16 @@ export default function expoConfig({ config }) {
       EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID: GOOGLE_REVERSED_CLIENT_ID,
       EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: GOOGLE_ANDROID_CLIENT_ID,
 
-      // Optional if you use it elsewhere
-      EXPO_PUBLIC_EAS_PROJECT_ID:
-        process.env.EXPO_PUBLIC_EAS_PROJECT_ID || '015ecf54-6bf2-4727-9283-1525689ccade',
-
-      eas: { projectId: '015ecf54-6bf2-4727-9283-1525689ccade' },
+      // ✅ EAS project (required for builds + OTA updates)
+      EXPO_PUBLIC_EAS_PROJECT_ID: EAS_PROJECT_ID,
+      eas: { projectId: EAS_PROJECT_ID },
 
       BACKENDS,
       DEFAULT_BACKEND,
     },
 
     updates: {
-      url: 'https://u.expo.dev/015ecf54-6bf2-4727-9283-1525689ccade',
+      url: `https://u.expo.dev/${EAS_PROJECT_ID}`,
       fallbackToCacheTimeout: 0,
       checkAutomatically: 'ON_LOAD',
     },

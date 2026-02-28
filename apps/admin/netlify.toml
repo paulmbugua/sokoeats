@@ -1,5 +1,5 @@
 [build]
-  command = "yarn workspace @mytutorapp/admin build"
+  command = "yarn workspace @myhandymanapp/admin build"
   publish = "dist"
 
   # ✅ Skip build unless admin or shared changed

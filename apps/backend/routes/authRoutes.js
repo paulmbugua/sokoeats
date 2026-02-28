@@ -1,10 +1,15 @@
-import { Router } from 'express';
-import { login, adminEnvLogin } from '../controllers/sessionController.js';
+// apps/backend/src/routes/authRoutes.js
 
-const router = Router();
+import express from 'express';
+import authUser from '../middleware/authUser.js';
+import { register, login, requestOtp, verifyOtp, me } from '../controllers/authController.js';
 
-// Public auth endpoints
-router.post('/login', login); // → POST /api/auth/login
-router.post('/admin-env-login', adminEnvLogin); // → POST /api/auth/admin-env-login (optional bootstrap)
+const router = express.Router();
+
+router.post('/register', register);
+router.post('/login', login);
+router.post('/otp/request', requestOtp);
+router.post('/otp/verify', verifyOtp);
+router.get('/me', authUser, me);
 
 export default router;

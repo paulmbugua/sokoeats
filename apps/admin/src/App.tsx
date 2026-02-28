@@ -22,8 +22,8 @@ import OrgPricingManage from './pages/OrgPricingManage';
 import OrgSubscriptionsManage from './pages/OrgSubscriptionsManage';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { ThemeProvider } from '@mytutorapp/shared/hooks';
-import { useShopContext } from '@mytutorapp/shared/context/ShopContext';
+import { ThemeProvider } from '@myhandymanapp/shared/hooks';
+import { useShopContext } from '@myhandymanapp/shared/context/ShopContext';
 import { Loader2 } from 'lucide-react';
 import YouTubeIngest from './pages/YouTubeIngest';
 

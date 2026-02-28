@@ -5,7 +5,7 @@ import type {
   EarningsSummary,
   Transaction,
   Payout,
-} from '@mytutorapp/shared/types';
+} from '@myhandymanapp/shared/types';
 
 const cleaned = (u: string) => u.replace(/\/+$/, '');
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });

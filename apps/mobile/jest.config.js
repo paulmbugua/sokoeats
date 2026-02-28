@@ -11,6 +11,6 @@ module.exports = {
 
     // Your existing mappings:
     '^@/(.*)$': '<rootDir>/src/$1',
-    '^@mytutorapp/shared/(.*)$': '<rootDir>/../../packages/shared/$1',
+    '^@myhandymanapp/shared/(.*)$': '<rootDir>/../../packages/shared/$1',
   },
 };

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { useShopContext } from '@mytutorapp/shared/context/ShopContext';
+import { useShopContext } from '@myhandymanapp/shared/context/ShopContext';
 import { createPortal } from 'react-dom';
 import { Loader2, Pencil, RefreshCw, X } from 'lucide-react';
 

@@ -1,9 +1,9 @@
 // packages/shared/hooks/usePayment.ts
 import { useState, useCallback, useMemo, useEffect } from 'react';
-import { useShopContext } from '@mytutorapp/shared/context';
+import { useShopContext } from '@myhandymanapp/shared/context';
 import useAppQuery from './useAppQuery';
 import { useMutation } from '@tanstack/react-query';
-import type { Profile, RatingStats, PaymentPackage } from '@mytutorapp/shared/types';
+import type { Profile, RatingStats, PaymentPackage } from '@myhandymanapp/shared/types';
 import {
   getPaymentPackages,
   getRandomProfile,
@@ -14,7 +14,7 @@ import {
   getMyWallet,
   completePayment as apiCompletePayment,
   updateMpesaReference as apiUpdateMpesaReference,
-} from '@mytutorapp/shared/api';
+} from '@myhandymanapp/shared/api';
 import type { AxiosResponse } from 'axios';
 
 interface InitiateResponse {

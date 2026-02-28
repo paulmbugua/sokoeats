@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
-import { useShopContext } from '@mytutorapp/shared/context/ShopContext';
-import { adminVerifyCertification } from '@mytutorapp/shared/api/certificationApi';
-import { useAdminCertifications } from '@mytutorapp/shared/hooks';
+import { useShopContext } from '@myhandymanapp/shared/context/ShopContext';
+import { adminVerifyCertification } from '@myhandymanapp/shared/api/certificationApi';
+import { useAdminCertifications } from '@myhandymanapp/shared/hooks';
 
 const STATUS_TABS = ['Pending', 'Verified', 'All'] as const;
 

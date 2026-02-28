@@ -1,7 +1,7 @@
 // apps/admin/src/pages/AdminLogin.tsx
 import React, { useRef, useState, useEffect } from 'react';
 import axios, { AxiosError } from 'axios';
-import { useShopContext } from '@mytutorapp/shared/context/ShopContext';
+import { useShopContext } from '@myhandymanapp/shared/context/ShopContext';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import {

@@ -17,9 +17,9 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@mytutorapp/shared": ["../../packages/shared/index.ts", "../../packages/shared/index.d.ts"],
-      "@mytutorapp/shared/*": ["../../packages/shared/*"],
-      "@mytutorapp/shared/types": [
+      "@myhandymanapp/shared": ["../../packages/shared/index.ts", "../../packages/shared/index.d.ts"],
+      "@myhandymanapp/shared/*": ["../../packages/shared/*"],
+      "@myhandymanapp/shared/types": [
         "../../packages/shared/types/index.ts",
         "../../packages/shared/types/index.d.ts"
       ]

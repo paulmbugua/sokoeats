@@ -1,5 +1,5 @@
 /* eslint-disable no-console */
-export const AUTH_SESSION_KEY = 'mytutorapp.auth.session.v1';
+export const AUTH_SESSION_KEY = 'myhandymanapp.auth.session.v1';
 
 export type AuthMode = 'consumer' | 'org';
 

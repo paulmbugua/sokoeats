@@ -6,10 +6,10 @@ import {
   type Dispatch,
   type SetStateAction,
 } from 'react';
-import { useShopContext } from '@mytutorapp/shared/context';
+import { useShopContext } from '@myhandymanapp/shared/context';
 import useAppQuery from './useAppQuery';
 import { useMutation } from '@tanstack/react-query';
-import * as accountApi from '@mytutorapp/shared/api';
+import * as accountApi from '@myhandymanapp/shared/api';
 import axios from 'axios';
 import type {
   SessionFormData,
@@ -17,7 +17,7 @@ import type {
   SessionType,
   Transaction,
   EarningsSummary,
-} from '@mytutorapp/shared/types';
+} from '@myhandymanapp/shared/types';
 
 export interface UseAccountSectionResult {
   user: {

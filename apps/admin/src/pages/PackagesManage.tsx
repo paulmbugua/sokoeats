@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { Pencil, X, BadgePercent, Plus, Loader2, ArrowLeft } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { useShopContext } from '@mytutorapp/shared/context/ShopContext';
+import { useShopContext } from '@myhandymanapp/shared/context/ShopContext';
 import { useNavigate } from 'react-router-dom';
 import { createPortal } from 'react-dom';
 

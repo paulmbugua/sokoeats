@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { useNavigation, NavigationProp } from '@react-navigation/native';
 import { FontAwesome } from '@expo/vector-icons';
-import { useAuth } from '@mytutorapp/shared/hooks';
+import { useAuth } from '@myhandymanapp/shared/hooks';
 import tw from '../../tailwind';
 import type { MainStackParamList } from '../navigation/types';
 

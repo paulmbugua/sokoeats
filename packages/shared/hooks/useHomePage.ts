@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useCallback, useState } from 'react';
-import type { Profile, TutorFilters } from '@mytutorapp/shared/types';
-import { DEFAULT_TUTOR_FILTERS } from '@mytutorapp/shared/types';
-import { fetchTutorProfiles } from '@mytutorapp/shared/api';
-import { searchTutorsApi } from '@mytutorapp/shared/api/profileApi';
-import { useShopContext } from '@mytutorapp/shared/context';
+import type { Profile, TutorFilters } from '@myhandymanapp/shared/types';
+import { DEFAULT_TUTOR_FILTERS } from '@myhandymanapp/shared/types';
+import { fetchTutorProfiles } from '@myhandymanapp/shared/api';
+import { searchTutorsApi } from '@myhandymanapp/shared/api/profileApi';
+import { useShopContext } from '@myhandymanapp/shared/context';
 import useAppQuery from './useAppQuery';
 
 const dev = typeof process !== 'undefined' ? process.env.NODE_ENV !== 'production' : false;

@@ -1,14 +1,14 @@
 // packages/shared/hooks/useAuth.ts
 import { useCallback, useState } from 'react';
-import { useShopContext } from '@mytutorapp/shared/context';
-import * as api from '@mytutorapp/shared/api';
+import { useShopContext } from '@myhandymanapp/shared/context';
+import * as api from '@myhandymanapp/shared/api';
 
 import type {
   AuthPayload,
   RegisterPayload,
   UpdateRolePayload,
   AuthResponse,
-} from '@mytutorapp/shared/types';
+} from '@myhandymanapp/shared/types';
 
 export interface UseLoginOptions {
   alertFn?: (message: string) => void;

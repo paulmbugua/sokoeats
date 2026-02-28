@@ -8,9 +8,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Linking from 'expo-linking';
 
 import tw from '../../tailwind';
-import { useShopContext } from '@mytutorapp/shared/context';
-import { paystackVerify } from '@mytutorapp/shared/api';
-import { confirmOrgSubscription } from '@mytutorapp/shared/api/orgApi';
+import { useShopContext } from '@myhandymanapp/shared/context';
+import { paystackVerify } from '@myhandymanapp/shared/api';
+import { confirmOrgSubscription } from '@myhandymanapp/shared/api/orgApi';
 import type { MainStackParamList } from '../navigation/types';
 
 type Status = 'verifying' | 'success' | 'failed';

@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { toast } from 'react-toastify';
 import { Loader2, CheckCircle2, RefreshCw, Trash2, Pencil } from 'lucide-react';
-import { useShopContext } from '@mytutorapp/shared/context/ShopContext';
+import { useShopContext } from '@myhandymanapp/shared/context/ShopContext';
 
 type Result = { ok: boolean; collectionId: string; items: number };
 

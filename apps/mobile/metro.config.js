@@ -25,7 +25,7 @@ config.resolver = {
   // Keep aliases for your shared package
   alias: {
     ...(config.resolver?.alias || {}),
-    '@mytutorapp/shared': sharedPkg,
+    '@myhandymanapp/shared': sharedPkg,
     '@shared': sharedPkg,
   },
 

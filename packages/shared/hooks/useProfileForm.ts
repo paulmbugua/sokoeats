@@ -9,11 +9,11 @@ import {
   UploadAsset,
   PayoutCurrency,
   PayoutMethod,
-} from '@mytutorapp/shared/types';
-import { fetchUserRole, createProfileJson } from '@mytutorapp/shared/api/profileApi';
-import { uploadAsset } from '@mytutorapp/shared/api/uploadAsset';
-import { requestUploadPresign, completeUpload } from '@mytutorapp/shared/api/uploadApi';
-import { useShopContext } from '@mytutorapp/shared/context';
+} from '@myhandymanapp/shared/types';
+import { fetchUserRole, createProfileJson } from '@myhandymanapp/shared/api/profileApi';
+import { uploadAsset } from '@myhandymanapp/shared/api/uploadAsset';
+import { requestUploadPresign, completeUpload } from '@myhandymanapp/shared/api/uploadApi';
+import { useShopContext } from '@myhandymanapp/shared/context';
 
 export interface UseProfileFormOptions {
   onSuccess?: () => void;

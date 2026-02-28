@@ -33,11 +33,11 @@ import {
   ChatProvider,
   useChatContext,
   useShopContext,
-} from '@mytutorapp/shared/context';
+} from '@myhandymanapp/shared/context';
 import { storage } from '../utils/storage';
-import { queryClient } from '@mytutorapp/shared/utils/queryClient';
+import { queryClient } from '@myhandymanapp/shared/utils/queryClient';
 
-import type { MainStackParamList } from './navigation/types';
+import type { RootStackParamList as MainStackParamList } from './navigation/types';
 
 // ⬇️ Portal provider/host
 import { PortalProvider, PortalHost } from '@gorhom/portal';
@@ -171,7 +171,7 @@ const linking: LinkingOptions<MainStackParamList> = {
   prefixes: ['daybreak://', Linking.createURL('/')],
   config: {
     screens: {
-      PaystackCallback: 'paystack/callback',
+    
     },
   },
 };

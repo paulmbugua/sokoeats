@@ -19,7 +19,7 @@ import type {
   ShopContextValue as BaseShopContextValue,
   Profile,
   UserRole,
-} from '@mytutorapp/shared/types/ShopContextTypes';
+} from '@myhandymanapp/shared/types/ShopContextTypes';
 import {
   migrateLegacyTokens,
   readSession,
@@ -28,7 +28,7 @@ import {
   setOrgSession,
   clearSession as clearAuthSession,
   type AuthMode,
-} from '@mytutorapp/shared/utils/authSession';
+} from '@myhandymanapp/shared/utils/authSession';
 
 interface ShopContextProviderProps {
   children: ReactNode;

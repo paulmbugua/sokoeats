@@ -28,9 +28,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Linking from 'expo-linking';
 import * as WebBrowser from 'expo-web-browser';
 
-import { useShopContext } from '@mytutorapp/shared/context';
-import { usePayment } from '@mytutorapp/shared/hooks';
-import { paystackCreateOrder } from '@mytutorapp/shared/api';
+import { useShopContext } from '@myhandymanapp/shared/context';
+import { usePayment } from '@myhandymanapp/shared/hooks';
+import { paystackCreateOrder } from '@myhandymanapp/shared/api';
 
 import type {
   PaymentPackage,
@@ -39,7 +39,7 @@ import type {
   MappedProfile,
   Profile as BareProfile,
   PayoutCurrency,
-} from '@mytutorapp/shared/types';
+} from '@myhandymanapp/shared/types';
 
 import type { MainStackParamList } from '../navigation/types';
 

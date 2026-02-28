@@ -13,60 +13,40 @@ import express from 'express';
 import cors from 'cors';
 import http from 'http';
 import { runWebhookTickSingleton as runWebhookTick } from './cronJobs/webhookWorkerSingleton.js';
-import attemptsRoutes from './routes/attemptsRoutes.js';
-import oerRoutes from './routes/oerRoutes.js';
+
 import { Server } from 'socket.io';
 import bodyParser from 'body-parser';
 import refundRoutes from './routes/refundRoutes.js';
-import emailUnsubscribeRoutes from './routes/emailUnsubscribe.js';
-import { normalizeCourseSize } from './middleware/normalizeCourseSize.js';
-import { installCloudinaryResponseOptimizer } from './utils/optimizeMediaUrlsDeep.js';
-import { ensureSeedSuperadmin } from './controllers/sessionController.js';
-import progressWatchRoutes from './routes/progressWatchRoutes.js';
-import progressReadRoutes from './routes/progressReadRoutes.js';
-import openstaxIngestRoutes from './routes/openstaxIngestRoutes.js';
-import youtubeIngestRoutes from './routes/youtubeIngestRoutes.js';
+
 // Routes
-import ttsAvatarRoutes from './routes/ttsAvatarRoutes.js';
-import transcriptsRoutes from './routes/transcripts.js';
+
 import adminRoutes from './routes/adminRoutes.js';
 import authRoutes from './routes/authRoutes.js';
-import adminStaffRoutes from './routes/adminStaffRoutes.js';
-import institutionAuthRoutes from './routes/institutionAuthRoutes.js';
-import aiRoutes from './routes/ai.js';
-import orgRoutes from './routes/orgRoutes.js';
-import uploadRoutes from './routes/uploadRoutes.js';
-import earningsRoutes from './routes/earningsRoutes.js';
+import catalogRoutes from './routes/catalogRoutes.js';
+import jobsRoutes from './routes/jobsRoutes.js';
+import quotesRoutes from './routes/quotesRoutes.js';
+import messagesRoutes from './routes/messagesRoutes.js';
 import './cronJobs/scheduler.js';
 import paymentRoutes from './routes/paymentRoutes.js';
-import aiCourseRoutes from './routes/aiCourseRoutes.js';
+
 import profileRoutes from './routes/profileRoutes.js';
 import userRouter from './routes/userRoute.js';
-import profileActionsRoutes from './routes/profileActionsRoutes.js';
+
 import webhookRoutes from './routes/webhookRoutes.js';
-import tutorSessionRoutes from './routes/tutorSessionRoutes.js';
-import classVaultRoutes from './routes/classVaultRoutes.js';
+
 import mpesaUrlsRoutes from './routes/mpesaUrlsRoutes.js';
-import reviewRouter from './routes/reviewRoutes.js';
-import certificationRoutes from './routes/certificationRoutes.js';
-import certificationsAdminRoutes from './routes/certificationsAdminRoutes.js';
-import courseRoutes from './routes/courseRoutes.js';
-import enrollmentRoutes from './routes/enrollmentRoutes.js';
-import paypalRoutes from './routes/paypalRoutes.js';
+
 import { webhooks } from './controllers/paypalController.js';
-import courseProgressRoutes from './routes/courseProgressRoutes.js';
-import achievementsRoutes from './routes/achievementsRoutes.js';
-import certificateRoutes from './routes/certificateRoutes.js';
+
 import payoutRoutes from './routes/payoutRoutes.js';
 import { inflightLimiter } from './middleware/inflightLimiter.js';
-import orgExamsRoutes from './routes/orgExamsRoutes.js';
+
 import paystackRoutes from './routes/paystackRoutes.js';
 import { handlePaystackWebhook } from './controllers/paystackController.js';
 import pushRoutes from './routes/pushRoutes.js';
 import { notifyEvent } from './services/notificationEvents.js';
 import messagesRoutes from './routes/messagesRoutes.js';
-import orgFeesRoutes from './routes/orgFeesRoutes.js';
-import orgProToolsRoutes from './routes/orgProToolsRoutes.js';
+
 import {
   canChatUnlocked,
   getRoles,
@@ -378,65 +358,34 @@ if (isProduction) {
 // User & profiles
 app.use('/api/user', userLimiter, userRouter);
 app.use('/api/profile', profileRoutes);
-app.use('/api/profileActions', profileActionsRoutes);
-app.use('/api/push', pushRoutes);
-app.use('/api/tutor-session', tutorSessionRoutes);
 
+app.use('/api/push', pushRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api', catalogRoutes);
+app.use('/api', jobsRoutes);
+app.use('/api', quotesRoutes);
 app.use('/api', messagesRoutes);
 
 // Payments & webhooks
 app.use('/api/payment', paymentRoutes);
 app.use('/api', webhookRoutes);
-app.use('/api/paypal', paypalRoutes);
+
 app.use('/api/payouts', payoutRoutes);
 app.use('/api/payment', refundRoutes);
 app.use('/api/paystack', paystackRoutes);
-app.use('/api',           orgFeesRoutes);
+
 
 // Tutor sessions / M-Pesa
 
 app.use('/api/mpesa', mpesaUrlsRoutes);
 
 // Reviews & public content
-app.use('/api/reviews', reviewsLimiter, reviewRouter);
-app.use('/api/profiles', certificationRoutes);
-app.use('/api/certifications', certificationsAdminRoutes);
-app.use('/api/certificates', certificatesLimiter, certificateRoutes);
 
-// ClassVault & media
-app.use('/api/classvault', classVaultRoutes);
-app.use(uploadRoutes);
 
-// Courses (non-AI) & enrollments
-app.use('/api/courses', courseRoutes);
-app.use('/api/enrollments', enrollmentRoutes);
-app.use('/api/earnings', earningsRoutes);
-app.use('/api/achievements', achievementsRoutes);
 
-// Auth & Admin
-app.use('/api/institutions/auth', institutionAuthRoutes);
-app.use('/api/auth', authRoutes);
 
-app.use('/api/admin', adminStaffRoutes); // /api/admin/staff
-app.use('/api/admin', adminRoutes);
 
-// Organization
-app.use('/api/orgs', orgRoutes);
-app.use('/api/orgs', orgExamsRoutes);
-app.use('/api/orgs/attempts', attemptsRoutes);
-app.use('/api/org', orgProToolsRoutes);
-
-// Course progress
-app.use('/api/course-progress', progressLimiter, courseProgressRoutes);
-app.use('/api', progressLimiter, progressWatchRoutes);
-app.use('/api', progressLimiter, progressReadRoutes);
-app.use('/api', oerRoutes);
-app.use('/api', openstaxIngestRoutes);
-
-app.use('/api', youtubeIngestRoutes);
-
-// ✅ Ensure course size normalization runs BEFORE AI handlers that rely on it
-app.use('/api/ai', normalizeCourseSize);
+;
 
 app.use(
   '/api/ai',

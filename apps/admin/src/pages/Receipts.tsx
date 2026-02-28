@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
-import { useShopContext } from '@mytutorapp/shared/context';
+import { useShopContext } from '@myhandymanapp/shared/context';
 import {
   FileDown,
   Loader2,

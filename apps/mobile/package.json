@@ -1,11 +1,11 @@
 {
-  "name": "@mytutorapp/mobile",
+  "name": "@myhandymanapp/mobile",
   "version": "1.0.0",
   "private": true,
   "main": "./src/index.tsx",
   "expo": {
     "transpilePackages": [
-      "@mytutorapp/shared",
+      "@myhandymanapp/shared",
       "@shared"
     ]
   },

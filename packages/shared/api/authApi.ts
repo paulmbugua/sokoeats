@@ -5,7 +5,7 @@ import type {
   RegisterPayload,
   UpdateRolePayload,
   AuthResponse,
-} from '@mytutorapp/shared/types';
+} from '@myhandymanapp/shared/types';
 
 // Optional: a single axios instance so headers/credentials are consistent
 function client(backendUrl: string, token?: string) {

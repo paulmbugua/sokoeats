@@ -1,1 +1,1 @@
-C:\projects\mytutorapp\node_modules\firebase\node_modules\@firebase\database-compat\dist\index.standalone.js:6611: // NOTE: In React-Native there's normally no 'document', but if you debug a React-Native app in
+C:\projects\myhandymanapp\node_modules\firebase\node_modules\@firebase\database-compat\dist\index.standalone.js:6611: // NOTE: In React-Native there's normally no 'document', but if you debug a React-Native app in

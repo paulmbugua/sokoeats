@@ -20,7 +20,7 @@ import type {
   Conversation,
   ChatMessage,
   ChatContextValue as SharedChatContextValue,
-} from '@mytutorapp/shared/types';
+} from '@myhandymanapp/shared/types';
 
 /**
  * ✅ FIX:
@@ -28,7 +28,7 @@ import type {
  * but the app uses it. We extend the shared type locally so TS stops erroring
  * even before you update the shared types package.
  *
- * Later you can (optionally) add these fields to @mytutorapp/shared/types too.
+ * Later you can (optionally) add these fields to @myhandymanapp/shared/types too.
  */
 export type ChatContextValueFixed = SharedChatContextValue & {
   setAppPresence?: (active: boolean) => void;

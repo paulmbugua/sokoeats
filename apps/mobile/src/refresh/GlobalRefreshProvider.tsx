@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext,  useEffect, useMemo, useRef, useState } from 'react';
 import type { PropsWithChildren } from 'react';
 import { RefreshControl, ScrollView, FlatList } from 'react-native';
-import { queryClient } from '@mytutorapp/shared/utils/queryClient';
+import { queryClient } from '@myhandymanapp/shared/utils/queryClient';
 
 type RefreshFn = () => Promise<void> | void;
 

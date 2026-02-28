@@ -2,7 +2,7 @@
 
 /* eslint-disable prettier/prettier */
 import type { ImageSourcePropType } from 'react-native';
-import type { Course } from '@mytutorapp/shared/types';
+import type { Course } from '@myhandymanapp/shared/types';
 
 /** --------------------------------------------------------
  * Canonical subjects → image URLs (native uses URIs)

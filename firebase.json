@@ -10,12 +10,12 @@
         "type": 301
       },
       {
-        "source": "https://mytutorapp-d3c91.web.app/**",
+        "source": "https://myhandymanapp-d3c91.web.app/**",
         "destination": "https://daybreaklearner.com",
         "type": 301
       },
       {
-        "source": "https://mytutorapp-d3c91.firebaseapp.com/**",
+        "source": "https://myhandymanapp-d3c91.firebaseapp.com/**",
         "destination": "https://daybreaklearner.com",
         "type": 301
       }

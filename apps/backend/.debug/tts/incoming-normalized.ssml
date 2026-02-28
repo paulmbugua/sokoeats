@@ -1,4 +1,0 @@
-<speak xmlns:mstts="http://www.w3.org/2001/mstts"><voice name="en-US-JennyNeural">
-  <p>Hello! I am your robot tutor.</p>
-  <p>Today we will learn fractions. <break time="400ms"/></p>
-  <p>Repeat after me: one half. one third. one quarter.</p></voice></speak>

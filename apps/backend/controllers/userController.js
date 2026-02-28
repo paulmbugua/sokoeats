@@ -461,7 +461,7 @@ export const googleLogin = async (req, res) => {
         .json({ success: false, message: 'Malformed token' });
     }
 
-    const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'mytutorapp-d3c91';
+    const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || 'myhandymanapp-d3c91';
     const allowedAudiences = [
       process.env.GOOGLE_CLIENT_ID_WEB,
       process.env.GOOGLE_CLIENT_ID_ANDROID,

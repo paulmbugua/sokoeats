@@ -1,5 +1,5 @@
 import axios from 'axios';
-import type { UploadKind, PresignResponse, CompleteResponse } from '@mytutorapp/shared/types';
+import type { UploadKind, PresignResponse, CompleteResponse } from '@myhandymanapp/shared/types';
 
 export type UploadPresignInput = {
   filename: string;

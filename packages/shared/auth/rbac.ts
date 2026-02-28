@@ -1,4 +1,4 @@
-import type { UserRole } from '@mytutorapp/shared/types/ShopContextTypes';
+import type { UserRole } from '@myhandymanapp/shared/types/ShopContextTypes';
 
 export const RoleOrder = {
   student: 0,

@@ -18,7 +18,7 @@ module.exports = function (api) {
             '@tanstack/react-query': path.resolve(__dirname, 'node_modules/@tanstack/react-query'),
 
             // Monorepo convenience (optional)
-            '@mytutorapp/shared': path.resolve(__dirname, '../../packages/shared'),
+            '@myhandymanapp/shared': path.resolve(__dirname, '../../packages/shared'),
             '@shared': path.resolve(__dirname, '../../packages/shared'),
           },
         },
