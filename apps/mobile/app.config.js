@@ -111,8 +111,8 @@ export default function expoConfig({ config }) {
       },
 
       adaptiveIcon: {
-      backgroundColor: '#FFFFFF',
-    },
+  backgroundColor: '#FFFFFF',
+},
 
       // Deep link: ekazi://paystack/callback
       intentFilters: [
