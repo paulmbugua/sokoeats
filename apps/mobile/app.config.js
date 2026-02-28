@@ -111,10 +111,8 @@ export default function expoConfig({ config }) {
       },
 
       adaptiveIcon: {
-        foregroundImage: './assets/adaptive-icon-foreground.png',
-        monochromeImage: './assets/adaptive-icon-monochrome.png',
-        backgroundColor: '#FFFFFF',
-      },
+      backgroundColor: '#FFFFFF',
+    },
 
       // Deep link: ekazi://paystack/callback
       intentFilters: [
