@@ -12,8 +12,7 @@
       "env": {
         "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON",
         "GOOGLE_SERVICE_INFO_PLIST": "@GOOGLE_SERVICE_INFO_PLIST",
-        "EXPO_DEV_CLIENT": "true",
-        "EXPO_PUBLIC_DEFAULT_BACKEND": "lan1"
+        "EXPO_DEV_CLIENT": "true"
       }
     },
     "preview": {
