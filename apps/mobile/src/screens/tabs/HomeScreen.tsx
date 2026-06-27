@@ -4,7 +4,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing } from '../../theme/tokens';
 import Card from '../../components/Card';
 import PrimaryButton from '../../components/PrimaryButton';
-import { categories as seedCategories } from '../../../../packages/shared/api/kenya-data';
+import { categories as seedCategories } from '@myhandymanapp/shared/api/kenya-data';
 
 export default function HomeScreen({ navigation }: any) {
   return (

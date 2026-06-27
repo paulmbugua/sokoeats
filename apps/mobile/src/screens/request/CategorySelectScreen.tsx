@@ -3,7 +3,7 @@ import { View, Text, ScrollView } from 'react-native';
 import { colors, spacing } from '../../theme/tokens';
 import Card from '../../components/Card';
 import StepProgress from '../../components/StepProgress';
-import { categories } from '../../../../packages/shared/api/kenya-data';
+import { categories } from '@myhandymanapp/shared/api/kenya-data';
 
 export default function CategorySelectScreen({ navigation }: any) {
   return (

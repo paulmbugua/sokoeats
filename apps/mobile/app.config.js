@@ -106,13 +106,15 @@ export default function expoConfig({ config }) {
 
       notification: {
         icon: './assets/notification-icon.png',
-        color: '#A057ff',
+        color: '#16A34A',
         defaultChannel: 'default',
       },
 
       adaptiveIcon: {
-  backgroundColor: '#FFFFFF',
-},
+        foregroundImage: './assets/adaptive-icon-foreground.png',
+        monochromeImage: './assets/adaptive-icon-monochrome.png',
+        backgroundColor: '#FFFFFF',
+      },
 
       // Deep link: ekazi://paystack/callback
       intentFilters: [

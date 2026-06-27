@@ -168,7 +168,7 @@ queryClient.getQueryCache().subscribe((event: QueryCacheNotifyEvent) => {
    Deep linking
 ────────────────────────────────────────────────────────── */
 const linking: LinkingOptions<MainStackParamList> = {
-  prefixes: ['daybreak://', Linking.createURL('/')],
+  prefixes: ['ekazi://', Linking.createURL('/')],
   config: {
     screens: {
     

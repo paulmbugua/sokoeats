@@ -4,7 +4,7 @@ import { colors, spacing, radius } from '../../theme/tokens';
 import Card from '../../components/Card';
 import StepProgress from '../../components/StepProgress';
 import PrimaryButton from '../../components/PrimaryButton';
-import { estates } from '../../../../packages/shared/api/kenya-data';
+import { estates } from '@myhandymanapp/shared/api/kenya-data';
 
 export default function LocationSelectScreen({ route, navigation }: any) {
   const { draft } = route.params;

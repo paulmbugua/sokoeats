@@ -1,6 +1,7 @@
 // apps/mobile/src/theme/tokens.ts
 export const colors = {
-  primary: '#2563EB', // FixIt blue
+  primary: '#16A34A', // Ekazi green
+  primaryDark: '#0F766E',
   bg: '#FFFFFF',
   text: '#111827',
   muted: '#6B7280',
@@ -8,6 +9,12 @@ export const colors = {
   card: '#FFFFFF',
   success: '#16A34A',
   danger: '#DC2626',
+  green: '#16A34A',
+  greenSoft: '#DCFCE7',
+  blueSoft: '#DBEAFE',
+  purple: '#7C3AED',
+  orange: '#EA580C',
+  chip: '#F3F4F6',
 };
 
 export const spacing = {

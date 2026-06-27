@@ -3,7 +3,7 @@ import { View, Text, ScrollView } from 'react-native';
 import { colors, spacing } from '../../theme/tokens';
 import Card from '../../components/Card';
 import StepProgress from '../../components/StepProgress';
-import { services } from '../../../../packages/shared/api/kenya-data';
+import { services } from '@myhandymanapp/shared/api/kenya-data';
 
 export default function TaskSelectScreen({ route, navigation }: any) {
   const { categoryId, categoryName } = route.params;

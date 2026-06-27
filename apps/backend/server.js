@@ -39,14 +39,13 @@ import mpesaUrlsRoutes from './routes/mpesaUrlsRoutes.js';
 import { webhooks } from './controllers/paypalController.js';
 
 import payoutRoutes from './routes/payoutRoutes.js';
+import emailUnsubscribeRoutes from './routes/emailUnsubscribe.js';
 import { inflightLimiter } from './middleware/inflightLimiter.js';
 
 import paystackRoutes from './routes/paystackRoutes.js';
 import { handlePaystackWebhook } from './controllers/paystackController.js';
 import pushRoutes from './routes/pushRoutes.js';
 import { notifyEvent } from './services/notificationEvents.js';
-import messagesRoutes from './routes/messagesRoutes.js';
-
 import {
   canChatUnlocked,
   getRoles,
@@ -280,7 +279,7 @@ function redirectToDeepLink(req, res) {
     query: req.query,
   });
 
-  const deep = new URL('daybreak://paystack/callback');
+  const deep = new URL('ekazi://paystack/callback');
 
   for (const [k, v] of Object.entries(req.query || {})) {
     if (v == null) continue;
@@ -379,40 +378,7 @@ app.use('/api/paystack', paystackRoutes);
 
 app.use('/api/mpesa', mpesaUrlsRoutes);
 
-// Reviews & public content
-
-
-
-
-
-;
-
-app.use(
-  '/api/ai',
-  inflightLimiter({
-    keyFn: aiKeyFn,
-    max: Number(process.env.AI_MAX_INFLIGHT || 2),
-  }),
-);
-// ✅ Apply strict AI limiter to expensive AI/TTS work (per-user, per-bucket)
-app.use('/api/ai', aiLimiterStrict, aiRoutes); // general AI endpoints
-app.use('/api/ai', aiLimiterStrict, aiCourseRoutes); // AI course generation
-
-// TTS avatars also hit Azure—protect them, too
-app.use(
-  '/api/ttsAvatar',
-  inflightLimiter({
-    keyFn: aiKeyFn,
-    max: Number(process.env.AI_MAX_INFLIGHT || 2),
-  }),
-);
-app.use('/api/ttsAvatar', aiLimiterStrict, ttsAvatarRoutes);
-
-// Transcripts (if these call AI, consider adding aiLimiterStrict as well)
-app.use('/api/transcripts', transcriptsRoutes);
-
-// Legacy / secondary router for /api/courses (kept if intentional)
-
+// Reviews, public content and legacy AI/TTS routes are intentionally not mounted in the Ekazi mobile API shell.
 app.use('/api/email', emailUnsubscribeRoutes);
 
 // Root ping
