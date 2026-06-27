@@ -31,7 +31,9 @@ export default function expoConfig({ config }) {
 
   // ✅ Always respect EXPO_PUBLIC_DEFAULT_BACKEND if provided
   const DEFAULT_BACKEND =
-    process.env.EXPO_PUBLIC_DEFAULT_BACKEND || (isProduction ? 'prod' : 'hotspot');
+    process.env.EXPO_PUBLIC_DEFAULT_BACKEND ||
+    process.env.BACKEND ||
+    (isProduction ? 'prod' : 'hotspot');
 
   // Single resolved URL the app can use
   const RESOLVED_BACKEND_URL = BACKENDS[DEFAULT_BACKEND] || BACKENDS.prod;
