@@ -135,6 +135,8 @@ export default function expoConfig({ config }) {
     ios: {
       ...config.ios,
       bundleIdentifier: 'com.paulmbugua2.ekazi',
+      googleServicesFile:
+        process.env.GOOGLE_SERVICE_INFO_PLIST ?? './GoogleService-Info.plist',
 
       // ✅ Ensure we do NOT declare background audio playback
       infoPlist: {

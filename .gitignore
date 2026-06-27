@@ -113,6 +113,7 @@ apps/backend/uploads/**
 # Firebase mobile config (do not commit)
 apps/mobile/google-services.json
 apps/mobile/GoogleService-Info.plist
+apps/mobile/GoogleService-Info
 
 
 # If you generate exports/media anywhere else, add them explicitly:

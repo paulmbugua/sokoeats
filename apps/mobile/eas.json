@@ -10,7 +10,8 @@
       "distribution": "internal",
       "channel": "development",
       "env": {
-        "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON"
+        "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON",
+        "GOOGLE_SERVICE_INFO_PLIST": "@GOOGLE_SERVICE_INFO_PLIST"
       }
     },
     "preview": {
@@ -18,7 +19,8 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON"
+        "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON",
+        "GOOGLE_SERVICE_INFO_PLIST": "@GOOGLE_SERVICE_INFO_PLIST"
       }
     },
     "production": {
@@ -26,7 +28,9 @@
       "autoIncrement": true,
       "channel": "production",
       "distribution": "store",
-      "android": { "buildType": "app-bundle" },
+      "android": {
+        "buildType": "app-bundle"
+      },
       "env": {
         "GOOGLE_SERVICES_JSON": "@GOOGLE_SERVICES_JSON",
         "EXPO_PUBLIC_APP_ENV": "production",
@@ -35,7 +39,8 @@
         "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "557799973381-ksp83t2vo6fdqufhm0iie06lnb4e8j8v.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "557799973381-g0h98g6vg82oeineeb4t9e67hgosdfrg.apps.googleusercontent.com",
         "EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID": "com.googleusercontent.apps.557799973381-g0h98g6vg82oeineeb4t9e67hgosdfrg",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "557799973381-97lsoficotiiulhl5st6tf6h723uurpg.apps.googleusercontent.com"
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "557799973381-97lsoficotiiulhl5st6tf6h723uurpg.apps.googleusercontent.com",
+        "GOOGLE_SERVICE_INFO_PLIST": "@GOOGLE_SERVICE_INFO_PLIST"
       }
     }
   },
