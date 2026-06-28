@@ -103,8 +103,7 @@ export default function expoConfig({ config }) {
       // ✅ Keep only what you need (deps may still add others automatically)
       permissions: ['INTERNET', 'POST_NOTIFICATIONS'],
 
-      // ✅ Prefer env override; fallback file in repo
-      googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
+      googleServicesFile: './google-services.json',
 
       notification: {
         icon: './assets/notification-icon.png',
@@ -137,8 +136,7 @@ export default function expoConfig({ config }) {
     ios: {
       ...config.ios,
       bundleIdentifier: 'com.paulmbugua2.ekazi',
-      googleServicesFile:
-        process.env.GOOGLE_SERVICE_INFO_PLIST ?? './GoogleService-Info.plist',
+      googleServicesFile: './GoogleService-Info.plist',
 
       // ✅ Ensure we do NOT declare background audio playback
       infoPlist: {
