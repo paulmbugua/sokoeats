@@ -5,6 +5,7 @@ import Card from '../../components/Card';
 import Chip from '../../components/Chip';
 import StepProgress from '../../components/StepProgress';
 import PrimaryButton from '../../components/PrimaryButton';
+import { Screen } from '../../components/Screen';
 
 const quick = ['Tap is dripping constantly', 'No power in one room', 'Wall has cracks and needs repainting', 'Fridge not cooling properly', 'Door handle broken'];
 
@@ -22,9 +23,9 @@ export default function DescribeIssueScreen({ route, navigation }: any) {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
+    <Screen backgroundColor="white">
       <StepProgress step={2} total={6} label="Describe the problem" />
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingTop: 0 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, paddingTop: 0, paddingBottom: 96 }}>
         <Text style={{ fontWeight: '900', marginBottom: 8 }}>What needs to be done?</Text>
         <TextInput
           value={desc}
@@ -54,6 +55,6 @@ export default function DescribeIssueScreen({ route, navigation }: any) {
           <PrimaryButton title="Continue" onPress={() => navigation.navigate('PhotoUpload', { draft: { ...draft, description: desc } })} />
         </View>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }

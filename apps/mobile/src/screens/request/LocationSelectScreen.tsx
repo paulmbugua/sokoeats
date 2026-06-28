@@ -5,6 +5,7 @@ import Card from '../../components/Card';
 import StepProgress from '../../components/StepProgress';
 import PrimaryButton from '../../components/PrimaryButton';
 import { estates } from '@myhandymanapp/shared/api/kenya-data';
+import { Screen } from '../../components/Screen';
 
 export default function LocationSelectScreen({ route, navigation }: any) {
   const { draft } = route.params;
@@ -13,9 +14,9 @@ export default function LocationSelectScreen({ route, navigation }: any) {
   const [selected, setSelected] = useState('Kilimani');
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
+    <Screen backgroundColor="white">
       <StepProgress step={4} total={6} label="Where is the job?" />
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingTop: 0 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, paddingTop: 0, paddingBottom: 96 }}>
         <Card style={{ marginBottom: 12 }}>
           <Text style={{ fontWeight: '900' }}>Use Current Location</Text>
         </Card>
@@ -66,6 +67,6 @@ export default function LocationSelectScreen({ route, navigation }: any) {
           />
         </View>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }

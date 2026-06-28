@@ -4,11 +4,11 @@ import { colors, spacing } from '../../theme/tokens';
 import Card from '../../components/Card';
 import PrimaryButton from '../../components/PrimaryButton';
 import SecondaryButton from '../../components/SecondaryButton';
+import { ScreenScroll } from '../../components/Screen';
 
 export default function BookingConfirmedScreen({ navigation }: any) {
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingBottom: 24 }}>
+    <ScreenScroll backgroundColor="white">
         <Card style={{ backgroundColor: colors.greenSoft, borderColor: '#BBF7D0', alignItems: 'center' }}>
           <Text style={{ fontSize: 40 }}>✅</Text>
           <Text style={{ fontWeight: '900', fontSize: 20, marginTop: 8 }}>Booking Confirmed!</Text>
@@ -54,7 +54,6 @@ export default function BookingConfirmedScreen({ navigation }: any) {
             Cancel Booking
           </Text>
         </View>
-      </ScrollView>
-    </View>
+    </ScreenScroll>
   );
 }

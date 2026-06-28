@@ -5,9 +5,10 @@ import { colors, spacing } from '../theme/tokens';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
 
+import { Screen } from '../components/Screen';
 export default function WelcomeScreen({ navigation }: any) {
   return (
-    <View style={{ flex: 1, backgroundColor: colors.primary }}>
+    <Screen backgroundColor={colors.primary} keyboard={false}>
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: spacing.xl }}>
         <View
           style={{
@@ -28,7 +29,7 @@ export default function WelcomeScreen({ navigation }: any) {
         </Text>
       </View>
 
-      <View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.xl }}>
+      <View style={{ backgroundColor: 'white', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: spacing.xl, paddingBottom: spacing.xxl }}>
         <PrimaryButton title="Request a Quote" onPress={() => navigation.navigate('Onboarding')} />
         <SecondaryButton title="Browse Pros" onPress={() => navigation.navigate('Onboarding')} style={{ marginTop: 12 }} />
         <Text style={{ textAlign: 'center', marginTop: 14, color: colors.muted }}>
@@ -38,6 +39,6 @@ export default function WelcomeScreen({ navigation }: any) {
           </Text>
         </Text>
       </View>
-    </View>
+    </Screen>
   );
 }

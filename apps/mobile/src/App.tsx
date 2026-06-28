@@ -7,6 +7,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useShopContext } from '@myhandymanapp/shared/context';
 
@@ -62,9 +63,12 @@ const primary = '#16A34A';
 
 function Tabs() {
 
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 10);
+
   return (
 
-    <Tab.Navigator screenOptions={({ route }) => ({ headerShown: false, tabBarActiveTintColor: primary, tabBarInactiveTintColor: '#6B7280', tabBarStyle: { height: 64, paddingBottom: 10, paddingTop: 6 }, tabBarIcon: ({ color, size }) => {
+    <Tab.Navigator screenOptions={({ route }) => ({ headerShown: false, tabBarActiveTintColor: primary, tabBarInactiveTintColor: '#6B7280', tabBarStyle: { height: 58 + bottomInset, paddingBottom: bottomInset, paddingTop: 6 }, tabBarLabelStyle: { paddingBottom: 2, fontSize: 11, fontWeight: '700' }, tabBarHideOnKeyboard: true, tabBarIcon: ({ color, size }) => {
 
       const name = route.name === 'Home' ? 'home-outline' : route.name === 'Requests' ? 'document-text-outline' : route.name === 'Messages' ? 'chatbubble-ellipses-outline' : 'person-outline';
 

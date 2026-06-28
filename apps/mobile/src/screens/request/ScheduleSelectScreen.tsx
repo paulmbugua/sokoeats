@@ -4,6 +4,7 @@ import { colors, spacing } from '../../theme/tokens';
 import Card from '../../components/Card';
 import StepProgress from '../../components/StepProgress';
 import PrimaryButton from '../../components/PrimaryButton';
+import { Screen } from '../../components/Screen';
 
 export default function ScheduleSelectScreen({ route, navigation }: any) {
   const { draft } = route.params;
@@ -19,9 +20,9 @@ export default function ScheduleSelectScreen({ route, navigation }: any) {
   );
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
+    <Screen backgroundColor="white">
       <StepProgress step={5} total={6} label="Choose schedule" />
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingTop: 0 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, paddingTop: 0, paddingBottom: 96 }}>
         <Item title="As Soon As Possible" sub="Providers can start immediately" value="ASAP" />
         <Item title="Today" sub="Complete job today" value="TODAY" />
         <Item title="Schedule for Later" sub="Pick a specific date and time" value="LATER" />
@@ -36,6 +37,6 @@ export default function ScheduleSelectScreen({ route, navigation }: any) {
           <PrimaryButton title="Continue" onPress={() => navigation.navigate('JobDetails', { draft: { ...draft, scheduleType: sel } })} />
         </View>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }

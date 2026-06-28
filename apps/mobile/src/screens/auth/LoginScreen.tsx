@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ScreenScroll } from '../../components/Screen';
 
 import { Alert, View, Text } from 'react-native';
 
@@ -40,7 +41,7 @@ export default function LoginScreen({ navigation }: any) {
 
   };
 
-  return <View style={{ flex: 1, backgroundColor: 'white', padding: spacing.xl }}>
+  return <ScreenScroll backgroundColor="white" contentContainerStyle={{ justifyContent: 'center' }}>
 
     <Input label="Phone" value={phone} onChangeText={setPhone} placeholder="+254 7xx xxx xxx" />
 
@@ -56,7 +57,7 @@ export default function LoginScreen({ navigation }: any) {
 
     <Text style={{ textAlign: 'center', marginTop: 10, color: colors.muted }}>Or verify by OTP <Text style={{ color: colors.primary, fontWeight: '800' }} onPress={() => navigation.navigate('OtpVerify', { phone })}>Send OTP</Text></Text>
 
-  </View>;
+  </ScreenScroll>;
 
 }
 

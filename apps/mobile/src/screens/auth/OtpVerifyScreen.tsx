@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { ScreenScroll } from '../../components/Screen';
 
 import { Alert, View, Text, TextInput } from 'react-native';
 
@@ -36,7 +37,7 @@ export default function OtpVerifyScreen({ route }: any) {
 
   };
 
-  return <View style={{ flex: 1, backgroundColor: 'white', padding: spacing.xl }}>
+  return <ScreenScroll backgroundColor="white" contentContainerStyle={{ justifyContent: 'center' }}>
 
     <Text style={{ textAlign: 'center', color: colors.muted, marginTop: 12 }}>We've sent a 6-digit code to</Text>
 
@@ -48,7 +49,7 @@ export default function OtpVerifyScreen({ route }: any) {
 
     <Text style={{ textAlign: 'center', marginTop: 16, color: colors.muted }}>Development OTP: 123456</Text>
 
-  </View>;
+  </ScreenScroll>;
 
 }
 

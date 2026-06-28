@@ -88,6 +88,7 @@ export default function expoConfig({ config }) {
     android: {
       ...config.android,
       package: 'com.paulmbugua2.ekazi',
+      softwareKeyboardLayoutMode: 'resize',
 
       // ✅ Remove foreground-service media playback permission (injected by some deps)
       blockedPermissions: Array.from(

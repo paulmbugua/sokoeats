@@ -4,12 +4,13 @@ import { colors, spacing } from '../../theme/tokens';
 import Card from '../../components/Card';
 import StepProgress from '../../components/StepProgress';
 import { categories } from '@myhandymanapp/shared/api/kenya-data';
+import { Screen } from '../../components/Screen';
 
 export default function CategorySelectScreen({ navigation }: any) {
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
+    <Screen backgroundColor="white">
       <StepProgress step={1} total={6} label="Choose a service" />
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingTop: 0 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, paddingTop: 0, paddingBottom: 96 }}>
         <Text style={{ fontWeight: '900', fontSize: 16, marginBottom: 12 }}>What do you need fixed?</Text>
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
           {(categories || []).map((c: any) => (
@@ -26,6 +27,6 @@ export default function CategorySelectScreen({ navigation }: any) {
           ))}
         </View>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }

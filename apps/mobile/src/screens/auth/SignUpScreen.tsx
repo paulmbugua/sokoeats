@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ScreenScroll } from '../../components/Screen';
 
 import { Alert, View, Text } from 'react-native';
 
@@ -42,7 +43,7 @@ export default function SignUpScreen({ navigation }: any) {
 
   };
 
-  return <View style={{ flex: 1, backgroundColor: 'white', padding: spacing.xl }}>
+  return <ScreenScroll backgroundColor="white" contentContainerStyle={{ justifyContent: 'center' }}>
 
     <Input label="Full Name" value={name} onChangeText={setName} placeholder="John Mwangi" />
 
@@ -58,7 +59,7 @@ export default function SignUpScreen({ navigation }: any) {
 
     <Text style={{ textAlign: 'center', marginTop: 16, color: colors.muted }}>Already have an account? <Text style={{ color: colors.primary, fontWeight: '800' }} onPress={() => navigation.navigate('Login')}>Sign In</Text></Text>
 
-  </View>;
+  </ScreenScroll>;
 
 }
 

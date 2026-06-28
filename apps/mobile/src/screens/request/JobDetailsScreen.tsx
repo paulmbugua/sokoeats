@@ -5,6 +5,7 @@ import Card from '../../components/Card';
 import StepProgress from '../../components/StepProgress';
 import PrimaryButton from '../../components/PrimaryButton';
 import Input from '../../components/Input';
+import { Screen } from '../../components/Screen';
 
 export default function JobDetailsScreen({ route, navigation }: any) {
   const { draft } = route.params;
@@ -14,9 +15,9 @@ export default function JobDetailsScreen({ route, navigation }: any) {
   const [notes, setNotes] = useState('');
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
+    <Screen backgroundColor="white">
       <StepProgress step={6} total={6} label="Final details" />
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingTop: 0 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, paddingTop: 0, paddingBottom: 96 }}>
         <Text style={{ fontWeight: '900', marginBottom: 8 }}>Budget Range (Optional)</Text>
         <View style={{ flexDirection: 'row', gap: 10 }}>
           <View style={{ flex: 1 }}>
@@ -70,6 +71,6 @@ export default function JobDetailsScreen({ route, navigation }: any) {
           />
         </View>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }

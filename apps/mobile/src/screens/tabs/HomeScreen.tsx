@@ -5,11 +5,12 @@ import { colors, spacing } from '../../theme/tokens';
 import Card from '../../components/Card';
 import PrimaryButton from '../../components/PrimaryButton';
 import { categories as seedCategories } from '@myhandymanapp/shared/api/kenya-data';
+import { Screen } from '../../components/Screen';
 
 export default function HomeScreen({ navigation }: any) {
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
-      <ScrollView contentContainerStyle={{ paddingBottom: 24 }}>
+    <Screen backgroundColor="white">
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 110 }}>
         <LinearGradient colors={[colors.primary, colors.primaryDark]} style={{ paddingTop: 16, paddingHorizontal: 18, paddingBottom: 18 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
             <Text style={{ color: 'white', fontWeight: '700' }}>📍 Kilimani</Text>
@@ -53,6 +54,6 @@ export default function HomeScreen({ navigation }: any) {
           </View>
         </View>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }

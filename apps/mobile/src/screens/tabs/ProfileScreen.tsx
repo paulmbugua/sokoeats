@@ -3,11 +3,12 @@ import { View, Text, ScrollView } from 'react-native';
 import Card from '../../components/Card';
 import { colors, spacing } from '../../theme/tokens';
 import PrimaryButton from '../../components/PrimaryButton';
+import { Screen } from '../../components/Screen';
 
 export default function ProfileScreen({ navigation }: any) {
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingBottom: 30 }}>
+    <Screen backgroundColor="white">
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, paddingBottom: 110 }}>
         <Card style={{ backgroundColor: colors.primary, borderColor: colors.primary }}>
           <Text style={{ color: 'white', fontWeight: '900', fontSize: 22 }}>John Doe</Text>
           <Text style={{ color: 'rgba(255,255,255,0.9)', marginTop: 6 }}>john.doe@example.com</Text>
@@ -63,6 +64,6 @@ export default function ProfileScreen({ navigation }: any) {
         <Text style={{ textAlign: 'center', marginTop: 18, color: colors.muted }}>FixIt Kenya v1.0.0</Text>
         <Text style={{ textAlign: 'center', marginTop: 8, color: colors.primary, fontWeight: '800' }}>Terms · Privacy</Text>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }

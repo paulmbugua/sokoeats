@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ScreenScroll } from '../../components/Screen';
 
 import { Alert, View, Text, ScrollView } from 'react-native';
 
@@ -38,7 +39,7 @@ export default function ReviewRequestScreen({ route, navigation }: any) {
 
   };
 
-  return <View style={{ flex: 1, backgroundColor: 'white' }}><ScrollView contentContainerStyle={{ padding: spacing.xl, paddingBottom: 24 }}>
+  return <ScreenScroll backgroundColor="white">
 
     <Card style={{ marginBottom: 12 }}><Text style={{ fontWeight: '900' }}>Job Type</Text><Text style={{ color: colors.muted, marginTop: 6 }}>{draft.categoryName} - {draft.serviceName}</Text></Card>
 
@@ -58,7 +59,7 @@ export default function ReviewRequestScreen({ route, navigation }: any) {
 
     <View style={{ marginTop: 18 }}><PrimaryButton title={loading ? 'Submitting...' : 'Submit Request'} onPress={submit} /></View>
 
-  </ScrollView></View>;
+  </ScreenScroll>;
 
 }
 

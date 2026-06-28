@@ -2,14 +2,15 @@ import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import Card from '../../components/Card';
 import { colors, spacing } from '../../theme/tokens';
+import { Screen } from '../../components/Screen';
 
 export default function MessagesScreen() {
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
+    <Screen backgroundColor="white">
       <View style={{ padding: spacing.xl, paddingBottom: 10 }}>
         <Text style={{ fontSize: 18, fontWeight: '900' }}>Messages</Text>
       </View>
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingTop: 0 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, paddingTop: 0, paddingBottom: 110 }}>
         <Card style={{ marginBottom: 12 }}>
           <Text style={{ fontWeight: '900' }}>James Kamau</Text>
           <Text style={{ color: colors.muted, marginTop: 6 }}>I can start in about 2 hours. Is that okay?</Text>
@@ -23,6 +24,6 @@ export default function MessagesScreen() {
           <Text style={{ color: colors.muted, marginTop: 6 }}>Thank you for choosing me!</Text>
         </Card>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }

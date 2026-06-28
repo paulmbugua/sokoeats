@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, radius } from '../theme/tokens';
 import PrimaryButton from '../components/PrimaryButton';
 
+import { Screen } from '../components/Screen';
 const slides = [
   { icon: 'search', title: 'Get Quotes from Verified Pros', body: 'Describe your job and receive multiple quotes\nfrom background-checked professionals in\nyour area', color: colors.primary },
   { icon: 'star', title: 'Compare Price, Rating & Arrival Time', body: 'Review detailed breakdowns, read reviews\nfrom other customers, and choose the best\nmatch for your needs', color: colors.purple },
@@ -13,11 +14,11 @@ const slides = [
 
 export default function OnboardingScreen({ navigation }: any) {
   const [idx, setIdx] = useState(0);
-  const slide = slides[idx];
+  const slide = slides[idx] ?? slides[0]!;
   const dots = useMemo(() => slides.map((_, i) => i), []);
 
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
+    <Screen backgroundColor="white" keyboard={false}>
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 12, paddingHorizontal: 18, alignItems: 'center' }}>
         <View style={{ flexDirection: 'row', gap: 6 }}>
           {dots.map((i) => (
@@ -37,7 +38,7 @@ export default function OnboardingScreen({ navigation }: any) {
         <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginTop: 12, lineHeight: 20 }}>{slide.body}</Text>
       </View>
 
-      <View style={{ padding: spacing.xl }}>
+      <View style={{ padding: spacing.xl, paddingBottom: spacing.xxl }}>
         <PrimaryButton
           title={idx === slides.length - 1 ? 'Get Started' : 'Continue'}
           onPress={() => {
@@ -46,6 +47,6 @@ export default function OnboardingScreen({ navigation }: any) {
           }}
         />
       </View>
-    </View>
+    </Screen>
   );
 }

@@ -5,13 +5,14 @@ import Card from '../../components/Card';
 import StepProgress from '../../components/StepProgress';
 import PrimaryButton from '../../components/PrimaryButton';
 import SecondaryButton from '../../components/SecondaryButton';
+import { Screen } from '../../components/Screen';
 
 export default function PhotoUploadScreen({ route, navigation }: any) {
   const { draft } = route.params;
   return (
-    <View style={{ flex: 1, backgroundColor: 'white' }}>
+    <Screen backgroundColor="white">
       <StepProgress step={3} total={6} label="Upload photos (optional)" />
-      <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingTop: 0 }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, paddingTop: 0, paddingBottom: 96 }}>
         <Text style={{ color: colors.muted }}>Photos help providers understand the job better and give more accurate quotes.</Text>
         <Card style={{ marginTop: 14, alignItems: 'center', paddingVertical: 24 }}>
           <Text style={{ fontWeight: '900' }}>📷 Add Photo</Text>
@@ -35,6 +36,6 @@ export default function PhotoUploadScreen({ route, navigation }: any) {
           </Text>
         </View>
       </ScrollView>
-    </View>
+    </Screen>
   );
 }
