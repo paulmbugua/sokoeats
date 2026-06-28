@@ -46,6 +46,7 @@ import paystackRoutes from './routes/paystackRoutes.js';
 import { handlePaystackWebhook } from './controllers/paystackController.js';
 import pushRoutes from './routes/pushRoutes.js';
 import { notifyEvent } from './services/notificationEvents.js';
+import { installCloudinaryResponseOptimizer } from './utils/optimizeMediaUrlsDeep.js';
 import {
   canChatUnlocked,
   getRoles,
@@ -100,6 +101,22 @@ const BUILD =
   process.env.GIT_SHA ||
   process.env.APP_BUILD ||
   'dev';
+
+async function ensureSeedSuperadmin() {
+  const email = String(process.env.SEED_SUPERADMIN_EMAIL || '').trim().toLowerCase();
+  const password = String(process.env.SEED_SUPERADMIN_PASSWORD || '').trim();
+  if (!email || !password) return;
+
+  const bcrypt = await import('bcryptjs');
+  const hashed = await bcrypt.default.hash(password, 10);
+  await pool.query(
+    `INSERT INTO users (email, password, role, name)
+     VALUES ($1, $2, 'superadmin', 'Super Admin')
+     ON CONFLICT (email)
+     DO UPDATE SET role = 'superadmin', password = EXCLUDED.password`,
+    [email, hashed],
+  );
+}
 
 app.use((req, res, next) => {
   res.setHeader('x-daybreak-build', BUILD);

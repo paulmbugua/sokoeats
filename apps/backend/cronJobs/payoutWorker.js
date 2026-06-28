@@ -308,10 +308,19 @@ if (WORKER_HEALTH_PORT > 0) {
     }
   });
 
-  healthApp.listen(WORKER_HEALTH_PORT, () => {
+  const healthServer = healthApp.listen(WORKER_HEALTH_PORT, () => {
     console.log(
       `[worker] health server on :${WORKER_HEALTH_PORT} (GET /healthz)`,
     );
+  });
+  healthServer.on('error', (error) => {
+    if (error?.code === 'EADDRINUSE') {
+      console.warn(
+        `[worker] health port :${WORKER_HEALTH_PORT} already in use; continuing without worker health server.`,
+      );
+      return;
+    }
+    throw error;
   });
 }
 
