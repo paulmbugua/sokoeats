@@ -23,7 +23,7 @@ export default function WelcomeScreen({ navigation }: any) {
         >
           <Ionicons name="hammer-outline" size={40} color={colors.primary} />
         </View>
-        <Text style={{ color: 'white', fontSize: 34, fontWeight: '800', textAlign: 'center' }}>Welcome to FixIt</Text>
+        <Text style={{ color: 'white', fontSize: 34, fontWeight: '800', textAlign: 'center' }}>Welcome to Ekazi</Text>
         <Text style={{ color: 'rgba(255,255,255,0.9)', fontSize: 14, marginTop: 10, textAlign: 'center', lineHeight: 20 }}>
           Get quotes from verified handymen{`\n`}Compare prices, read reviews, and book trusted professionals across Nairobi
         </Text>

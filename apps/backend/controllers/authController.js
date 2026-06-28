@@ -55,7 +55,7 @@ export const verifyOtp = async (req, res) => {
   if (!user) {
     user = {
       id: createId('user'),
-      name: 'FixIt User',
+      name: 'Ekazi User',
       email: null,
       phone: String(phone).trim(),
       createdAt: new Date().toISOString(),

@@ -61,7 +61,7 @@ export default function ProfileScreen({ navigation }: any) {
           <PrimaryButton title="Log Out" onPress={() => navigation.replace('Welcome')} style={{ backgroundColor: '#FEE2E2' } as any} />
         </View>
 
-        <Text style={{ textAlign: 'center', marginTop: 18, color: colors.muted }}>FixIt Kenya v1.0.0</Text>
+        <Text style={{ textAlign: 'center', marginTop: 18, color: colors.muted }}>Ekazi Kenya v1.0.0</Text>
         <Text style={{ textAlign: 'center', marginTop: 8, color: colors.primary, fontWeight: '800' }}>Terms · Privacy</Text>
       </ScrollView>
     </Screen>
