@@ -23,6 +23,10 @@ function decodeBase64IfNeeded(value) {
   if (!trimmed) return '';
 
   const unquoted = unwrapQuoted(trimmed);
+  if (fs.existsSync(unquoted) && fs.statSync(unquoted).isFile()) {
+    return fs.readFileSync(unquoted, 'utf8').trim();
+  }
+
   if (looksLikeServiceFile(unquoted)) {
     return unquoted;
   }
