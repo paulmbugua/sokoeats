@@ -90,9 +90,9 @@ export default function expoConfig({ config }) {
 
     icon: './assets/icon.png',
     splash: {
-      image: './assets/splash.png',
+      image: './assets/splash-logo.png',
       resizeMode: 'contain',
-      backgroundColor: '#000000',
+      backgroundColor: '#F7FAF8',
     },
 
     assetBundlePatterns: ['**/*'],
@@ -184,9 +184,10 @@ export default function expoConfig({ config }) {
       [
         'expo-splash-screen',
         {
-          image: './assets/splash.png',
+          image: './assets/splash-logo.png',
+          imageWidth: 196,
           resizeMode: 'contain',
-          backgroundColor: '#000000',
+          backgroundColor: '#F7FAF8',
         },
       ],
 
