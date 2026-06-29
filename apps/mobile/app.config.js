@@ -20,16 +20,18 @@ export default function expoConfig({ config }) {
   const LOCAL_IOS_GOOGLE_SERVICES_FILE = './GoogleService-Info.plist';
   const EAS_ANDROID_GOOGLE_SERVICES_FILE = './.eas/generated/google-services.json';
   const EAS_IOS_GOOGLE_SERVICES_FILE = './.eas/generated/GoogleService-Info.plist';
-  const androidGoogleServicesFile = isEasBuildConfig
-    ? EAS_ANDROID_GOOGLE_SERVICES_FILE
-    : useLocalGoogleServicesFiles && fs.existsSync(LOCAL_ANDROID_GOOGLE_SERVICES_FILE)
-      ? LOCAL_ANDROID_GOOGLE_SERVICES_FILE
-      : undefined;
-  const iosGoogleServicesFile = isEasBuildConfig
-    ? EAS_IOS_GOOGLE_SERVICES_FILE
-    : useLocalGoogleServicesFiles && fs.existsSync(LOCAL_IOS_GOOGLE_SERVICES_FILE)
-      ? LOCAL_IOS_GOOGLE_SERVICES_FILE
-      : undefined;
+  const androidGoogleServicesFile =
+    isEasBuildConfig && fs.existsSync(EAS_ANDROID_GOOGLE_SERVICES_FILE)
+      ? EAS_ANDROID_GOOGLE_SERVICES_FILE
+      : useLocalGoogleServicesFiles && fs.existsSync(LOCAL_ANDROID_GOOGLE_SERVICES_FILE)
+        ? LOCAL_ANDROID_GOOGLE_SERVICES_FILE
+        : undefined;
+  const iosGoogleServicesFile =
+    isEasBuildConfig && fs.existsSync(EAS_IOS_GOOGLE_SERVICES_FILE)
+      ? EAS_IOS_GOOGLE_SERVICES_FILE
+      : useLocalGoogleServicesFiles && fs.existsSync(LOCAL_IOS_GOOGLE_SERVICES_FILE)
+        ? LOCAL_IOS_GOOGLE_SERVICES_FILE
+        : undefined;
 
   const readJsonIfExists = (filePath) => {
     try {

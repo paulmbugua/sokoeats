@@ -79,9 +79,9 @@ const wroteIos = writeSecretFile({
 });
 
 if (process.env.EAS_BUILD === 'true' && !wroteAndroid) {
-  throw new Error('GOOGLE_SERVICES_JSON is required for EAS Android builds.');
+  console.warn('[eas-google-services] GOOGLE_SERVICES_JSON was not available; continuing without a generated Android service file.');
 }
 
 if (process.env.EAS_BUILD === 'true' && process.env.EAS_BUILD_PLATFORM === 'ios' && !wroteIos) {
-  throw new Error('GOOGLE_SERVICE_INFO_PLIST is required for EAS iOS builds.');
+  console.warn('[eas-google-services] GOOGLE_SERVICE_INFO_PLIST was not available; continuing without a generated iOS service file.');
 }
