@@ -4,21 +4,38 @@ const path = require('node:path');
 const projectRoot = path.resolve(__dirname, '..');
 const outputDir = path.join(projectRoot, '.eas', 'generated');
 
+function looksLikeServiceFile(value) {
+  return value.startsWith('{') || value.startsWith('<') || value.startsWith('bplist');
+}
+
+function unwrapQuoted(value) {
+  if (
+    (value.startsWith("'") && value.endsWith("'")) ||
+    (value.startsWith('"') && value.endsWith('"'))
+  ) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
+
 function decodeBase64IfNeeded(value) {
   const trimmed = String(value || '').trim();
   if (!trimmed) return '';
-  if (trimmed.startsWith('{') || trimmed.startsWith('<') || trimmed.startsWith('bplist')) {
-    return trimmed;
+
+  const unquoted = unwrapQuoted(trimmed);
+  if (looksLikeServiceFile(unquoted)) {
+    return unquoted;
   }
 
   try {
-    const decoded = Buffer.from(trimmed, 'base64').toString('utf8').trim();
-    if (decoded.startsWith('{') || decoded.startsWith('<') || decoded.startsWith('bplist')) {
-      return decoded;
+    const decoded = Buffer.from(unquoted, 'base64').toString('utf8').trim();
+    const decodedUnquoted = unwrapQuoted(decoded);
+    if (looksLikeServiceFile(decodedUnquoted)) {
+      return decodedUnquoted;
     }
   } catch {}
 
-  return trimmed;
+  return unquoted;
 }
 
 function normalizeJson(value, envName) {
@@ -41,6 +58,7 @@ function writeSecretFile({ envName, targetFile, normalize }) {
     return false;
   }
 
+  console.log(`[eas-google-services] ${envName} is set (${String(raw).length} chars).`);
   fs.mkdirSync(outputDir, { recursive: true });
   const content = normalize(raw, envName);
   fs.writeFileSync(targetFile, content, { encoding: 'utf8', mode: 0o600 });
