@@ -16,7 +16,13 @@ const authUser = (req, res, next) => {
 
     const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
 
-    req.user = { id: String(decoded.id) };
+    const subject = String(decoded?.id ?? '').trim();
+
+    if (!/^\d+$/.test(subject) && !subject.startsWith('admin:')) {
+      return res.status(401).json({ success: false, message: 'Session must be renewed' });
+    }
+
+    req.user = { id: subject };
 
     next();
 

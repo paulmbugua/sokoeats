@@ -768,8 +768,10 @@ export const updateProfile = async (req, res) => {
 // ─── 4. Get User Profile ────────────────────────────────────────────────────
 export const getUserProfile = async (req, res) => {
   try {
-    const userId = String(req.user?.id || '').trim();
-    if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+    const userId = Number(req.user?.id);
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({ message: 'Invalid user session. Please sign in again.' });
+    }
 
     const { rows } = await pool.query('SELECT * FROM profiles WHERE user_id = $1', [userId]);
 

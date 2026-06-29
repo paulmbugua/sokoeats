@@ -1,34 +1,15 @@
 // apps/backend/controllers/pushController.js
 import pool from '../config/db.js';
 
-/** Strict UUID v4-ish validator (good enough for guarding DB uuid casts). */
-function isValidUUID(v) {
-  return (
-    typeof v === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      v.trim(),
-    )
-  );
-}
-
 /**
- * Resolve the caller's profile id from the authenticated user uuid.
- * Prevents Postgres error: invalid input syntax for type uuid: "37"
+ * Resolve the caller's profile id from the authenticated users.id.
  */
 async function resolveProfileId(req) {
-  const userIdRaw = req.user?.id ?? req.user?.userId ?? null;
-  const userId = typeof userIdRaw === 'string' ? userIdRaw.trim() : null;
-
-  // If auth middleware gave us a non-uuid (e.g. "37"), fail gracefully.
-  if (!userId || !isValidUUID(userId)) return null;
-
+  const userId = Number(req.user?.id ?? req.user?.userId);
+  if (!Number.isSafeInteger(userId) || userId <= 0) return null;
   const prof = await pool.query('select id from profiles where user_id = $1', [userId]);
-  const profileId = prof.rows[0]?.id ?? null;
-
-  // profileId should be an integer in your schema; ensure it’s a finite number.
-  if (typeof profileId !== 'number' || !Number.isFinite(profileId)) return null;
-
-  return profileId;
+  const profileId = Number(prof.rows[0]?.id);
+  return Number.isSafeInteger(profileId) && profileId > 0 ? profileId : null;
 }
 
 /**
@@ -45,7 +26,9 @@ export async function registerPushToken(req, res) {
       deviceId = null,
     } = req.body ?? {};
 
-    if (!profileId) return res.status(401).json({ error: 'Unauthorized' });
+    if (!profileId) {
+      return res.status(202).json({ ok: false, pendingProfile: true });
+    }
 
     if (!expoPushToken || typeof expoPushToken !== 'string') {
       return res.status(400).json({ error: 'expoPushToken is required' });
