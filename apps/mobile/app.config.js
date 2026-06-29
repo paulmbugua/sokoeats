@@ -15,18 +15,19 @@ export default function expoConfig({ config }) {
     process.env.EAS_BUILD === 'true' ||
     Boolean(process.env.EAS_BUILD_PROFILE) ||
     Boolean(process.env.EAS_BUILD_ID);
+  const useLocalGoogleServicesFiles = process.env.EXPO_USE_LOCAL_GOOGLE_SERVICES_FILES === 'true';
   const LOCAL_ANDROID_GOOGLE_SERVICES_FILE = './google-services.json';
   const LOCAL_IOS_GOOGLE_SERVICES_FILE = './GoogleService-Info.plist';
   const EAS_ANDROID_GOOGLE_SERVICES_FILE = './.eas/generated/google-services.json';
   const EAS_IOS_GOOGLE_SERVICES_FILE = './.eas/generated/GoogleService-Info.plist';
   const androidGoogleServicesFile = isEasBuildConfig
     ? EAS_ANDROID_GOOGLE_SERVICES_FILE
-    : fs.existsSync(LOCAL_ANDROID_GOOGLE_SERVICES_FILE)
+    : useLocalGoogleServicesFiles && fs.existsSync(LOCAL_ANDROID_GOOGLE_SERVICES_FILE)
       ? LOCAL_ANDROID_GOOGLE_SERVICES_FILE
       : undefined;
   const iosGoogleServicesFile = isEasBuildConfig
     ? EAS_IOS_GOOGLE_SERVICES_FILE
-    : fs.existsSync(LOCAL_IOS_GOOGLE_SERVICES_FILE)
+    : useLocalGoogleServicesFiles && fs.existsSync(LOCAL_IOS_GOOGLE_SERVICES_FILE)
       ? LOCAL_IOS_GOOGLE_SERVICES_FILE
       : undefined;
 
@@ -90,9 +91,7 @@ export default function expoConfig({ config }) {
     process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
     '557799973381-97lsoficotiiulhl5st6tf6h723uurpg.apps.googleusercontent.com';
 
-  const googleServicesForApiKey = readJsonIfExists(
-    androidGoogleServicesFile || LOCAL_ANDROID_GOOGLE_SERVICES_FILE,
-  );
+  const googleServicesForApiKey = readJsonIfExists(androidGoogleServicesFile);
   const googleServicesApiKey = googleServicesForApiKey?.client?.[0]?.api_key?.[0]?.current_key || '';
   const GOOGLE_MAPS_API_KEY =
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
