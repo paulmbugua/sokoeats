@@ -63,8 +63,16 @@ function writeSecretFile({ envName, targetFile, normalize }) {
   }
 
   console.log(`[eas-google-services] ${envName} is set (${String(raw).length} chars).`);
+
+  let content;
+  try {
+    content = normalize(raw, envName);
+  } catch (error) {
+    console.warn(`[eas-google-services] ${error.message}; skipping ${path.relative(projectRoot, targetFile)}.`);
+    return false;
+  }
+
   fs.mkdirSync(outputDir, { recursive: true });
-  const content = normalize(raw, envName);
   fs.writeFileSync(targetFile, content, { encoding: 'utf8', mode: 0o600 });
   console.log(`[eas-google-services] Wrote ${path.relative(projectRoot, targetFile)} from ${envName}.`);
   return true;
