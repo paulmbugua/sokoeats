@@ -10,6 +10,7 @@
     ]
   },
   "scripts": {
+    "eas-build-pre-install": "node ./scripts/materialize-eas-google-services.cjs",
     "doctor": "expo-doctor",
     "dev": "expo start",
     "build": "expo export",

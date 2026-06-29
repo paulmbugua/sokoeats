@@ -11,6 +11,33 @@ export default function expoConfig({ config }) {
   const isDevClient = process.env.EXPO_DEV_CLIENT === 'true';
   const enableGooglePlugin = isProduction || isDevClient;
 
+  const isEasBuildConfig =
+    process.env.EAS_BUILD === 'true' ||
+    Boolean(process.env.EAS_BUILD_PROFILE) ||
+    Boolean(process.env.EAS_BUILD_ID);
+  const LOCAL_ANDROID_GOOGLE_SERVICES_FILE = './google-services.json';
+  const LOCAL_IOS_GOOGLE_SERVICES_FILE = './GoogleService-Info.plist';
+  const EAS_ANDROID_GOOGLE_SERVICES_FILE = './.eas/generated/google-services.json';
+  const EAS_IOS_GOOGLE_SERVICES_FILE = './.eas/generated/GoogleService-Info.plist';
+  const androidGoogleServicesFile = isEasBuildConfig
+    ? EAS_ANDROID_GOOGLE_SERVICES_FILE
+    : fs.existsSync(LOCAL_ANDROID_GOOGLE_SERVICES_FILE)
+      ? LOCAL_ANDROID_GOOGLE_SERVICES_FILE
+      : undefined;
+  const iosGoogleServicesFile = isEasBuildConfig
+    ? EAS_IOS_GOOGLE_SERVICES_FILE
+    : fs.existsSync(LOCAL_IOS_GOOGLE_SERVICES_FILE)
+      ? LOCAL_IOS_GOOGLE_SERVICES_FILE
+      : undefined;
+
+  const readJsonIfExists = (filePath) => {
+    try {
+      return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    } catch {
+      return null;
+    }
+  };
+
   // ─────────────────────────────────────────────────────────
   // ✅ EAS Project (Ekazi)
   // ─────────────────────────────────────────────────────────
@@ -63,11 +90,10 @@ export default function expoConfig({ config }) {
     process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
     '557799973381-97lsoficotiiulhl5st6tf6h723uurpg.apps.googleusercontent.com';
 
-  let googleServicesApiKey = '';
-  try {
-    const services = JSON.parse(fs.readFileSync('./google-services.json', 'utf8'));
-    googleServicesApiKey = services?.client?.[0]?.api_key?.[0]?.current_key || '';
-  } catch {}
+  const googleServicesForApiKey = readJsonIfExists(
+    androidGoogleServicesFile || LOCAL_ANDROID_GOOGLE_SERVICES_FILE,
+  );
+  const googleServicesApiKey = googleServicesForApiKey?.client?.[0]?.api_key?.[0]?.current_key || '';
   const GOOGLE_MAPS_API_KEY =
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
     process.env.EXPO_PUBLIC_FIREBASE_API_KEY ||
@@ -125,7 +151,7 @@ export default function expoConfig({ config }) {
           : {}),
       },
 
-      googleServicesFile: './google-services.json',
+      googleServicesFile: androidGoogleServicesFile,
 
       notification: {
         icon: './assets/notification-icon.png',
@@ -158,7 +184,7 @@ export default function expoConfig({ config }) {
     ios: {
       ...config.ios,
       bundleIdentifier: 'com.paulmbugua2.ekazi',
-      googleServicesFile: './GoogleService-Info.plist',
+      googleServicesFile: iosGoogleServicesFile,
 
       // ✅ Ensure we do NOT declare background audio playback
       infoPlist: {
