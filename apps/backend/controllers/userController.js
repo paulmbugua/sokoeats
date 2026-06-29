@@ -241,6 +241,7 @@ export const getUser = async (req, res) => {
       SELECT
         u.id,
         u.email,
+        u.phone,
         u.tokens,
         u.role,
         u.must_change_password,
@@ -284,6 +285,7 @@ export const getUser = async (req, res) => {
       success: true,
       userId: u.id,
       email: u.email,
+      phone: u.phone || null,
       tokens: u.tokens || 0,
       role: u.role,
       name: u.name || '',

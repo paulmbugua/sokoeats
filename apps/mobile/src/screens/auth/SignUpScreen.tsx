@@ -15,11 +15,11 @@ export default function SignUpScreen({ navigation }: any) {
 
   const { http, loginConsumer } = useShopContext();
 
-  const [name, setName] = useState('John Mwangi');
+  const [name, setName] = useState('');
 
-  const [email, setEmail] = useState('john@example.com');
+  const [email, setEmail] = useState('');
 
-  const [phone, setPhone] = useState('+254700000001');
+  const [phone, setPhone] = useState('');
 
   const [password, setPassword] = useState('');
 
@@ -55,7 +55,7 @@ export default function SignUpScreen({ navigation }: any) {
 
     <Text style={{ color: colors.muted, marginBottom: 12 }}>By continuing you agree to the <Text style={{ color: colors.primary, fontWeight: '800' }}>Terms of Service</Text> and <Text style={{ color: colors.primary, fontWeight: '800' }}>Privacy Policy</Text>.</Text>
 
-    <PrimaryButton title={loading ? 'Creating...' : 'Create Account'} onPress={createAccount} />
+    <PrimaryButton title={loading ? 'Creating...' : 'Create Account'} onPress={createAccount} disabled={loading} />
 
     <Text style={{ textAlign: 'center', marginTop: 16, color: colors.muted }}>Already have an account? <Text style={{ color: colors.primary, fontWeight: '800' }} onPress={() => navigation.navigate('Login')}>Sign In</Text></Text>
 

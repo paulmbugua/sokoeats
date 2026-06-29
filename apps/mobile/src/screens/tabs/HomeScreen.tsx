@@ -6,8 +6,11 @@ import Card from '../../components/Card';
 import PrimaryButton from '../../components/PrimaryButton';
 import { categories as seedCategories } from '@myhandymanapp/shared/api/kenya-data';
 import { Screen } from '../../components/Screen';
+import { useShopContext } from '@myhandymanapp/shared/context';
 
 export default function HomeScreen({ navigation }: any) {
+  const { userName, profile } = useShopContext();
+  const firstName = (profile?.name || userName || 'there').trim().split(/\s+/)[0];
   return (
     <Screen backgroundColor="white">
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 110 }}>
@@ -16,7 +19,7 @@ export default function HomeScreen({ navigation }: any) {
             <Text style={{ color: 'white', fontWeight: '700' }}>📍 Kilimani</Text>
             <Text style={{ color: 'white', fontWeight: '800' }}>🔔 3</Text>
           </View>
-          <Text style={{ color: 'white', fontSize: 28, fontWeight: '900', marginTop: 10 }}>Hello, John! 👋</Text>
+          <Text style={{ color: 'white', fontSize: 28, fontWeight: '900', marginTop: 10 }}>Hello, {firstName}!</Text>
           <View style={{ backgroundColor: 'white', borderRadius: 14, paddingHorizontal: 12, marginTop: 12 }}>
             <TextInput placeholder="What do you need fixed today?" placeholderTextColor={colors.muted} style={{ paddingVertical: 12, fontSize: 15 }} />
           </View>

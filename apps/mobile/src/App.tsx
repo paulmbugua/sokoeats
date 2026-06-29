@@ -28,6 +28,7 @@ import HomeScreen from './screens/tabs/HomeScreen';
 import RequestsScreen from './screens/tabs/RequestsScreen';
 
 import MessagesScreen from './screens/tabs/MessagesScreen';
+import ConversationScreen from './screens/messages/ConversationScreen';
 
 import ProfileScreen from './screens/tabs/ProfileScreen';
 
@@ -137,6 +138,8 @@ export default function App() {
         <Stack.Screen name="QuotesInbox" component={QuotesInboxScreen} options={{ title: 'Quotes' }} />
 
         <Stack.Screen name="QuoteDetail" component={QuoteDetailScreen} options={{ title: 'Quote Detail' }} />
+
+        <Stack.Screen name="Conversation" component={ConversationScreen} options={{ title: 'Messages' }} />
 
         <Stack.Screen name="BookingConfirmed" component={BookingConfirmedScreen} options={{ title: 'Booking Confirmed' }} />
 

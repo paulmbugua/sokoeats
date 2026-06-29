@@ -26,7 +26,7 @@ export default function expoConfig({ config }) {
     hotspot: 'http://10.254.198.47:4000',
     lan1: process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://192.168.137.1:4000',
     // ✅ Update this when you deploy Ekazi backend
-    prod: process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.ekazi.app',
+    prod: process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.ekazi.co.ke',
   };
 
   // ✅ Always respect EXPO_PUBLIC_DEFAULT_BACKEND if provided
@@ -170,6 +170,13 @@ export default function expoConfig({ config }) {
       ],
 
       'expo-notifications',
+      [
+        'expo-image-picker',
+        {
+          photosPermission: 'Allow Ekazi to access photos you select for your job request.',
+          cameraPermission: 'Allow Ekazi to take photos for your job request.',
+        },
+      ],
       'expo-web-browser',
 
       'expo-asset',

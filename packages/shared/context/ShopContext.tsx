@@ -49,6 +49,8 @@ interface ApiProfileMeResponse {
 
 interface ApiUserMeResponse {
   email?: string | null;
+  name?: string | null;
+  phone?: string | null;
   tokens?: number;
   userId?: string | number | null;
   role?: string | null;
@@ -186,6 +188,8 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
 
   const [language, setLanguage] = useState<'EN' | 'FR'>('EN');
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
+  const [userPhone, setUserPhone] = useState<string | null>(null);
   const [tokens, setTokens] = useState<number>(0);
   const [userId, setUserId] = useState<string | null>(null);
   const [role, setRole] = useState<UserRole>(null);
@@ -236,6 +240,8 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
     setAuthMode(null);
     setAccessToken(null);
     setUserEmail(null);
+    setUserName(null);
+    setUserPhone(null);
     setUserId(null);
     setRole(null);
     setTokens(0);
@@ -435,6 +441,12 @@ if (isDev) {
     const incomingEmail = data.email ?? null;
     if (incomingEmail !== userEmail) setUserEmail(incomingEmail);
 
+    const incomingName = data.name ?? null;
+    if (incomingName !== userName) setUserName(incomingName);
+
+    const incomingPhone = data.phone ?? null;
+    if (incomingPhone !== userPhone) setUserPhone(incomingPhone);
+
     const incomingTokens = data.tokens ?? 0;
     if (incomingTokens !== tokens) setTokens(incomingTokens);
 
@@ -452,7 +464,7 @@ if (isDev) {
         await storage.removeItem('role');
       }
     }
-  }, [userEmail, tokens, userId, role, storage]);
+  }, [userEmail, userName, userPhone, tokens, userId, role, storage]);
 
   useEffect(() => {
     if (!hydrated || !token || adminToken || isOrgMode) return; // ✅ skip when org logged in
@@ -482,6 +494,8 @@ if (isDev) {
       toggleLanguage,
       logout,
       userEmail,
+      userName,
+      userPhone,
       tokens,
       setTokens,
       loadingProfile,
@@ -517,6 +531,8 @@ if (isDev) {
       toggleLanguage,
       logout,
       userEmail,
+      userName,
+      userPhone,
       tokens,
       loadingProfile,
       profile,

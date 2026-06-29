@@ -73,6 +73,8 @@ export interface ShopContextValue {
   toggleLanguage: () => void;
   logout: () => Promise<void>;
   userEmail: string | null;
+  userName: string | null;
+  userPhone: string | null;
   tokens: number;
   setTokens: Dispatch<SetStateAction<number>>;
   loadingProfile: boolean;

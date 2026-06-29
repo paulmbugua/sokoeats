@@ -148,12 +148,16 @@ const BACKEND_URL =
   process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 4000}`;
 const WEB_BACKEND_URL = process.env.WEB_BACKEND_URL || 'http://localhost:5173';
 const PROD_BACKEND_URL =
-  process.env.PROD_BACKEND_URL || 'https://server.daybreaklearner.com';
+  process.env.PROD_BACKEND_URL || 'https://server.ekazi.co.ke';
 
 // ─── 2) Allowed origins ────────────────────────────────────────────────────────
 const WEB_BASE_URL = process.env.WEB_BASE_URL || process.env.WEB_BASE_URLS || '';
 const APP_BASE_URL = process.env.APP_BASE_URL || '';
 const productionOrigins = [
+  PROD_BACKEND_URL,
+  'https://ekazi.co.ke',
+  'https://www.ekazi.co.ke',
+  'https://server.ekazi.co.ke',
   'https://daybreaklearner.com',
   'https://www.daybreaklearner.com',
   'https://app.daybreaklearner.com',
