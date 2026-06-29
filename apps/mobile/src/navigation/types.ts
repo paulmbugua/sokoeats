@@ -19,5 +19,7 @@ export type RootStackParamList = {
   QuotesInbox: { jobId: string };
   QuoteDetail: { quoteId: string };
   Conversation: { conversationId: string; name: string };
+  SubmitQuote: { job: any };
+  HandymanLocation: undefined;
   BookingConfirmed: { bookingId: string; jobId: string; quoteId: string };
 };

@@ -1,59 +1,179 @@
-import React from 'react';
-import { View, Text, ScrollView, TextInput } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { colors, spacing } from '../../theme/tokens';
+import { useShopContext } from '@myhandymanapp/shared/context';
+import { categories as seedCategories } from '@myhandymanapp/shared/api/kenya-data';
+import { colors, radius } from '../../theme/tokens';
 import Card from '../../components/Card';
 import PrimaryButton from '../../components/PrimaryButton';
-import { categories as seedCategories } from '@myhandymanapp/shared/api/kenya-data';
 import { Screen } from '../../components/Screen';
-import { useShopContext } from '@myhandymanapp/shared/context';
+
+type Job = {
+  id: string;
+  description: string;
+  quoteCount: number;
+  status: string;
+  estate: string;
+};
 
 export default function HomeScreen({ navigation }: any) {
-  const { userName, profile } = useShopContext();
+  const { http, userName, profile } = useShopContext();
   const firstName = (profile?.name || userName || 'there').trim().split(/\s+/)[0];
+  const [selectedCategory, setSelectedCategory] = useState<any>(null);
+  const [query, setQuery] = useState('');
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [promotion, setPromotion] = useState<any>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const [jobsResult, promoResult] = await Promise.all([
+        http.get('/api/jobs', { params: { status: 'active' } }),
+        http.get('/api/promotions/first-job'),
+      ]);
+      setJobs((jobsResult.data?.jobs || []).slice(0, 3));
+      setPromotion(promoResult.data);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [http]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const categories = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (seedCategories || [])
+      .filter((item: any) => !q || item.name.toLowerCase().includes(q))
+      .slice(0, 12);
+  }, [query]);
+
+  const continueRequest = () => {
+    if (selectedCategory) {
+      navigation.navigate('TaskSelect', {
+        categoryId: selectedCategory.id,
+        categoryName: selectedCategory.name,
+      });
+    } else {
+      navigation.navigate('CategorySelect');
+    }
+  };
+
   return (
     <Screen backgroundColor="white">
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 110 }}>
-        <LinearGradient colors={[colors.primary, colors.primaryDark]} style={{ paddingTop: 16, paddingHorizontal: 18, paddingBottom: 18 }}>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-            <Text style={{ color: 'white', fontWeight: '700' }}>📍 Kilimani</Text>
-            <Text style={{ color: 'white', fontWeight: '800' }}>🔔 3</Text>
-          </View>
-          <Text style={{ color: 'white', fontSize: 28, fontWeight: '900', marginTop: 10 }}>Hello, {firstName}!</Text>
-          <View style={{ backgroundColor: 'white', borderRadius: 14, paddingHorizontal: 12, marginTop: 12 }}>
-            <TextInput placeholder="What do you need fixed today?" placeholderTextColor={colors.muted} style={{ paddingVertical: 12, fontSize: 15 }} />
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 110 }}
+      >
+        <LinearGradient
+          colors={[colors.primary, colors.primaryDark]}
+          style={{ paddingTop: 16, paddingHorizontal: 18, paddingBottom: 18 }}
+        >
+          <Text style={{ color: 'white', fontSize: 28, fontWeight: '900' }}>
+            Hello, {firstName}
+          </Text>
+          <Text style={{ color: 'rgba(255,255,255,0.9)', marginTop: 4 }}>
+            What needs fixing today?
+          </Text>
+          <View
+            style={{
+              backgroundColor: 'white',
+              borderRadius: radius.md,
+              paddingHorizontal: 12,
+              marginTop: 12,
+            }}
+          >
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search plumbing, electrical, painting..."
+              placeholderTextColor={colors.muted}
+              style={{ paddingVertical: 12, fontSize: 15 }}
+            />
           </View>
         </LinearGradient>
 
         <View style={{ paddingHorizontal: 18, marginTop: 12 }}>
-          <Card style={{ backgroundColor: '#FF6A00', borderColor: '#FF6A00', padding: 16 }}>
-            <Text style={{ color: 'white', fontWeight: '900', fontSize: 16 }}>10% Off First Job</Text>
-            <Text style={{ color: 'white', marginTop: 4, opacity: 0.95 }}>Use code: FIRST10</Text>
-          </Card>
+          {promotion?.eligible ? (
+            <Card style={{ backgroundColor: '#C2410C', borderColor: '#C2410C', padding: 16 }}>
+              <Text style={{ color: 'white', fontWeight: '900', fontSize: 16 }}>
+                10% Off Your First Job
+              </Text>
+              <Text style={{ color: 'white', marginTop: 4 }}>
+                FIRST10 is applied to the quote you accept. The saving is shown before booking.
+              </Text>
+            </Card>
+          ) : null}
 
           <Text style={{ marginTop: 16, fontWeight: '900', fontSize: 16 }}>Categories</Text>
+          <Text style={{ color: colors.muted, marginTop: 4 }}>
+            Select one now, then request your quote.
+          </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 10 }}>
-            {(seedCategories || []).slice(0, 12).map((c: any) => (
-              <Card key={c.id} style={{ width: '30%', alignItems: 'center', paddingVertical: 14 }}>
-                <Text style={{ fontSize: 12, fontWeight: '800', textAlign: 'center' }}>{c.name}</Text>
-              </Card>
-            ))}
-          </View>
-
-          <Text style={{ marginTop: 16, fontWeight: '900', fontSize: 16 }}>Recent Requests</Text>
-          <View style={{ marginTop: 10 }}>
-            <Card style={{ marginBottom: 10 }}>
-              <Text style={{ fontWeight: '900' }}>Leaking tap repair</Text>
-              <Text style={{ color: colors.green, fontWeight: '800', marginTop: 6 }}>3 quotes received →</Text>
-            </Card>
-            <Card>
-              <Text style={{ fontWeight: '900' }}>Wall painting 2-bedroom</Text>
-              <Text style={{ color: colors.muted, marginTop: 6 }}>In Progress</Text>
-            </Card>
+            {categories.map((category: any) => {
+              const selected = selectedCategory?.id === category.id;
+              return (
+                <Pressable
+                  key={category.id}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected }}
+                  onPress={() => setSelectedCategory(selected ? null : category)}
+                  style={{
+                    width: '31%',
+                    minHeight: 76,
+                    borderWidth: 2,
+                    borderColor: selected ? colors.primary : colors.border,
+                    borderRadius: radius.md,
+                    backgroundColor: selected ? '#ECFDF5' : 'white',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    padding: 8,
+                  }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '800', textAlign: 'center' }}>
+                    {category.name}
+                  </Text>
+                </Pressable>
+              );
+            })}
           </View>
 
           <View style={{ marginTop: 16 }}>
-            <PrimaryButton title="Request a Quote" onPress={() => navigation.navigate('CategorySelect')} />
+            <PrimaryButton
+              title={selectedCategory ? `Continue with ${selectedCategory.name}` : 'Request a Quote'}
+              onPress={continueRequest}
+            />
+          </View>
+
+          <Text style={{ marginTop: 18, fontWeight: '900', fontSize: 16 }}>Recent Requests</Text>
+          <View style={{ marginTop: 10 }}>
+            {jobs.length ? (
+              jobs.map((job) => (
+                <Pressable
+                  key={job.id}
+                  onPress={() => navigation.navigate('QuotesInbox', { jobId: job.id })}
+                >
+                  <Card style={{ marginBottom: 10 }}>
+                    <Text style={{ fontWeight: '900' }}>{job.description}</Text>
+                    <Text style={{ color: colors.muted, marginTop: 5 }}>
+                      {job.estate} - {job.status}
+                    </Text>
+                    <Text style={{ color: colors.green, fontWeight: '800', marginTop: 6 }}>
+                      {job.quoteCount || 0} quotes received
+                    </Text>
+                  </Card>
+                </Pressable>
+              ))
+            ) : (
+              <Card>
+                <Text style={{ color: colors.muted }}>
+                  Your submitted job requests will appear here.
+                </Text>
+              </Card>
+            )}
           </View>
         </View>
       </ScrollView>

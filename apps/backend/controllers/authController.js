@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import pool from '../config/db.js';
+import { ensureMarketplaceSchema } from '../services/marketplaceStore.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ekazi-dev-secret';
 let schemaReady;
@@ -17,7 +18,13 @@ function createToken(id) {
 }
 
 function publicUser(user) {
-  return { id: user.id, name: user.name, email: user.email, phone: user.phone };
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    role: user.role === 'tutor' ? 'handyman' : 'client',
+  };
 }
 
 async function ensureMobileAuthSchema() {
@@ -42,6 +49,8 @@ export const register = async (req, res) => {
     const phone = normalizePhone(req.body?.phone);
     const password = String(req.body?.password || '');
     const suppliedEmail = String(req.body?.email || '').trim().toLowerCase();
+    const accountType = req.body?.role === 'handyman' ? 'handyman' : 'client';
+    const databaseRole = accountType === 'handyman' ? 'tutor' : 'student';
     const email = suppliedEmail || (phone ? `${phone.slice(1)}@mobile.ekazi.co.ke` : '');
 
     if (!name || !phone || !password) {
@@ -64,11 +73,19 @@ export const register = async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const { rows } = await pool.query(
       `INSERT INTO users (name, email, password, role, phone)
-       VALUES ($1, $2, $3, 'student', $4)
-       RETURNING id, name, email, phone`,
-      [name, email, passwordHash, phone],
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id, name, email, phone, role`,
+      [name, email, passwordHash, databaseRole, phone],
     );
     const user = rows[0];
+    if (user.role === 'tutor') {
+      await ensureMarketplaceSchema();
+      await pool.query(
+        `INSERT INTO ekazi_handyman_profiles (user_id, business_name)
+         VALUES ($1, $2) ON CONFLICT (user_id) DO NOTHING`,
+        [user.id, user.name],
+      );
+    }
     return res.status(201).json({ token: createToken(user.id), user: publicUser(user) });
   } catch (error) {
     console.error('mobile register error:', error);
@@ -92,7 +109,7 @@ export const login = async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `SELECT id, name, email, phone, password
+      `SELECT id, name, email, phone, password, role
          FROM users
         WHERE ($1::text IS NOT NULL AND phone = $1) OR LOWER(email) = $2
         LIMIT 1`,
@@ -133,7 +150,7 @@ export const verifyOtp = async (req, res) => {
        VALUES ('Ekazi User', $1, 'student', $2)
        ON CONFLICT (phone) WHERE phone IS NOT NULL
        DO UPDATE SET phone = EXCLUDED.phone
-       RETURNING id, name, email, phone`,
+       RETURNING id, name, email, phone, role`,
       [email, phone],
     );
     const user = rows[0];
@@ -152,7 +169,7 @@ export const me = async (req, res) => {
       return res.status(401).json({ message: 'Invalid user session' });
     }
     const { rows } = await pool.query(
-      'SELECT id, name, email, phone FROM users WHERE id = $1',
+      'SELECT id, name, email, phone, role FROM users WHERE id = $1',
       [userId],
     );
     if (!rows.length) return res.status(401).json({ message: 'User no longer exists' });

@@ -9,10 +9,18 @@ import {
   updateJob,
   addJobPhotos,
   cancelJob,
+  getFirstJobPromotion,
+  listOpenJobsForHandyman,
+  getHandymanProfile,
+  updateHandymanLocation,
 } from '../controllers/jobsController.js';
 
 const router = express.Router();
 
+router.get('/promotions/first-job', authUser, getFirstJobPromotion);
+router.get('/handyman/jobs', authUser, listOpenJobsForHandyman);
+router.get('/handyman/profile', authUser, getHandymanProfile);
+router.put('/handyman/profile/location', authUser, updateHandymanLocation);
 router.get('/jobs', authUser, listJobs);
 router.post('/jobs', authUser, createJob);
 router.get('/jobs/:id', authUser, getJob);

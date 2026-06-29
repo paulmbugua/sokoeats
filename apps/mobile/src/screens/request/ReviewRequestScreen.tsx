@@ -27,7 +27,7 @@ export default function ReviewRequestScreen({ route, navigation }: any) {
 
     try {
 
-      const { data } = await http.post('/api/jobs', draft);
+      const { data } = await http.post('/api/jobs', { ...draft, discountCode: 'FIRST10' });
 
       navigation.replace('RequestSubmitted', { jobId: data.job.id });
 

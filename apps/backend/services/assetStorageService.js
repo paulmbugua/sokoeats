@@ -1,4 +1,5 @@
-import { uploadLocalFile, deleteObject } from './r2UploadService.js';
+import { uploadLocalFile, uploadBuffer, deleteObject } from './r2UploadService.js';
+import uploadToLocal from '../utils/uploadToLocal.js';
 
 export async function uploadAssetFromFile({
   kind = 'image',
@@ -7,7 +8,26 @@ export async function uploadAssetFromFile({
   filename,
   contentType,
 }) {
-  if (!file?.path) throw new Error('file.path is required');
+  if (file?.buffer) {
+    try {
+      return await uploadBuffer({
+        kind,
+        ownerId,
+        buffer: file.buffer,
+        filename: filename || file.originalname,
+        contentType: contentType || file.mimetype,
+      });
+    } catch (error) {
+      if (process.env.NODE_ENV === 'production') throw error;
+      console.warn('[uploads] R2 unavailable; using local development storage:', error?.Code || error?.message);
+      const [local] = await uploadToLocal({
+        buffer: file.buffer,
+        originalname: filename || file.originalname || 'upload.bin',
+      });
+      return { ...local, provider: 'local' };
+    }
+  }
+  if (!file?.path) throw new Error('Upload is missing both buffer and path');
   return uploadLocalFile({
     kind,
     ownerId,

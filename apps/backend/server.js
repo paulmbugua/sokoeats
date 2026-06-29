@@ -263,6 +263,7 @@ app.post(
 app.use(helmetMiddleware);
 app.use(morganMiddleware);
 app.use(express.json({ limit: '50mb' }));
+app.use('/uploads', express.static('uploads', { maxAge: '1h', immutable: false }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(installCloudinaryResponseOptimizer());
 app.set('trust proxy', 1);

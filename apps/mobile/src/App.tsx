@@ -24,6 +24,8 @@ import SignUpScreen from './screens/auth/SignUpScreen';
 import OtpVerifyScreen from './screens/auth/OtpVerifyScreen';
 
 import HomeScreen from './screens/tabs/HomeScreen';
+import HandymanHomeScreen from './screens/tabs/HandymanHomeScreen';
+import HandymanQuotesScreen from './screens/tabs/HandymanQuotesScreen';
 
 import RequestsScreen from './screens/tabs/RequestsScreen';
 
@@ -53,6 +55,8 @@ import RequestSubmittedScreen from './screens/request/RequestSubmittedScreen';
 import QuotesInboxScreen from './screens/quotes/QuotesInboxScreen';
 
 import QuoteDetailScreen from './screens/quotes/QuoteDetailScreen';
+import SubmitQuoteScreen from './screens/quotes/SubmitQuoteScreen';
+import HandymanLocationScreen from './screens/request/HandymanLocationScreen';
 
 import BookingConfirmedScreen from './screens/booking/BookingConfirmedScreen';
 
@@ -65,6 +69,8 @@ const primary = '#16A34A';
 function Tabs() {
 
   const insets = useSafeAreaInsets();
+  const { role } = useShopContext();
+  const isHandyman = role === 'tutor';
   const bottomInset = Math.max(insets.bottom, 10);
 
   return (
@@ -77,9 +83,13 @@ function Tabs() {
 
     } })}>
 
-      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Home" component={isHandyman ? HandymanHomeScreen : HomeScreen} />
 
-      <Tab.Screen name="Requests" component={RequestsScreen} />
+      <Tab.Screen
+        name="Requests"
+        component={isHandyman ? HandymanQuotesScreen : RequestsScreen}
+        options={{ title: isHandyman ? 'My Quotes' : 'Requests' }}
+      />
 
       <Tab.Screen name="Messages" component={MessagesScreen} />
 
@@ -138,6 +148,10 @@ export default function App() {
         <Stack.Screen name="QuotesInbox" component={QuotesInboxScreen} options={{ title: 'Quotes' }} />
 
         <Stack.Screen name="QuoteDetail" component={QuoteDetailScreen} options={{ title: 'Quote Detail' }} />
+
+        <Stack.Screen name="SubmitQuote" component={SubmitQuoteScreen} options={{ title: 'Send Quote' }} />
+
+        <Stack.Screen name="HandymanLocation" component={HandymanLocationScreen} options={{ title: 'Service Area' }} />
 
         <Stack.Screen name="Conversation" component={ConversationScreen} options={{ title: 'Messages' }} />
 

@@ -1,70 +1,101 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, TextInput } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { estates } from '@myhandymanapp/shared/api/kenya-data';
 import { colors, spacing, radius } from '../../theme/tokens';
-import Card from '../../components/Card';
 import StepProgress from '../../components/StepProgress';
 import PrimaryButton from '../../components/PrimaryButton';
-import { estates } from '@myhandymanapp/shared/api/kenya-data';
+import LocationPicker, { type PickedLocation } from '../../components/LocationPicker';
 import { Screen } from '../../components/Screen';
 
 export default function LocationSelectScreen({ route, navigation }: any) {
   const { draft } = route.params;
-  const [q, setQ] = useState('');
-  const list = useMemo(() => (estates || []).filter((e: any) => e.name.toLowerCase().includes(q.toLowerCase())).slice(0, 12), [q]);
-  const [selected, setSelected] = useState('Kilimani');
+  const [query, setQuery] = useState('');
+  const [location, setLocation] = useState<PickedLocation | null>(null);
+  const list = useMemo(
+    () =>
+      (estates || [])
+        .filter((estate: any) => estate.name.toLowerCase().includes(query.toLowerCase()))
+        .slice(0, 8),
+    [query],
+  );
+
+  const chooseEstate = (estate: any) => {
+    setQuery(estate.name);
+    setLocation((current) => ({
+      latitude: current?.latitude ?? -1.286389,
+      longitude: current?.longitude ?? 36.817223,
+      address: current?.address || estate.name,
+      estate: estate.name,
+      city: estate.city || 'Nairobi',
+    }));
+  };
+
+  const continueFlow = () => {
+    if (!location?.address || !Number.isFinite(location.latitude)) {
+      Alert.alert('Pin the job location', 'Use your current location or tap the map.');
+      return;
+    }
+    navigation.navigate('ScheduleSelect', {
+      draft: {
+        ...draft,
+        estate: location.estate || query || 'Nairobi',
+        city: location.city || 'Nairobi',
+        address: location.address,
+        latitude: location.latitude,
+        longitude: location.longitude,
+      },
+    });
+  };
 
   return (
     <Screen backgroundColor="white">
       <StepProgress step={4} total={6} label="Where is the job?" />
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, paddingTop: 0, paddingBottom: 96 }}>
-        <Card style={{ marginBottom: 12 }}>
-          <Text style={{ fontWeight: '900' }}>Use Current Location</Text>
-        </Card>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: spacing.xl, paddingTop: 0, paddingBottom: 96 }}
+      >
+        <LocationPicker value={location} onChange={setLocation} />
 
-        <Text style={{ color: colors.muted, fontWeight: '800', marginTop: 6 }}>Saved Addresses</Text>
-        <Card style={{ marginTop: 10 }}>
-          <Text style={{ fontWeight: '900' }}>Home</Text>
-          <Text style={{ color: colors.muted, marginTop: 4 }}>Kilimani, Nairobi</Text>
-        </Card>
-        <Card style={{ marginTop: 10 }}>
-          <Text style={{ fontWeight: '900' }}>Work</Text>
-          <Text style={{ color: colors.muted, marginTop: 4 }}>Westlands, Nairobi</Text>
-        </Card>
-
-        <View style={{ marginTop: 12 }}>
-          <TextInput
-            value={q}
-            onChangeText={setQ}
-            placeholder="Search estate or landmark..."
-            placeholderTextColor={colors.muted}
-            style={{ borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, paddingHorizontal: 12, paddingVertical: 12, backgroundColor: '#F9FAFB' }}
-          />
-        </View>
-
-        <Text style={{ marginTop: 14, color: colors.muted, fontWeight: '800' }}>Nairobi Estates</Text>
-        <View style={{ marginTop: 10 }}>
-          {list.map((e: any) => (
-            <Card key={e.id} style={{ marginBottom: 10, borderColor: selected === e.name ? colors.primary : colors.border }}>
-              <Text style={{ fontWeight: '900' }} onPress={() => setSelected(e.name)}>
-                {e.name}
-              </Text>
-            </Card>
-          ))}
-        </View>
-
-        <Card style={{ marginTop: 6, alignItems: 'center' }}>
-          <Text style={{ fontWeight: '900' }}>📍 Pin Location on Map</Text>
-        </Card>
-
-        <Text style={{ textAlign: 'center', marginTop: 10, color: colors.muted, fontSize: 12 }}>
-          Your exact address will only be shared with the provider you choose
+        <Text style={{ marginTop: 16, color: colors.muted, fontWeight: '800' }}>
+          Search a nearby estate
         </Text>
+        <TextInput
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Estate or neighbourhood"
+          placeholderTextColor={colors.muted}
+          style={{
+            borderWidth: 1,
+            borderColor: colors.border,
+            borderRadius: radius.md,
+            paddingHorizontal: 12,
+            paddingVertical: 12,
+            marginTop: 8,
+          }}
+        />
+        {query ? (
+          <View style={{ marginTop: 8 }}>
+            {list.map((estate: any) => (
+              <Pressable
+                key={estate.id}
+                onPress={() => chooseEstate(estate)}
+                style={{
+                  paddingVertical: 11,
+                  borderBottomWidth: 1,
+                  borderBottomColor: colors.border,
+                }}
+              >
+                <Text style={{ fontWeight: '800' }}>{estate.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
 
+        <Text style={{ textAlign: 'center', marginTop: 12, color: colors.muted, fontSize: 12 }}>
+          The exact address is shared only with the handyman whose quote you accept.
+        </Text>
         <View style={{ marginTop: 16 }}>
-          <PrimaryButton
-            title="Continue"
-            onPress={() => navigation.navigate('ScheduleSelect', { draft: { ...draft, estate: selected, city: 'Nairobi' } })}
-          />
+          <PrimaryButton title="Continue" onPress={continueFlow} />
         </View>
       </ScrollView>
     </Screen>

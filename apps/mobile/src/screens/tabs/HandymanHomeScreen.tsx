@@ -1,0 +1,119 @@
+import React, { useCallback, useEffect, useState } from 'react';
+import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { useShopContext } from '@myhandymanapp/shared/context';
+import Card from '../../components/Card';
+import PrimaryButton from '../../components/PrimaryButton';
+import { Screen } from '../../components/Screen';
+import { colors, spacing } from '../../theme/tokens';
+
+type Job = {
+  id: string;
+  categoryName?: string;
+  serviceName?: string;
+  description: string;
+  estate: string;
+  city: string;
+  scheduleType: string;
+  scheduledFor?: string;
+  budgetMin?: number | null;
+  budgetMax?: number | null;
+  photoUrls?: string[];
+};
+
+export default function HandymanHomeScreen({ navigation }: any) {
+  const { http, userName } = useShopContext();
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [profile, setProfile] = useState<any>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const [jobsResult, profileResult] = await Promise.all([
+        http.get('/api/handyman/jobs'),
+        http.get('/api/handyman/profile'),
+      ]);
+      setJobs(jobsResult.data?.jobs || []);
+      setProfile(profileResult.data?.profile || null);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [http]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  return (
+    <Screen backgroundColor="white">
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
+        contentContainerStyle={{ padding: spacing.xl, paddingBottom: 110 }}
+      >
+        <Text style={{ fontSize: 25, fontWeight: '900' }}>
+          Jobs for {userName?.split(' ')[0] || 'you'}
+        </Text>
+        <Text style={{ color: colors.muted, marginTop: 5 }}>
+          Quote only for jobs you can deliver professionally.
+        </Text>
+
+        <Card
+          style={{
+            marginTop: 14,
+            backgroundColor: profile?.address ? '#ECFDF5' : '#FEF3C7',
+            borderColor: profile?.address ? '#A7F3D0' : '#FDE68A',
+          }}
+        >
+          <Text style={{ fontWeight: '900' }}>
+            {profile?.address ? 'Service location active' : 'Set your service location'}
+          </Text>
+          <Text style={{ color: colors.muted, marginTop: 5 }}>
+            {profile?.address || 'Add your map location so clients can assess proximity.'}
+          </Text>
+          <View style={{ marginTop: 12 }}>
+            <PrimaryButton
+              title={profile?.address ? 'Update Location' : 'Add Location'}
+              onPress={() => navigation.navigate('HandymanLocation')}
+            />
+          </View>
+        </Card>
+
+        <Text style={{ fontSize: 17, fontWeight: '900', marginTop: 18 }}>Open jobs</Text>
+        {jobs.length ? (
+          jobs.map((job) => (
+            <Pressable
+              key={job.id}
+              onPress={() => navigation.navigate('SubmitQuote', { job })}
+            >
+              <Card style={{ marginTop: 10 }}>
+                <Text style={{ fontWeight: '900', fontSize: 16 }}>
+                  {job.serviceName || job.categoryName || 'Handyman job'}
+                </Text>
+                <Text style={{ color: colors.muted, marginTop: 6 }} numberOfLines={3}>
+                  {job.description}
+                </Text>
+                <Text style={{ marginTop: 8, fontWeight: '800' }}>
+                  {job.estate}, {job.city} - {job.scheduleType}
+                </Text>
+                {job.budgetMin || job.budgetMax ? (
+                  <Text style={{ color: colors.green, marginTop: 6, fontWeight: '900' }}>
+                    Client budget: KES {job.budgetMin || 0} - {job.budgetMax || 'Open'}
+                  </Text>
+                ) : null}
+                <Text style={{ color: colors.primary, fontWeight: '900', marginTop: 10 }}>
+                  Review and quote
+                </Text>
+              </Card>
+            </Pressable>
+          ))
+        ) : (
+          <Card style={{ marginTop: 10 }}>
+            <Text style={{ color: colors.muted }}>
+              No unquoted jobs currently match this account. Pull to refresh.
+            </Text>
+          </Card>
+        )}
+      </ScrollView>
+    </Screen>
+  );
+}

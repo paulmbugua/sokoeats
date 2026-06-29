@@ -1,5 +1,7 @@
 // apps/mobile/app.config.js
 
+import fs from 'node:fs';
+
 export default function expoConfig({ config }) {
   const appEnv =
     process.env.EXPO_PUBLIC_APP_ENV ||
@@ -61,6 +63,16 @@ export default function expoConfig({ config }) {
     process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
     '557799973381-97lsoficotiiulhl5st6tf6h723uurpg.apps.googleusercontent.com';
 
+  let googleServicesApiKey = '';
+  try {
+    const services = JSON.parse(fs.readFileSync('./google-services.json', 'utf8'));
+    googleServicesApiKey = services?.client?.[0]?.api_key?.[0]?.current_key || '';
+  } catch {}
+  const GOOGLE_MAPS_API_KEY =
+    process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+    process.env.EXPO_PUBLIC_FIREBASE_API_KEY ||
+    googleServicesApiKey;
+
   return {
     ...config,
 
@@ -95,14 +107,23 @@ export default function expoConfig({ config }) {
         new Set([
           ...(config.android?.blockedPermissions ?? []),
           'android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK',
-          // If you actually need location later, remove these from blockedPermissions
-          'android.permission.ACCESS_COARSE_LOCATION',
-          'android.permission.ACCESS_FINE_LOCATION',
+
         ]),
       ),
 
       // ✅ Keep only what you need (deps may still add others automatically)
-      permissions: ['INTERNET', 'POST_NOTIFICATIONS'],
+      permissions: [
+        'INTERNET',
+        'POST_NOTIFICATIONS',
+        'ACCESS_COARSE_LOCATION',
+        'ACCESS_FINE_LOCATION',
+      ],
+      config: {
+        ...(config.android?.config || {}),
+        ...(GOOGLE_MAPS_API_KEY
+          ? { googleMaps: { apiKey: GOOGLE_MAPS_API_KEY } }
+          : {}),
+      },
 
       googleServicesFile: './google-services.json',
 
@@ -171,6 +192,13 @@ export default function expoConfig({ config }) {
 
       'expo-notifications',
       [
+        'expo-location',
+        {
+          locationWhenInUsePermission:
+            'Allow Ekazi to use your location for nearby jobs and service addresses.',
+        },
+      ],
+      [
         'expo-image-picker',
         {
           photosPermission: 'Allow Ekazi to access photos you select for your job request.',
@@ -226,6 +254,7 @@ export default function expoConfig({ config }) {
       EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: GOOGLE_IOS_CLIENT_ID,
       EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID: GOOGLE_REVERSED_CLIENT_ID,
       EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID: GOOGLE_ANDROID_CLIENT_ID,
+      EXPO_PUBLIC_GOOGLE_MAPS_API_KEY: GOOGLE_MAPS_API_KEY,
 
       // ✅ EAS project (required for builds + OTA updates)
       EXPO_PUBLIC_EAS_PROJECT_ID: EAS_PROJECT_ID,
