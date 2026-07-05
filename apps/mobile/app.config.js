@@ -74,27 +74,54 @@ export default function expoConfig({ config }) {
   const allowHttp = String(RESOLVED_BACKEND_URL || '').startsWith('http://');
   const usesCleartextTraffic = !isProduction && allowHttp;
 
+  const ANDROID_PACKAGE = 'com.paulmbugua2.ekazi';
+  const IOS_BUNDLE_ID = 'com.paulmbugua2.ekazi';
+  const googleServices = readJsonIfExists(androidGoogleServicesFile);
+  const googleServicesClient = googleServices?.client?.find(
+    (client) => client?.client_info?.android_client_info?.package_name === ANDROID_PACKAGE,
+  );
+  const googleServicesAndroidClientId = googleServicesClient?.oauth_client?.find(
+    (client) => client?.client_type === 1 && client?.android_info?.package_name === ANDROID_PACKAGE,
+  )?.client_id;
+  const googleServicesWebClientId = googleServicesClient?.oauth_client?.find(
+    (client) => client?.client_type === 3,
+  )?.client_id;
+  const googleServicesApiKey = googleServicesClient?.api_key?.[0]?.current_key || '';
+
+  const readPlistString = (filePath, key) => {
+    if (!filePath) return '';
+    try {
+      const plist = fs.readFileSync(filePath, 'utf8');
+      const match = plist.match(new RegExp(`<key>${key}</key>\\s*<string>([^<]+)</string>`));
+      return match?.[1] || '';
+    } catch {
+      return '';
+    }
+  };
+
   // ─────────────────────────────────────────────────────────
   // Google Sign-In IDs (deterministic defaults)
   // ─────────────────────────────────────────────────────────
   const GOOGLE_WEB_CLIENT_ID =
+    googleServicesWebClientId ||
     process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ||
     '557799973381-ksp83t2vo6fdqufhm0iie06lnb4e8j8v.apps.googleusercontent.com';
 
+  const GOOGLE_ANDROID_CLIENT_ID =
+    googleServicesAndroidClientId ||
+    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
+    '557799973381-97lsoficotiiulhl5st6tf6h723uurpg.apps.googleusercontent.com';
+
   const GOOGLE_IOS_CLIENT_ID =
+    readPlistString(iosGoogleServicesFile, 'CLIENT_ID') ||
     process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID ||
     '557799973381-g0h98g6vg82oeineeb4t9e67hgosdfrg.apps.googleusercontent.com';
 
   const GOOGLE_REVERSED_CLIENT_ID =
+    readPlistString(iosGoogleServicesFile, 'REVERSED_CLIENT_ID') ||
     process.env.EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID ||
     'com.googleusercontent.apps.557799973381-g0h98g6vg82oeineeb4t9e67hgosdfrg';
 
-  const GOOGLE_ANDROID_CLIENT_ID =
-    process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID ||
-    '557799973381-97lsoficotiiulhl5st6tf6h723uurpg.apps.googleusercontent.com';
-
-  const googleServicesForApiKey = readJsonIfExists(androidGoogleServicesFile);
-  const googleServicesApiKey = googleServicesForApiKey?.client?.[0]?.api_key?.[0]?.current_key || '';
   const GOOGLE_MAPS_API_KEY =
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
     process.env.EXPO_PUBLIC_FIREBASE_API_KEY ||
@@ -126,7 +153,7 @@ export default function expoConfig({ config }) {
 
     android: {
       ...config.android,
-      package: 'com.paulmbugua2.ekazi',
+      package: ANDROID_PACKAGE,
       softwareKeyboardLayoutMode: 'resize',
 
       // ✅ Remove foreground-service media playback permission (injected by some deps)
@@ -184,7 +211,7 @@ export default function expoConfig({ config }) {
 
     ios: {
       ...config.ios,
-      bundleIdentifier: 'com.paulmbugua2.ekazi',
+      bundleIdentifier: IOS_BUNDLE_ID,
       googleServicesFile: iosGoogleServicesFile,
 
       // ✅ Ensure we do NOT declare background audio playback

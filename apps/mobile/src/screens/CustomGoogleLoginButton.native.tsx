@@ -71,9 +71,11 @@ const CustomGoogleLoginButtonNative: React.FC<GoogleButtonProps> = ({ onSuccess,
             ? 'Sign in already in progress'
             : code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE
               ? 'Google Play services not available'
-              : getErrMessage(e).includes('No ID token')
-                ? 'Google authentication failed – no token'
-                : base;
+              : code === '10' || getErrMessage(e).includes('DEVELOPER_ERROR')
+                ? 'Google is not configured for this build. Rebuild after adding the EAS keystore SHA-1/SHA-256 to Firebase and using the latest google-services.json.'
+                : getErrMessage(e).includes('No ID token')
+                  ? 'Google authentication failed - no token'
+                  : base;
 
       // Surface error and notify caller
       Alert.alert('Google Sign-In', message);
