@@ -1,63 +1,103 @@
 import React, { useState } from 'react';
-import { ScreenScroll } from '../../components/Screen';
-
-import { Alert, View, Text } from 'react-native';
-
+import { Alert, Text, View } from 'react-native';
 import { useShopContext } from '@myhandymanapp/shared/context';
-
-import { colors, spacing } from '../../theme/tokens';
-
+import { ScreenScroll } from '../../components/Screen';
 import Input from '../../components/Input';
-
 import PrimaryButton from '../../components/PrimaryButton';
-
-import SecondaryButton from '../../components/SecondaryButton';
+import CustomGoogleLoginButton from '../CustomGoogleLoginButton.native';
+import { colors } from '../../theme/tokens';
 
 export default function LoginScreen({ navigation }: any) {
-
   const { http, loginConsumer } = useShopContext();
-
   const [phone, setPhone] = useState('+254700000001');
-
   const [password, setPassword] = useState('');
-
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
 
-  const signIn = async () => {
-
-    setLoading(true);
-
-    try {
-
-      const { data } = await http.post('/api/auth/login', { phone: phone.trim(), password });
-
-      await loginConsumer(data.token, { userId: data.user?.id, email: data.user?.email });
-
-    } catch (e: any) {
-
-      Alert.alert('Sign in failed', e?.response?.data?.message || 'Check your phone number and try again.');
-
-    } finally { setLoading(false); }
-
+  const finishAuth = async (data: any) => {
+    await loginConsumer(data.token, {
+      userId: String(data.user?.id || ''),
+      email: data.user?.email,
+    });
   };
 
-  return <ScreenScroll backgroundColor="white" contentContainerStyle={{ justifyContent: 'center' }}>
+  const signIn = async () => {
+    setLoading(true);
+    try {
+      const { data } = await http.post('/api/auth/login', { phone: phone.trim(), password });
+      await finishAuth(data);
+    } catch (e: any) {
+      Alert.alert(
+        'Sign in failed',
+        e?.response?.data?.message || 'Check your phone number and try again.',
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
 
-    <Input label="Phone" value={phone} onChangeText={setPhone} placeholder="+254 7xx xxx xxx" />
+  const continueWithGoogle = async (idToken: string) => {
+    setGoogleLoading(true);
+    try {
+      const { data } = await http.post('/api/auth/google', { idToken, role: 'client' });
+      await finishAuth(data);
+    } catch (e: any) {
+      Alert.alert(
+        'Google sign-in failed',
+        e?.response?.data?.message || 'Please try again with your Google account.',
+      );
+    } finally {
+      setGoogleLoading(false);
+    }
+  };
 
-    <Input label="Password" value={password} onChangeText={setPassword} placeholder="Your password" secureTextEntry />
+  return (
+    <ScreenScroll backgroundColor="white" contentContainerStyle={{ justifyContent: 'center' }}>
+      <Text style={{ fontSize: 24, fontWeight: '900', marginBottom: 8 }}>Welcome back</Text>
+      <Text style={{ color: colors.muted, marginBottom: 18 }}>
+        Sign in to manage Ekazi jobs, quotes and bookings.
+      </Text>
 
-    <PrimaryButton title={loading ? 'Signing in...' : 'Sign In'} onPress={signIn} />
+      <Input label="Phone or Email" value={phone} onChangeText={setPhone} placeholder="+254 7xx xxx xxx" />
+      <Input
+        label="Password"
+        value={password}
+        onChangeText={setPassword}
+        placeholder="Your password"
+        secureTextEntry
+      />
 
-    <View style={{ height: 12 }} />
+      <PrimaryButton title={loading ? 'Signing in...' : 'Sign In'} onPress={signIn} disabled={loading} />
 
-    <SecondaryButton title="Continue with Google" onPress={() => Alert.alert('Google Sign-In', 'Use the configured Firebase/Google client in a dev build.')} />
+      <View style={{ height: 14 }} />
+      <CustomGoogleLoginButton
+        onSuccess={continueWithGoogle}
+        onFailure={(error) =>
+          Alert.alert('Google sign-in failed', error?.message || 'Could not start Google sign-in.')
+        }
+      />
+      {googleLoading ? (
+        <Text style={{ textAlign: 'center', marginTop: 8, color: colors.muted }}>Connecting Google...</Text>
+      ) : null}
 
-    <Text style={{ textAlign: 'center', marginTop: 16, color: colors.muted }}>Don't have an account? <Text style={{ color: colors.primary, fontWeight: '800' }} onPress={() => navigation.navigate('SignUp')}>Create Account</Text></Text>
-
-    <Text style={{ textAlign: 'center', marginTop: 10, color: colors.muted }}>Or verify by OTP <Text style={{ color: colors.primary, fontWeight: '800' }} onPress={() => navigation.navigate('OtpVerify', { phone })}>Send OTP</Text></Text>
-
-  </ScreenScroll>;
-
+      <Text style={{ textAlign: 'center', marginTop: 16, color: colors.muted }}>
+        Don't have an account?{' '}
+        <Text
+          style={{ color: colors.primary, fontWeight: '800' }}
+          onPress={() => navigation.navigate('SignUp')}
+        >
+          Create Account
+        </Text>
+      </Text>
+      <Text style={{ textAlign: 'center', marginTop: 10, color: colors.muted }}>
+        Or verify by OTP{' '}
+        <Text
+          style={{ color: colors.primary, fontWeight: '800' }}
+          onPress={() => navigation.navigate('OtpVerify', { phone })}
+        >
+          Send OTP
+        </Text>
+      </Text>
+    </ScreenScroll>
+  );
 }
-

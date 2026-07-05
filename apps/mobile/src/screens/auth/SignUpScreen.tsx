@@ -5,6 +5,7 @@ import { useShopContext } from '@myhandymanapp/shared/context';
 import { ScreenScroll } from '../../components/Screen';
 import Input from '../../components/Input';
 import PrimaryButton from '../../components/PrimaryButton';
+import CustomGoogleLoginButton from '../CustomGoogleLoginButton.native';
 import { colors, radius } from '../../theme/tokens';
 
 type AccountType = 'client' | 'handyman';
@@ -18,6 +19,14 @@ export default function SignUpScreen({ navigation }: any) {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const finishAuth = async (data: any) => {
+    await loginConsumer(data.token, {
+      userId: String(data.user?.id || ''),
+      email: data.user?.email,
+    });
+  };
 
   const createAccount = async () => {
     if (!name.trim() || !phone.trim() || !password) {
@@ -42,10 +51,7 @@ export default function SignUpScreen({ navigation }: any) {
         password,
         role,
       });
-      await loginConsumer(data.token, {
-        userId: String(data.user?.id || ''),
-        email: data.user?.email,
-      });
+      await finishAuth(data);
     } catch (error: any) {
       Alert.alert(
         'Account setup failed',
@@ -53,6 +59,25 @@ export default function SignUpScreen({ navigation }: any) {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const continueWithGoogle = async (idToken: string) => {
+    setGoogleLoading(true);
+    try {
+      const { data } = await http.post('/api/auth/google', {
+        idToken,
+        role,
+        phone: phone.trim() || undefined,
+      });
+      await finishAuth(data);
+    } catch (error: any) {
+      Alert.alert(
+        'Google account setup failed',
+        error?.response?.data?.message || 'Please try again with your Google account.',
+      );
+    } finally {
+      setGoogleLoading(false);
     }
   };
 
@@ -88,6 +113,18 @@ export default function SignUpScreen({ navigation }: any) {
           );
         })}
       </View>
+
+      <CustomGoogleLoginButton
+        onSuccess={continueWithGoogle}
+        onFailure={(error) =>
+          Alert.alert('Google sign-up failed', error?.message || 'Could not start Google sign-up.')
+        }
+      />
+      {googleLoading ? (
+        <Text style={{ textAlign: 'center', marginTop: 8, color: colors.muted }}>Creating with Google...</Text>
+      ) : null}
+
+      <View style={{ marginVertical: 18, height: 1, backgroundColor: colors.border }} />
 
       <Input label="Full Name" value={name} onChangeText={setName} placeholder="Your full name" />
       <Input

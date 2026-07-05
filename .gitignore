@@ -74,6 +74,9 @@ apps/**/.env
 apps/**/.env.*
 packages/**/.env
 packages/**/.env.*
+!.env.example
+!apps/**/.env.example
+!packages/**/.env.example
 
 # --------------------------------
 # Secrets / credentials (DO NOT COMMIT)
