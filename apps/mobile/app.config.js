@@ -76,7 +76,9 @@ export default function expoConfig({ config }) {
 
   const ANDROID_PACKAGE = 'com.paulmbugua2.ekazi';
   const IOS_BUNDLE_ID = 'com.paulmbugua2.ekazi';
-  const googleServices = readJsonIfExists(androidGoogleServicesFile);
+  const googleServices =
+    readJsonIfExists(androidGoogleServicesFile) ||
+    readJsonIfExists(LOCAL_ANDROID_GOOGLE_SERVICES_FILE);
   const googleServicesClient = googleServices?.client?.find(
     (client) => client?.client_info?.android_client_info?.package_name === ANDROID_PACKAGE,
   );
