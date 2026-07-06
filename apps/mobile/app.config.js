@@ -55,8 +55,11 @@ export default function expoConfig({ config }) {
   const BACKENDS = {
     androidEmu: 'http://10.0.2.2:4000',
     iosSim: 'http://localhost:4000',
-    hotspot: 'http://10.254.198.47:4000',
-    lan1: process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://192.168.137.1:4000',
+    hotspot:
+      process.env.EXPO_PUBLIC_HOTSPOT_BACKEND_URL ||
+      process.env.EXPO_PUBLIC_BACKEND_URL_LAN2 ||
+      'http://192.168.100.5:4000',
+    lan1: process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://192.168.100.5:4000',
     // ✅ Update this when you deploy Ekazi backend
     prod: process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.ekazi.co.ke',
   };
@@ -65,7 +68,7 @@ export default function expoConfig({ config }) {
   const DEFAULT_BACKEND =
     process.env.EXPO_PUBLIC_DEFAULT_BACKEND ||
     process.env.BACKEND ||
-    (isProduction ? 'prod' : 'hotspot');
+    (isProduction ? 'prod' : 'lan1');
 
   // Single resolved URL the app can use
   const RESOLVED_BACKEND_URL = BACKENDS[DEFAULT_BACKEND] || BACKENDS.prod;

@@ -24,8 +24,8 @@
     "format:check": "prettier . --check",
     "start:emu": "cross-env BACKEND=androidEmu expo start -c",
     "start:iossim": "cross-env BACKEND=iosSim expo start -c",
-    "start:lan1": "cross-env BACKEND=lan1 expo start -c",
-    "start:hotspot": "cross-env BACKEND=hotspot EXPO_PUBLIC_BACKEND_URL_LAN2=http://10.254.198.47:4000 expo start -c",
+    "start:lan1": "cross-env BACKEND=lan1 EXPO_PUBLIC_LAN_BACKEND_URL=http://192.168.100.5:4000 expo start -c",
+    "start:hotspot": "cross-env BACKEND=hotspot EXPO_PUBLIC_HOTSPOT_BACKEND_URL=http://192.168.100.5:4000 expo start -c",
     "start:prod": "cross-env BACKEND=prod expo start -c"
   },
   "dependencies": {
