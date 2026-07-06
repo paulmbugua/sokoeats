@@ -24,6 +24,47 @@ const GOOGLE_AUDIENCES = [
   '164509786898-0scm5333pfeligj0eu15olvlvluf4k6j.apps.googleusercontent.com',
 ].filter(Boolean);
 
+
+function googleAuthRequestId() {
+  return `g_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function logGoogleAuth(requestId, step, details = {}) {
+  console.log('[google-auth][backend]', step, { requestId, ...details });
+}
+
+function googleEmailDomain(email) {
+  return typeof email === 'string' && email.includes('@') ? email.split('@').pop() : undefined;
+}
+
+function decodeJwtPayloadUnsafe(idToken) {
+  try {
+    const [, payload] = String(idToken || '').split('.');
+    if (!payload) return null;
+    return JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+  } catch (error) {
+    return { decodeError: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+function summarizeIncomingGoogleToken(idToken) {
+  const token = String(idToken || '');
+  const payload = decodeJwtPayloadUnsafe(token);
+  return {
+    hasToken: Boolean(token),
+    tokenLength: token.length,
+    partCount: token ? token.split('.').length : 0,
+    aud: payload?.aud,
+    azp: payload?.azp,
+    iss: payload?.iss,
+    emailDomain: googleEmailDomain(payload?.email),
+    emailVerified: payload?.email_verified,
+    exp: payload?.exp,
+    iat: payload?.iat,
+    decodeError: payload?.decodeError,
+  };
+}
+
 function normalizePhone(value) {
   let phone = String(value || '').trim().replace(/[\s()-]/g, '');
   if (phone.startsWith('0')) phone = `+254${phone.slice(1)}`;
@@ -161,6 +202,8 @@ export const login = async (req, res) => {
 };
 
 export const googleAuth = async (req, res) => {
+  const requestId = googleAuthRequestId();
+  res.setHeader('x-ekazi-google-auth-request-id', requestId);
   try {
     await ensureMobileAuthSchema();
     const idToken = String(req.body?.idToken || req.body?.token || '').trim();
@@ -168,14 +211,47 @@ export const googleAuth = async (req, res) => {
     const accountType = req.body?.role === 'handyman' ? 'handyman' : 'client';
     const databaseRole = accountType === 'handyman' ? 'tutor' : 'student';
 
-    if (!idToken) return res.status(400).json({ message: 'Google token is required' });
+    logGoogleAuth(requestId, 'request:start', {
+      role: accountType,
+      databaseRole,
+      phoneSupplied: Boolean(phone),
+      token: summarizeIncomingGoogleToken(idToken),
+      acceptedAudienceCount: GOOGLE_AUDIENCES.length,
+    });
 
-    const payload = await verifyGoogleIdToken(idToken);
-    if (!payload) return res.status(401).json({ message: 'Invalid Google sign-in token' });
+    if (!idToken) {
+      logGoogleAuth(requestId, 'request:missing_token');
+      return res.status(400).json({ message: 'Google token is required', code: 'GOOGLE_TOKEN_MISSING', requestId });
+    }
+
+    let payload;
+    try {
+      payload = await verifyGoogleIdToken(idToken);
+      logGoogleAuth(requestId, 'token:verify_ok', {
+        aud: payload?.aud,
+        azp: payload?.azp,
+        iss: payload?.iss,
+        emailDomain: googleEmailDomain(payload?.email),
+        emailVerified: payload?.email_verified,
+      });
+    } catch (verifyError) {
+      logGoogleAuth(requestId, 'token:verify_error', {
+        name: verifyError?.name,
+        message: verifyError?.message,
+        code: verifyError?.code,
+      });
+      throw verifyError;
+    }
+    if (!payload) {
+      logGoogleAuth(requestId, 'token:empty_payload');
+      return res.status(401).json({ message: 'Invalid Google sign-in token', code: 'GOOGLE_TOKEN_INVALID', requestId });
+    }
 
     const email = String(payload.email).trim().toLowerCase();
     const name = String(payload.name || payload.given_name || email.split('@')[0]).trim();
     const googleId = String(payload.sub);
+
+    logGoogleAuth(requestId, 'user:lookup_start', { emailDomain: googleEmailDomain(email), googleIdSuffix: googleId.slice(-6) });
 
     const existing = await pool.query(
       `SELECT id, name, email, phone, role, google_id
@@ -184,6 +260,8 @@ export const googleAuth = async (req, res) => {
         LIMIT 1`,
       [googleId, email],
     );
+
+    logGoogleAuth(requestId, 'user:lookup_ok', { existingCount: existing.rows.length });
 
     let user;
     if (existing.rows.length) {
@@ -198,6 +276,7 @@ export const googleAuth = async (req, res) => {
         [existing.rows[0].id, googleId, name, phone, existing.rows[0].role || databaseRole],
       );
       user = result.rows[0];
+      logGoogleAuth(requestId, 'user:linked_existing', { userId: user.id, role: user.role });
     } else {
       const result = await pool.query(
         `INSERT INTO users (name, email, google_id, role, phone)
@@ -206,16 +285,24 @@ export const googleAuth = async (req, res) => {
         [name, email, googleId, databaseRole, phone],
       );
       user = result.rows[0];
+      logGoogleAuth(requestId, 'user:created', { userId: user.id, role: user.role });
     }
 
     await ensureHandymanProfile(user);
-    return res.json({ token: createToken(user.id), user: publicUser(user) });
+    logGoogleAuth(requestId, 'response:success', { userId: user.id, role: user.role });
+    return res.json({ token: createToken(user.id), user: publicUser(user), requestId });
   } catch (error) {
+    logGoogleAuth(requestId, 'response:error', {
+      name: error?.name,
+      message: error?.message,
+      code: error?.code,
+      stack: process.env.NODE_ENV === 'production' ? undefined : error?.stack,
+    });
     console.error('mobile google auth error:', error);
     if (error?.code === '23505') {
-      return res.status(409).json({ message: 'Phone or Google account is already linked' });
+      return res.status(409).json({ message: 'Phone or Google account is already linked', code: 'GOOGLE_ACCOUNT_CONFLICT', requestId });
     }
-    return res.status(401).json({ message: 'Could not verify Google account' });
+    return res.status(401).json({ message: 'Could not verify Google account', code: 'GOOGLE_AUTH_FAILED', requestId });
   }
 };
 

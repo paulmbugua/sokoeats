@@ -6,6 +6,7 @@ import { ScreenScroll } from '../../components/Screen';
 import Input from '../../components/Input';
 import PrimaryButton from '../../components/PrimaryButton';
 import CustomGoogleLoginButton from '../CustomGoogleLoginButton.native';
+import { logGoogleAuthFlow, summarizeGoogleIdToken } from '../../utils/googleAuthDebug';
 import { colors, radius } from '../../theme/tokens';
 
 type AccountType = 'client' | 'handyman';
@@ -63,6 +64,12 @@ export default function SignUpScreen({ navigation }: any) {
   };
 
   const continueWithGoogle = async (idToken: string) => {
+    const requestStartedAt = Date.now();
+    logGoogleAuthFlow('sign_up:backend_request:start', {
+      role,
+      phoneSupplied: Boolean(phone.trim()),
+      idToken: summarizeGoogleIdToken(idToken),
+    });
     setGoogleLoading(true);
     try {
       const { data } = await http.post('/api/auth/google', {
@@ -70,8 +77,23 @@ export default function SignUpScreen({ navigation }: any) {
         role,
         phone: phone.trim() || undefined,
       });
+      logGoogleAuthFlow('sign_up:backend_request:ok', {
+        elapsedMs: Date.now() - requestStartedAt,
+        requestId: data?.requestId,
+        userId: data?.user?.id,
+        role: data?.user?.role,
+        hasSessionToken: Boolean(data?.token),
+      });
       await finishAuth(data);
     } catch (error: any) {
+      logGoogleAuthFlow('sign_up:backend_request:error', {
+        elapsedMs: Date.now() - requestStartedAt,
+        requestId: error?.response?.headers?.['x-ekazi-google-auth-request-id'] || error?.response?.data?.requestId,
+        status: error?.response?.status,
+        backendMessage: error?.response?.data?.message,
+        backendCode: error?.response?.data?.code,
+        message: error?.message,
+      });
       Alert.alert(
         'Google account setup failed',
         error?.response?.data?.message || 'Please try again with your Google account.',

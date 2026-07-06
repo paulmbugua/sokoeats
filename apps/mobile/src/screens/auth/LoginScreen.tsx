@@ -5,6 +5,7 @@ import { ScreenScroll } from '../../components/Screen';
 import Input from '../../components/Input';
 import PrimaryButton from '../../components/PrimaryButton';
 import CustomGoogleLoginButton from '../CustomGoogleLoginButton.native';
+import { logGoogleAuthFlow, summarizeGoogleIdToken } from '../../utils/googleAuthDebug';
 import { colors } from '../../theme/tokens';
 
 export default function LoginScreen({ navigation }: any) {
@@ -37,11 +38,31 @@ export default function LoginScreen({ navigation }: any) {
   };
 
   const continueWithGoogle = async (idToken: string) => {
+    const requestStartedAt = Date.now();
+    logGoogleAuthFlow('login:backend_request:start', {
+      role: 'client',
+      idToken: summarizeGoogleIdToken(idToken),
+    });
     setGoogleLoading(true);
     try {
       const { data } = await http.post('/api/auth/google', { idToken, role: 'client' });
+      logGoogleAuthFlow('login:backend_request:ok', {
+        elapsedMs: Date.now() - requestStartedAt,
+        requestId: data?.requestId,
+        userId: data?.user?.id,
+        role: data?.user?.role,
+        hasSessionToken: Boolean(data?.token),
+      });
       await finishAuth(data);
     } catch (e: any) {
+      logGoogleAuthFlow('login:backend_request:error', {
+        elapsedMs: Date.now() - requestStartedAt,
+        requestId: e?.response?.headers?.['x-ekazi-google-auth-request-id'] || e?.response?.data?.requestId,
+        status: e?.response?.status,
+        backendMessage: e?.response?.data?.message,
+        backendCode: e?.response?.data?.code,
+        message: e?.message,
+      });
       Alert.alert(
         'Google sign-in failed',
         e?.response?.data?.message || 'Please try again with your Google account.',
