@@ -40,8 +40,11 @@ function badRequest(res, message) {
 
 function validateContentType(kind, contentType) {
   if (typeof contentType !== 'string' || !contentType) return false;
-  if (kind === 'video' || kind === 'preview') {
+  if (kind === 'video') {
     return contentType.startsWith('video/');
+  }
+  if (kind === 'preview') {
+    return contentType.startsWith('image/') || contentType.startsWith('video/');
   }
   if (kind === 'thumbnail' || kind === 'image' || kind === 'avatar' || kind === 'banner') {
     return contentType.startsWith('image/');

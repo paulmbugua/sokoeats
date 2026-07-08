@@ -1,5 +1,11 @@
 export type UploadAssetKind = 'image' | 'video' | 'doc';
 
+function resolveUploadedUrl(backendUrl: string, url: string) {
+  if (/^https?:\/\//i.test(url)) return url;
+  const base = backendUrl.replace(/\/$/, '');
+  return url.startsWith('/') ? `${base}${url}` : `${base}/${url}`;
+}
+
 export async function uploadAsset(
   backendUrl: string,
   token: string,
@@ -27,7 +33,11 @@ export async function uploadAsset(
           ? 'upload.pdf'
           : 'upload.jpg';
 
-  formData.append('file', blobOrFile as Blob, filename);
+  (formData.append as (name: string, value: Blob, fileName?: string) => void)(
+    'file',
+    blobOrFile as Blob,
+    filename,
+  );
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120_000);
@@ -54,5 +64,5 @@ export async function uploadAsset(
     throw new Error('Upload response missing url.');
   }
 
-  return json.url;
+  return resolveUploadedUrl(backendUrl, json.url);
 }

@@ -1,4 +1,10 @@
 // packages/shared/api/uploadAsset.native.ts
+function resolveUploadedUrl(backendUrl: string, url: string) {
+  if (/^https?:\/\//i.test(url)) return url;
+  const base = backendUrl.replace(/\/$/, '');
+  return url.startsWith('/') ? `${base}${url}` : `${base}/${url}`;
+}
+
 export async function uploadAsset(
   backendUrl: string,
   token: string,
@@ -61,6 +67,6 @@ export async function uploadAsset(
     throw new Error('Upload response missing url.');
   }
 
-  // All your callers already handle "string or object", so returning string is safe
-  return url;
+  // React Native Image requires absolute URLs; public R2 domains pass through unchanged.
+  return resolveUploadedUrl(base, url);
 }

@@ -20,6 +20,12 @@ import { Screen } from '../../components/Screen';
 
 const MAX_PHOTOS = 6;
 
+function resolvePhotoUrl(backendUrl: string, url: string) {
+  if (/^https?:\/\//i.test(url)) return url;
+  const base = backendUrl.replace(/\/$/, '');
+  return url.startsWith('/') ? `${base}${url}` : `${base}/${url}`;
+}
+
 export default function PhotoUploadScreen({ route, navigation }: any) {
   const { backendUrl, token } = useShopContext();
   const initialUrls = Array.isArray(route.params?.draft?.photoUrls)
@@ -141,7 +147,7 @@ export default function PhotoUploadScreen({ route, navigation }: any) {
             {photoUrls.map((url, index) => (
               <View key={url} style={{ width: '31%', aspectRatio: 1 }}>
                 <Image
-                  source={{ uri: url }}
+                  source={{ uri: resolvePhotoUrl(backendUrl, url) }}
                   style={{ width: '100%', height: '100%', borderRadius: 8 }}
                   resizeMode="cover"
                 />
