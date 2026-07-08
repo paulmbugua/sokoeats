@@ -1,8 +1,10 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { OAuth2Client } from 'google-auth-library';
 import pool from '../config/db.js';
 import { ensureMarketplaceSchema } from '../services/marketplaceStore.js';
+import { sendNotification } from '../utils/sendNotification.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'ekazi-dev-secret';
 let schemaReady;
@@ -83,7 +85,64 @@ function publicUser(user) {
     email: user.email,
     phone: user.phone,
     role: user.role === 'tutor' ? 'handyman' : 'client',
+    emailVerified: Boolean(user.email_verified),
   };
+}
+
+function isSyntheticMobileEmail(email) {
+  return /@mobile\.ekazi\.co\.ke$/i.test(String(email || ''));
+}
+
+function hashEmailToken(token) {
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+function publicApiUrl() {
+  return String(
+    process.env.PUBLIC_API_URL ||
+      process.env.PUBLIC_BACKEND_URL ||
+      process.env.PROD_BACKEND_URL ||
+      process.env.BACKEND_URL ||
+      'https://server.ekazi.co.ke',
+  ).replace(/\/+$/, '');
+}
+
+function createEmailToken() {
+  const token = crypto.randomBytes(32).toString('base64url');
+  return {
+    token,
+    tokenHash: hashEmailToken(token),
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+  };
+}
+
+async function sendEmailConfirmation(user) {
+  if (!user?.email || isSyntheticMobileEmail(user.email)) return { sent: false, skipped: true };
+  const { token, tokenHash, expiresAt } = createEmailToken();
+  await pool.query(
+    `UPDATE users
+        SET email_verification_token_hash = $1,
+            email_verification_expires_at = $2
+      WHERE id = $3`,
+    [tokenHash, expiresAt, user.id],
+  );
+  const confirmUrl = `${publicApiUrl()}/api/auth/email/confirm?token=${encodeURIComponent(token)}`;
+  await sendNotification({
+    to: user.email,
+    subject: 'Confirm your Ekazi email',
+    kind: 'email_confirmation',
+    details: {
+      intro: `Hi ${user.name || 'there'}, confirm this email address to secure your Ekazi account.`,
+      items: {
+        Account: user.email,
+        Expires: '24 hours',
+      },
+      ctaUrl: confirmUrl,
+      ctaText: 'Confirm email',
+      plainText: `Confirm your Ekazi email by opening this link: ${confirmUrl}\n\nThis link expires in 24 hours.`,
+    },
+  });
+  return { sent: true, expiresAt };
 }
 
 async function ensureMobileAuthSchema() {
@@ -91,6 +150,10 @@ async function ensureMobileAuthSchema() {
     schemaReady = (async () => {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(32)');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id VARCHAR(128)');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_token_hash TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMPTZ');
       await pool.query(
         'CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users (phone) WHERE phone IS NOT NULL',
       );
@@ -154,14 +217,25 @@ export const register = async (req, res) => {
 
     const passwordHash = await bcrypt.hash(password, 10);
     const { rows } = await pool.query(
-      `INSERT INTO users (name, email, password, role, phone)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING id, name, email, phone, role`,
-      [name, email, passwordHash, databaseRole, phone],
+      `INSERT INTO users (name, email, password, role, phone, email_verified)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id, name, email, phone, role, email_verified`,
+      [name, email, passwordHash, databaseRole, phone, isSyntheticMobileEmail(email)],
     );
     const user = rows[0];
     await ensureHandymanProfile(user);
-    return res.status(201).json({ token: createToken(user.id), user: publicUser(user) });
+    let emailConfirmation = { sent: false };
+    try {
+      emailConfirmation = await sendEmailConfirmation(user);
+    } catch (mailError) {
+      console.error('email confirmation send error:', mailError);
+      emailConfirmation = { sent: false, error: 'send_failed' };
+    }
+    return res.status(201).json({
+      token: createToken(user.id),
+      user: publicUser(user),
+      emailConfirmation,
+    });
   } catch (error) {
     console.error('mobile register error:', error);
     if (error?.code === '23505') {
@@ -184,7 +258,7 @@ export const login = async (req, res) => {
     }
 
     const { rows } = await pool.query(
-      `SELECT id, name, email, phone, password, role
+      `SELECT id, name, email, phone, password, role, email_verified
          FROM users
         WHERE ($1::text IS NOT NULL AND phone = $1) OR LOWER(email) = $2
         LIMIT 1`,
@@ -270,18 +344,20 @@ export const googleAuth = async (req, res) => {
             SET google_id = COALESCE(google_id, $2),
                 name = CASE WHEN name IS NULL OR name = '' OR name = 'Ekazi User' THEN $3 ELSE name END,
                 phone = COALESCE(phone, $4),
-                role = COALESCE(role, $5)
+                role = COALESCE(role, $5),
+                email_verified = TRUE,
+                email_verified_at = COALESCE(email_verified_at, NOW())
           WHERE id = $1
-          RETURNING id, name, email, phone, role`,
+          RETURNING id, name, email, phone, role, email_verified`,
         [existing.rows[0].id, googleId, name, phone, existing.rows[0].role || databaseRole],
       );
       user = result.rows[0];
       logGoogleAuth(requestId, 'user:linked_existing', { userId: user.id, role: user.role });
     } else {
       const result = await pool.query(
-        `INSERT INTO users (name, email, google_id, role, phone)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, name, email, phone, role`,
+        `INSERT INTO users (name, email, google_id, role, phone, email_verified, email_verified_at)
+         VALUES ($1, $2, $3, $4, $5, TRUE, NOW())
+         RETURNING id, name, email, phone, role, email_verified`,
         [name, email, googleId, databaseRole, phone],
       );
       user = result.rows[0];
@@ -303,6 +379,66 @@ export const googleAuth = async (req, res) => {
       return res.status(409).json({ message: 'Phone or Google account is already linked', code: 'GOOGLE_ACCOUNT_CONFLICT', requestId });
     }
     return res.status(401).json({ message: 'Could not verify Google account', code: 'GOOGLE_AUTH_FAILED', requestId });
+  }
+};
+
+
+export const confirmEmail = async (req, res) => {
+  try {
+    await ensureMobileAuthSchema();
+    const token = String(req.query?.token || req.body?.token || '').trim();
+    if (!token) {
+      return res.status(400).json({ ok: false, message: 'Missing confirmation token' });
+    }
+    const tokenHash = hashEmailToken(token);
+    const { rows } = await pool.query(
+      `UPDATE users
+          SET email_verified = TRUE,
+              email_verified_at = NOW(),
+              email_verification_token_hash = NULL,
+              email_verification_expires_at = NULL
+        WHERE email_verification_token_hash = $1
+          AND email_verification_expires_at > NOW()
+        RETURNING id, name, email, phone, role, email_verified`,
+      [tokenHash],
+    );
+    if (!rows.length) {
+      return res.status(400).json({ ok: false, message: 'Invalid or expired confirmation link' });
+    }
+    const wantsHtml = String(req.get?.('accept') || '').includes('text/html') || req.method === 'GET';
+    if (wantsHtml) {
+      return res
+        .status(200)
+        .send('<!doctype html><html><body style="font-family:Arial;padding:32px"><h1>Email confirmed</h1><p>Your Ekazi email has been confirmed. You can return to the app.</p></body></html>');
+    }
+    return res.json({ ok: true, user: publicUser(rows[0]) });
+  } catch (error) {
+    console.error('confirm email error:', error);
+    return res.status(500).json({ ok: false, message: 'Could not confirm email' });
+  }
+};
+
+export const resendEmailConfirmation = async (req, res) => {
+  try {
+    await ensureMobileAuthSchema();
+    const userId = Number(req.user?.id);
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({ message: 'Invalid user session' });
+    }
+    const { rows } = await pool.query(
+      'SELECT id, name, email, phone, role, email_verified FROM users WHERE id = $1',
+      [userId],
+    );
+    const user = rows[0];
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.email_verified) {
+      return res.json({ ok: true, alreadyVerified: true, user: publicUser(user) });
+    }
+    const emailConfirmation = await sendEmailConfirmation(user);
+    return res.json({ ok: true, emailConfirmation });
+  } catch (error) {
+    console.error('resend email confirmation error:', error);
+    return res.status(500).json({ message: 'Could not send confirmation email' });
   }
 };
 
@@ -349,7 +485,7 @@ export const me = async (req, res) => {
       return res.status(401).json({ message: 'Invalid user session' });
     }
     const { rows } = await pool.query(
-      'SELECT id, name, email, phone, role FROM users WHERE id = $1',
+      'SELECT id, name, email, phone, role, email_verified FROM users WHERE id = $1',
       [userId],
     );
     if (!rows.length) return res.status(401).json({ message: 'User no longer exists' });

@@ -53,6 +53,12 @@ export default function SignUpScreen({ navigation }: any) {
         role,
       });
       await finishAuth(data);
+      if (email.trim() && data?.emailConfirmation?.sent) {
+        Alert.alert(
+          'Confirm your email',
+          `We sent a confirmation link to ${email.trim()}. Open it to verify your Ekazi account.`,
+        );
+      }
     } catch (error: any) {
       Alert.alert(
         'Account setup failed',

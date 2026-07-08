@@ -80,7 +80,7 @@ function sign(email) {
 }
 
 function publicWebUrl() {
-  return process.env.PUBLIC_WEB_URL || 'https://www.daybreaklearner.com';
+  return process.env.PUBLIC_WEB_URL || process.env.WEB_URL || 'https://ekazi.co.ke';
 }
 
 function publicApiUrl() {
@@ -165,8 +165,10 @@ export const sendNotification = async ({
     const token = sign(to);
     const webUnsub = `${publicWebUrl()}/unsubscribe?e=${encodeURIComponent(to)}&t=${token}`;
     const apiOneClick = `${publicApiUrl()}/api/email/unsubscribe/one-click?e=${encodeURIComponent(to)}&t=${token}`;
-    const supportEmail = process.env.SUPPORT_EMAIL || 'support@daybreaklearner.com';
-    const isTransactional = kind === 'otp' || kind === 'password_reset';
+    const supportEmail = process.env.SUPPORT_EMAIL || 'support@ekazi.co.ke';
+    const fromAddress = process.env.EMAIL_FROM || process.env.EMAIL_USER || 'noreply@secretnairobi.co.ke';
+    const fromName = process.env.EMAIL_FROM_NAME || 'Ekazi';
+    const isTransactional = kind === 'otp' || kind === 'password_reset' || kind === 'email_confirmation';
 
     // Template HTML (used only if caller didn't pass html)
     const templateHtml = `
@@ -180,7 +182,7 @@ export const sendNotification = async ({
              style="background:#fff;margin:20px 0;border-radius:8px;overflow:hidden;">
         <tr>
           <td style="background:#1d4ed8;padding:20px;text-align:center;">
-            ${logoUrl ? `<img src="${logoUrl}" alt="DayBreak" width="150" style="display:block;margin:0 auto;">` : ''}
+            ${logoUrl ? `<img src="${logoUrl}" alt="Ekazi" width="150" style="display:block;margin:0 auto;">` : ''}
           </td>
         </tr>
         <tr>
@@ -208,7 +210,7 @@ export const sendNotification = async ({
         </tr>
         <tr>
           <td style="background:#f4f4f4;padding:20px;text-align:center;font-size:12px;color:#999;">
-            © ${new Date().getFullYear()} DayBreak. All rights reserved.<br>
+            &copy; ${new Date().getFullYear()} Ekazi. All rights reserved.<br>
             1830-01000, Thika, Kenya<br>
             ${!isTransactional ? `<a href="${webUnsub}" style="color:#999;text-decoration:underline;">Unsubscribe</a>` : ''}
           </td>
@@ -234,7 +236,7 @@ export const sendNotification = async ({
      : `${String(baseText || '').trim()}\n`;
 
     const mail = {
-      from: `"DayBreak 📚" <${process.env.EMAIL_USER}>`,
+      from: `"${fromName}" <${fromAddress}>`,
       to,
       subject,
       html: finalHtml,

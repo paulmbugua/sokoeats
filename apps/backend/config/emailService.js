@@ -6,7 +6,7 @@ import { sendNotification } from '../utils/sendNotification.js'; // <- adjust pa
  * Keeps the same API your controllers already import: sendOTP(email, otp)
  */
 export async function sendOTP(to, otp) {
-  const subject = 'Your DayBreak verification code';
+  const subject = 'Your Ekazi verification code';
   const intro =
     'Use the one-time code below to complete your password reset. ' +
     'For security, this code expires in 10 minutes.';
@@ -27,7 +27,7 @@ export async function sendOTP(to, otp) {
       'One-time code': `<div style="font-size:28px;font-weight:700;letter-spacing:3px">${otp}</div>`,
       Expires: '10 minutes',
     },
-    plainText: `Your DayBreak verification code is: ${otp}\n\nThis code expires in 10 minutes.`,
+    plainText: `Your Ekazi verification code is: ${otp}\n\nThis code expires in 10 minutes.`,
   },
 });
 
