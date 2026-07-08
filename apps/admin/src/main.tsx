@@ -12,7 +12,7 @@ import './index.css';
 const backendUrl =
   (import.meta as any).env?.VITE_BACKEND_URL ||
   (window as any).__BACKEND_URL__ ||
-  'http://localhost:4000';
+  'http://localhost:4005';
 
 const storage = {
   getItem: async (k: string) =>

@@ -53,13 +53,13 @@ export default function expoConfig({ config }) {
   // Multi-backend catalog (deterministic via EXPO_PUBLIC vars)
   // ─────────────────────────────────────────────────────────
   const BACKENDS = {
-    androidEmu: 'http://10.0.2.2:4000',
-    iosSim: 'http://localhost:4000',
+    androidEmu: 'http://10.0.2.2:4005',
+    iosSim: 'http://localhost:4005',
     hotspot:
       process.env.EXPO_PUBLIC_HOTSPOT_BACKEND_URL ||
       process.env.EXPO_PUBLIC_BACKEND_URL_LAN2 ||
-      'http://192.168.100.5:4000',
-    lan1: process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://192.168.100.5:4000',
+      'http://192.168.100.5:4005',
+    lan1: process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://192.168.100.5:4005',
     // ✅ Update this when you deploy Ekazi backend
     prod: process.env.EXPO_PUBLIC_PROD_BACKEND_URL || 'https://server.ekazi.co.ke',
   };

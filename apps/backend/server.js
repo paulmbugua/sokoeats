@@ -140,12 +140,12 @@ app.use((req, _res, next) => {
 });
 
 const server = http.createServer(app);
-const port = Number(process.env.PORT ?? 4000);
+const port = Number(process.env.PORT ?? 4005);
 const isProduction = process.env.NODE_ENV === 'production';
 
 // ─── 1) Environment vars ────────────────────────────────────────────────────────
 const BACKEND_URL =
-  process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 4000}`;
+  process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 4005}`;
 const WEB_BACKEND_URL = process.env.WEB_BACKEND_URL || 'http://localhost:5173';
 const PROD_BACKEND_URL =
   process.env.PROD_BACKEND_URL || 'https://server.ekazi.co.ke';
@@ -178,7 +178,7 @@ const developmentOrigins = [
   'http://localhost:5173',
   'http://localhost:8081',
   'http://192.168.137.1:8081',
-  'http://192.168.137.1:4000',
+  'http://192.168.137.1:4005',
   'http://localhost:19006',
   'http://localhost:19000', // Expo web
   'https://b743-37-211-202-186.ngrok-free.app',

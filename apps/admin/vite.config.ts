@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 
-const BACKEND_PORT = Number(process.env.BACKEND_PORT || 4000);
+const BACKEND_PORT = Number(process.env.BACKEND_PORT || 4005);
 const BACKEND_TARGET =
   process.env.BACKEND_URL?.replace(/\/$/, '') || `http://localhost:${BACKEND_PORT}`;
 

@@ -123,7 +123,7 @@ const selectedFromMulti =
     : undefined;
 
 const backendUrl =
-  selectedFromMulti || runtimeExtra.EXPO_PUBLIC_BACKEND_URL || 'http://10.0.2.2:4000';
+  selectedFromMulti || runtimeExtra.EXPO_PUBLIC_BACKEND_URL || 'http://10.0.2.2:4005';
 
 axios.defaults.baseURL = backendUrl;
 // eslint-disable-next-line no-console
