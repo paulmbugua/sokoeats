@@ -4,23 +4,38 @@ import pool from '../config/db.js';
 import { upsertAiCertificateEntitlement } from './_aiCourseEntitlements.js';
 import { notifyEvent } from '../services/notificationEvents.js';
 
-const PAYSTACK_SECRET = (process.env.PAYSTACK_SECRET_KEY || '').trim();
-if (!PAYSTACK_SECRET) throw new Error('Missing PAYSTACK_SECRET_KEY');
+function getPaystackSecret() {
+  return (process.env.PAYSTACK_SECRET_KEY || '').trim();
+}
 
 const PAYSTACK_CURRENCY = (
   process.env.PAYSTACK_CURRENCY || 'KES'
 ).toUpperCase();
-if (PAYSTACK_CURRENCY !== 'KES') {
-  throw new Error(`PAYSTACK_CURRENCY must be KES, got ${PAYSTACK_CURRENCY}`);
+function assertPaystackConfigured() {
+  const secret = getPaystackSecret();
+  if (!secret) {
+    const err = new Error('PAYSTACK_SECRET_KEY is not configured');
+    err.statusCode = 503;
+    err.code = 'PAYSTACK_NOT_CONFIGURED';
+    throw err;
+  }
+  if (PAYSTACK_CURRENCY !== 'KES') {
+    const err = new Error(`PAYSTACK_CURRENCY must be KES, got ${PAYSTACK_CURRENCY}`);
+    err.statusCode = 503;
+    err.code = 'PAYSTACK_CURRENCY_INVALID';
+    throw err;
+  }
+  return secret;
 }
 
 // Fallback only (prefer meta.chargeAmountMinor captured at create-order time)
 const FX_USD_TO_KES = Number(process.env.PAYSTACK_USD_TO_GATEWAY_RATE || 130);
 
 async function verifyPaystack(reference) {
+  const secret = assertPaystackConfigured();
   const r = await fetch(
     `https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`,
-    { headers: { Authorization: `Bearer ${PAYSTACK_SECRET}` } },
+    { headers: { Authorization: `Bearer ${secret}` } },
   );
 
   const j = await r.json().catch(() => null);
@@ -367,8 +382,9 @@ export async function verifyAndFinalize(req, res) {
     return res.status(status).json({
       ok: false,
       status: 'failed',
-      message: 'verify-finalize-failed',
+      message: e?.code === 'PAYSTACK_NOT_CONFIGURED' ? 'paystack-not-configured' : 'verify-finalize-failed',
       reference,
+      code: e?.code,
       error: e?.message || 'unknown',
       provider: e?.provider,
       http: e?.http,

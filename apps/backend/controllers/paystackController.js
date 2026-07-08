@@ -11,7 +11,9 @@ const FX_USD_TO_GATEWAY = Number(
   process.env.PAYSTACK_USD_TO_GATEWAY_RATE || 130,
 ); // 1 USD = 130 KES
 
-const PAYSTACK_SECRET_KEY = (process.env.PAYSTACK_SECRET_KEY || '').trim();
+function getPaystackSecret() {
+  return (process.env.PAYSTACK_SECRET_KEY || '').trim();
+}
 const PAYSTACK_BASE = 'https://api.paystack.co';
 const PAYSTACK_CURRENCY = (
   process.env.PAYSTACK_CURRENCY || 'KES'
@@ -56,14 +58,17 @@ function resolvePaystackCallbackBase(req) {
   return PAYSTACK_CALLBACK_URL_WEB || PAYSTACK_CALLBACK_URL_NATIVE || '';
 }
 
-if (!PAYSTACK_SECRET_KEY)
-  throw new Error('[paystack] Missing PAYSTACK_SECRET_KEY');
+function getPaystackConfigError() {
+  if (!getPaystackSecret()) return 'PAYSTACK_SECRET_KEY is not configured';
+  if (PAYSTACK_CURRENCY !== 'KES') return `PAYSTACK_CURRENCY must be KES, got ${PAYSTACK_CURRENCY}`;
+  return null;
+}
 
-// HARD GUARD: your Paystack account currency is KES
-if (PAYSTACK_CURRENCY !== 'KES') {
-  throw new Error(
-    `[paystack] PAYSTACK_CURRENCY must be KES, got ${PAYSTACK_CURRENCY}`,
-  );
+function paystackUnavailable(res, detail) {
+  return res.status(503).json({
+    message: 'paystack-not-configured',
+    detail,
+  });
 }
 
 function buildCallbackUrl(req, base, params = {}) {
@@ -177,6 +182,9 @@ function usdToGatewayMinor(amountUsdStr) {
 // POST /api/paystack/create-order
 export async function createOrder(req, res) {
   try {
+    const configError = getPaystackConfigError();
+    if (configError) return paystackUnavailable(res, configError);
+    const paystackSecret = getPaystackSecret();
     const userId = req?.user?.id;
     if (!userId)
       return res
@@ -273,7 +281,7 @@ export async function createOrder(req, res) {
     const r = await fetch(`${PAYSTACK_BASE}/transaction/initialize`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${PAYSTACK_SECRET_KEY}`,
+        Authorization: `Bearer ${paystackSecret}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(psBody),
@@ -338,8 +346,13 @@ export const handlePaystackWebhook = async (req, res) => {
   const raw = req.rawBody ?? req.body;
 
   try {
+    const configError = getPaystackConfigError();
+    if (configError) {
+      console.warn('[paystack][webhook] skipped:', configError);
+      return res.sendStatus(200);
+    }
     const hash = crypto
-      .createHmac('sha512', PAYSTACK_SECRET_KEY)
+      .createHmac('sha512', getPaystackSecret())
       .update(raw)
       .digest('hex');
     if (!sig || hash !== sig) return res.status(400).send('Invalid signature');
