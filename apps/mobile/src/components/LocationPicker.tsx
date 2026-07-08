@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
-import { Alert, Pressable, Text, TextInput, View } from 'react-native';
-import MapView, { Marker, type MapPressEvent, type Region } from 'react-native-maps';
+import { Alert, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import MapView, { Marker, PROVIDER_GOOGLE, type MapPressEvent, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { colors, radius } from '../theme/tokens';
 
@@ -27,6 +27,7 @@ const NAIROBI: Region = {
 export default function LocationPicker({ value, onChange }: Props) {
   const mapRef = useRef<MapView>(null);
   const [locating, setLocating] = useState(false);
+  const [mapReady, setMapReady] = useState(false);
   const [address, setAddress] = useState(value?.address || '');
 
   const resolveAddress = async (latitude: number, longitude: number) => {
@@ -112,7 +113,15 @@ export default function LocationPicker({ value, onChange }: Props) {
       <View style={{ height: 280, borderRadius: radius.md, overflow: 'hidden' }}>
         <MapView
           ref={mapRef}
+          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
           style={{ flex: 1 }}
+          loadingEnabled
+          loadingIndicatorColor={colors.primary}
+          loadingBackgroundColor="#F3F4F6"
+          onMapReady={() => {
+            setMapReady(true);
+            if (__DEV__) console.log('[location-map] ready');
+          }}
           initialRegion={
             coordinate
               ? { ...coordinate, latitudeDelta: 0.02, longitudeDelta: 0.02 }
@@ -124,6 +133,23 @@ export default function LocationPicker({ value, onChange }: Props) {
         >
           {coordinate ? <Marker coordinate={coordinate} title="Selected location" /> : null}
         </MapView>
+        {!mapReady ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: 0,
+              right: 0,
+              top: 0,
+              bottom: 0,
+              alignItems: 'center',
+              justifyContent: 'center',
+              backgroundColor: '#F3F4F6',
+            }}
+          >
+            <Text style={{ color: colors.muted, fontWeight: '800' }}>Loading map...</Text>
+          </View>
+        ) : null}
       </View>
 
       <Text style={{ color: colors.muted, marginTop: 8, fontSize: 12 }}>
