@@ -5,6 +5,49 @@ import { isAppRecentlyActive, isChatActive } from './socketService.js';
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
 const EXPO_BATCH_SIZE = 90;
 
+let pushTokenSchemaReady;
+export async function ensurePushTokenSchema() {
+  if (pushTokenSchemaReady) return pushTokenSchemaReady;
+  pushTokenSchemaReady = (async () => {
+    await pool.query(`
+      create table if not exists push_tokens (
+        id bigserial primary key,
+        profile_id text not null,
+        expo_push_token text not null unique,
+        platform text,
+        device_id text,
+        created_at timestamptz not null default now(),
+        updated_at timestamptz not null default now(),
+        last_seen_at timestamptz not null default now()
+      )
+    `);
+
+    const { rows } = await pool.query(
+      `select data_type
+         from information_schema.columns
+        where table_schema = 'public'
+          and table_name = 'push_tokens'
+          and column_name = 'profile_id'
+        limit 1`,
+    );
+    const type = rows[0]?.data_type;
+    if (type && type !== 'text' && type !== 'character varying') {
+      await pool.query('alter table push_tokens alter column profile_id type text using profile_id::text');
+    }
+
+    await pool.query('alter table push_tokens add column if not exists platform text');
+    await pool.query('alter table push_tokens add column if not exists device_id text');
+    await pool.query('alter table push_tokens add column if not exists created_at timestamptz not null default now()');
+    await pool.query('alter table push_tokens add column if not exists updated_at timestamptz not null default now()');
+    await pool.query('alter table push_tokens add column if not exists last_seen_at timestamptz not null default now()');
+    await pool.query('create unique index if not exists push_tokens_expo_push_token_uidx on push_tokens (expo_push_token)');
+  })().catch((error) => {
+    pushTokenSchemaReady = undefined;
+    throw error;
+  });
+  return pushTokenSchemaReady;
+}
+
 // AUDIT: Expo push tokens are registered from apps/mobile/src/index.tsx using
 // registerForPushToken() in apps/mobile/utils/notifications.ts and POSTed to
 // /api/push/register. The backend stores tokens in push_tokens via
@@ -53,6 +96,7 @@ async function sendExpoPush(messages) {
 
 async function fetchTokensForProfiles(profileIds) {
   if (!profileIds.length) return [];
+  await ensurePushTokenSchema();
   const unique = Array.from(new Set(profileIds.map((id) => String(id))));
   const { rows } = await pool.query(
     `select expo_push_token
@@ -70,6 +114,7 @@ export async function registerPushToken({
   deviceId = null,
 }) {
   if (!profileId || !expoPushToken) return;
+  await ensurePushTokenSchema();
   const token = String(expoPushToken).trim();
   if (!token) return;
   const platformNorm =

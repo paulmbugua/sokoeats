@@ -1,5 +1,6 @@
 // apps/backend/controllers/pushController.js
 import pool from '../config/db.js';
+import { ensurePushTokenSchema } from '../services/pushService.js';
 
 /**
  * Resolve the caller's profile id from the authenticated users.id.
@@ -18,6 +19,7 @@ async function resolveProfileId(req) {
  */
 export async function registerPushToken(req, res) {
   try {
+    await ensurePushTokenSchema();
     const profileId = await resolveProfileId(req);
 
     const {
@@ -58,7 +60,7 @@ export async function registerPushToken(req, res) {
         updated_at   = now(),
         last_seen_at = now()
       `,
-      [profileId, token, platformNorm, deviceIdNorm],
+      [String(profileId), token, platformNorm, deviceIdNorm],
     );
 
     return res.json({ ok: true });
@@ -75,6 +77,7 @@ export async function registerPushToken(req, res) {
  */
 export async function unregisterPushToken(req, res) {
   try {
+    await ensurePushTokenSchema();
     const profileId = await resolveProfileId(req);
     const { expoPushToken } = req.body ?? {};
 
@@ -89,7 +92,7 @@ export async function unregisterPushToken(req, res) {
 
     await pool.query(
       `delete from push_tokens where expo_push_token = $1 and profile_id = $2`,
-      [token, profileId],
+      [token, String(profileId)],
     );
 
     return res.json({ ok: true });
