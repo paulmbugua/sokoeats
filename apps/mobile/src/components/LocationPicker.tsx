@@ -1,5 +1,6 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, Text, TextInput, View } from 'react-native';
+import Constants from 'expo-constants';
 import MapView, { Marker, PROVIDER_GOOGLE, type MapPressEvent, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { colors, radius } from '../theme/tokens';
@@ -24,15 +25,74 @@ const NAIROBI: Region = {
   longitudeDelta: 0.12,
 };
 
+
+const MAP_LOG_PREFIX = '[location-map]';
+
+function mapLog(step: string, details: Record<string, unknown> = {}) {
+  if (!__DEV__) return;
+  console.log(MAP_LOG_PREFIX, step, details);
+}
+
+function constantsExtra() {
+  const constants = Constants as unknown as {
+    expoConfig?: { extra?: Record<string, unknown> };
+    manifest?: { extra?: Record<string, unknown> };
+    manifest2?: { extra?: Record<string, unknown> };
+  };
+  return {
+    ...(constants.manifest?.extra || {}),
+    ...(constants.manifest2?.extra || {}),
+    ...(constants.expoConfig?.extra || {}),
+  };
+}
+
+function runtimeMapsKey() {
+  const extra = constantsExtra();
+  return String(
+    extra.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+      (globalThis as unknown as { process?: { env?: Record<string, string | undefined> } }).process?.env
+        ?.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
+      '',
+  );
+}
+
+function summarizeMapsKey(key: string) {
+  return {
+    hasKey: Boolean(key),
+    length: key.length,
+    prefix: key ? key.slice(0, 6) : undefined,
+    suffix: key ? key.slice(-4) : undefined,
+  };
+}
+
+function summarizeRegion(region: Region | null) {
+  if (!region) return null;
+  return {
+    latitude: Number(region.latitude.toFixed(6)),
+    longitude: Number(region.longitude.toFixed(6)),
+    latitudeDelta: Number(region.latitudeDelta.toFixed(6)),
+    longitudeDelta: Number(region.longitudeDelta.toFixed(6)),
+  };
+}
+
 export default function LocationPicker({ value, onChange }: Props) {
   const mapRef = useRef<MapView>(null);
   const [locating, setLocating] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  const [mapLoaded, setMapLoaded] = useState(false);
   const [address, setAddress] = useState(value?.address || '');
+  const mapProvider = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
 
   const resolveAddress = async (latitude: number, longitude: number) => {
+    mapLog('reverse_geocode:start', { latitude, longitude });
     try {
       const [place] = await Location.reverseGeocodeAsync({ latitude, longitude });
+      mapLog('reverse_geocode:ok', {
+        hasPlace: Boolean(place),
+        city: place?.city,
+        district: place?.district,
+        subregion: place?.subregion,
+      });
       const parts = [
         place?.name,
         place?.street,
@@ -49,16 +109,26 @@ export default function LocationPicker({ value, onChange }: Props) {
         estate: place?.district || place?.subregion || undefined,
         city: place?.city || 'Nairobi',
       });
-    } catch {
+    } catch (error) {
+      mapLog('reverse_geocode:error', {
+        message: error instanceof Error ? error.message : String(error),
+      });
       const resolved = address || 'Pinned location';
       onChange({ latitude, longitude, address: resolved, city: 'Nairobi' });
     }
   };
 
   const useCurrentLocation = async () => {
+    mapLog('current_location:press');
     setLocating(true);
     try {
+      mapLog('permission:request');
       const permission = await Location.requestForegroundPermissionsAsync();
+      mapLog('permission:result', {
+        granted: permission.granted,
+        status: permission.status,
+        canAskAgain: permission.canAskAgain,
+      });
       if (!permission.granted) {
         Alert.alert(
           'Location permission required',
@@ -66,8 +136,14 @@ export default function LocationPicker({ value, onChange }: Props) {
         );
         return;
       }
+      mapLog('current_position:start', { accuracy: 'Balanced' });
       const current = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
+      });
+      mapLog('current_position:ok', {
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude,
+        accuracy: current.coords.accuracy,
       });
       const coordinate = {
         latitude: current.coords.latitude,
@@ -75,7 +151,10 @@ export default function LocationPicker({ value, onChange }: Props) {
       };
       mapRef.current?.animateToRegion({ ...coordinate, latitudeDelta: 0.02, longitudeDelta: 0.02 });
       await resolveAddress(coordinate.latitude, coordinate.longitude);
-    } catch {
+    } catch (error) {
+      mapLog('current_location:error', {
+        message: error instanceof Error ? error.message : String(error),
+      });
       Alert.alert('Location unavailable', 'Pin your location manually on the map.');
     } finally {
       setLocating(false);
@@ -84,12 +163,42 @@ export default function LocationPicker({ value, onChange }: Props) {
 
   const pinLocation = (event: MapPressEvent) => {
     const { latitude, longitude } = event.nativeEvent.coordinate;
+    mapLog('pin:press', { latitude, longitude });
     void resolveAddress(latitude, longitude);
   };
 
   const coordinate = value
     ? { latitude: value.latitude, longitude: value.longitude }
     : null;
+  const initialRegion = coordinate
+    ? { ...coordinate, latitudeDelta: 0.02, longitudeDelta: 0.02 }
+    : NAIROBI;
+
+  useEffect(() => {
+    const key = runtimeMapsKey();
+    const constants = Constants as unknown as {
+      appOwnership?: string | null;
+      executionEnvironment?: string | null;
+    };
+    mapLog('mount', {
+      platform: Platform.OS,
+      provider: mapProvider || 'default',
+      key: summarizeMapsKey(key),
+      initialRegion: summarizeRegion(initialRegion),
+      hasCoordinate: Boolean(coordinate),
+      appOwnership: constants.appOwnership,
+      executionEnvironment: constants.executionEnvironment,
+    });
+  }, []);
+
+  useEffect(() => {
+    mapLog('state', {
+      mapReady,
+      mapLoaded,
+      coordinate,
+      addressLength: address.length,
+    });
+  }, [address.length, coordinate?.latitude, coordinate?.longitude, mapLoaded, mapReady]);
 
   return (
     <View>
@@ -110,23 +219,35 @@ export default function LocationPicker({ value, onChange }: Props) {
         </Text>
       </Pressable>
 
-      <View style={{ height: 280, borderRadius: radius.md, overflow: 'hidden' }}>
+      <View
+        onLayout={(event) => {
+          const { width, height } = event.nativeEvent.layout;
+          mapLog('container:layout', { width, height });
+        }}
+        style={{ height: 280, borderRadius: radius.md, overflow: 'hidden' }}
+      >
         <MapView
           ref={mapRef}
-          provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+          provider={mapProvider}
           style={{ flex: 1 }}
           loadingEnabled
           loadingIndicatorColor={colors.primary}
           loadingBackgroundColor="#F3F4F6"
           onMapReady={() => {
             setMapReady(true);
-            if (__DEV__) console.log('[location-map] ready');
+            mapLog('ready', {
+              provider: mapProvider || 'default',
+              key: summarizeMapsKey(runtimeMapsKey()),
+            });
           }}
-          initialRegion={
-            coordinate
-              ? { ...coordinate, latitudeDelta: 0.02, longitudeDelta: 0.02 }
-              : NAIROBI
-          }
+          onMapLoaded={() => {
+            setMapLoaded(true);
+            mapLog('loaded');
+          }}
+          onRegionChangeComplete={(region) => {
+            mapLog('region_change_complete', summarizeRegion(region));
+          }}
+          initialRegion={initialRegion}
           onPress={pinLocation}
           showsUserLocation
           showsMyLocationButton={false}
