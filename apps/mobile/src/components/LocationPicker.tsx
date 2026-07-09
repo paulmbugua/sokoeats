@@ -200,6 +200,24 @@ export default function LocationPicker({ value, onChange }: Props) {
     });
   }, [address.length, coordinate?.latitude, coordinate?.longitude, mapLoaded, mapReady]);
 
+  useEffect(() => {
+    if (!mapReady || mapLoaded) return undefined;
+    const timer = setTimeout(() => {
+      mapLog('tiles_timeout', {
+        reason: 'MapView became ready but Google tiles did not finish loading.',
+        likelyCauses: [
+          'installed dev build does not contain the native Android Maps API key',
+          'Google Cloud key is not allowed for package com.paulmbugua2.ekazi and the EAS keystore SHA-1',
+          'Maps SDK for Android is not enabled for this Google Cloud project',
+          'billing is not enabled or the key is blocked',
+        ],
+        nextAction: 'Rebuild and reinstall the development client after confirming Google Cloud Android key restrictions.',
+        key: summarizeMapsKey(runtimeMapsKey()),
+      });
+    }, 8000);
+    return () => clearTimeout(timer);
+  }, [mapLoaded, mapReady]);
+
   return (
     <View>
       <Pressable

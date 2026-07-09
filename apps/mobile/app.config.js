@@ -1,6 +1,24 @@
 // apps/mobile/app.config.js
 
 import fs from 'node:fs';
+import configPlugins from '@expo/config-plugins';
+
+const { AndroidConfig, withAndroidManifest } = configPlugins;
+
+const GOOGLE_MAPS_ANDROID_META_DATA = 'com.google.android.geo.API_KEY';
+
+function withEkaziGoogleMapsAndroidKey(config, apiKey) {
+  if (!apiKey) return config;
+  return withAndroidManifest(config, (config) => {
+    const mainApplication = AndroidConfig.Manifest.getMainApplicationOrThrow(config.modResults);
+    AndroidConfig.Manifest.addMetaDataItemToMainApplication(
+      mainApplication,
+      GOOGLE_MAPS_ANDROID_META_DATA,
+      apiKey,
+    );
+    return config;
+  });
+}
 
 export default function expoConfig({ config }) {
   const appEnv =
@@ -131,6 +149,8 @@ export default function expoConfig({ config }) {
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
     process.env.EXPO_PUBLIC_FIREBASE_API_KEY ||
     googleServicesApiKey;
+  const withEkaziGoogleMapsAndroidKeyPlugin = (config) =>
+    withEkaziGoogleMapsAndroidKey(config, GOOGLE_MAPS_API_KEY);
 
   return {
     ...config,
@@ -270,6 +290,8 @@ export default function expoConfig({ config }) {
       'expo-asset',
       'expo-audio',
       ['expo-video', { supportsBackgroundPlayback: false, supportsPictureInPicture: false }],
+
+      GOOGLE_MAPS_API_KEY && withEkaziGoogleMapsAndroidKeyPlugin,
 
       [
         'expo-build-properties',
