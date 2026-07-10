@@ -136,7 +136,7 @@ export default function expoConfig({ config }) {
     owner: 'paulmbugua2',
     name: 'Ekazi',
     slug: 'ekazi',
-    version: '1.0.8',
+    version: '1.0.9',
     scheme: 'ekazi',
 
     runtimeVersion: { policy: 'appVersion' },
