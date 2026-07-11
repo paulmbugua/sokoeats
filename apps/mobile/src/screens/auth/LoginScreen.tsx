@@ -6,7 +6,7 @@ import Input from '../../components/Input';
 import PrimaryButton from '../../components/PrimaryButton';
 import CustomGoogleLoginButton from '../CustomGoogleLoginButton.native';
 import { logGoogleAuthFlow, summarizeGoogleIdToken } from '../../utils/googleAuthDebug';
-import { colors } from '../../theme/tokens';
+import { colors, typography } from '../../theme/tokens';
 
 export default function LoginScreen({ navigation }: any) {
   const { http, loginConsumer } = useShopContext();
@@ -73,9 +73,9 @@ export default function LoginScreen({ navigation }: any) {
   };
 
   return (
-    <ScreenScroll backgroundColor="white" contentContainerStyle={{ justifyContent: 'center' }}>
-      <Text style={{ fontSize: 24, fontWeight: '900', marginBottom: 8 }}>Welcome back</Text>
-      <Text style={{ color: colors.muted, marginBottom: 18 }}>
+    <ScreenScroll backgroundColor={colors.bg} contentContainerStyle={{ justifyContent: 'center' }}>
+      <Text style={{ fontSize: typography.h1, fontWeight: '900', marginBottom: 8, color: colors.ink }}>Welcome back</Text>
+      <Text style={{ color: colors.mutedDark, marginBottom: 22, fontSize: typography.body, lineHeight: 24 }}>
         Sign in to manage Ekazi jobs, quotes and bookings.
       </Text>
 

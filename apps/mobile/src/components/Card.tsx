@@ -1,6 +1,6 @@
 import React from 'react';
-import { View, ViewStyle } from 'react-native';
-import { colors, radius } from '../theme/tokens';
+import { View, type ViewStyle } from 'react-native';
+import { colors, radius, shadow, spacing } from '../theme/tokens';
 
 export default function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
   return (
@@ -10,8 +10,9 @@ export default function Card({ children, style }: { children: React.ReactNode; s
           backgroundColor: colors.card,
           borderRadius: radius.lg,
           borderWidth: 1,
-          borderColor: colors.border,
-          padding: 14,
+          borderColor: 'rgba(15, 23, 42, 0.06)',
+          padding: spacing.lg,
+          ...shadow.card,
         },
         style,
       ]}

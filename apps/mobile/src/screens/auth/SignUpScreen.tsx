@@ -7,7 +7,7 @@ import Input from '../../components/Input';
 import PrimaryButton from '../../components/PrimaryButton';
 import CustomGoogleLoginButton from '../CustomGoogleLoginButton.native';
 import { logGoogleAuthFlow, summarizeGoogleIdToken } from '../../utils/googleAuthDebug';
-import { colors, radius } from '../../theme/tokens';
+import { colors, radius, shadow, typography } from '../../theme/tokens';
 
 type AccountType = 'client' | 'handyman';
 
@@ -110,8 +110,8 @@ export default function SignUpScreen({ navigation }: any) {
   };
 
   return (
-    <ScreenScroll backgroundColor="white">
-      <Text style={{ fontSize: 22, fontWeight: '900' }}>How will you use Ekazi?</Text>
+    <ScreenScroll backgroundColor={colors.bg}>
+      <Text style={{ fontSize: typography.h1, fontWeight: '900', color: colors.ink, lineHeight: 38 }}>How will you use Ekazi?</Text>
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, marginBottom: 18 }}>
         {([
           ['client', 'I need a handyman', 'Search, request and compare quotes', 'person-outline'],
@@ -131,12 +131,13 @@ export default function SignUpScreen({ navigation }: any) {
                 borderColor: selected ? colors.primary : colors.border,
                 borderRadius: radius.md,
                 padding: 12,
-                backgroundColor: selected ? '#ECFDF5' : 'white',
+                backgroundColor: selected ? colors.primarySoft : colors.card,
+                ...shadow.card,
               }}
             >
               <Ionicons name={icon} size={24} color={selected ? colors.primary : colors.muted} />
-              <Text style={{ fontWeight: '900', marginTop: 8 }}>{title}</Text>
-              <Text style={{ color: colors.muted, fontSize: 12, marginTop: 4 }}>{subtitle}</Text>
+              <Text style={{ fontWeight: '900', marginTop: 10, fontSize: typography.body, color: colors.ink }}>{title}</Text>
+              <Text style={{ color: colors.mutedDark, fontSize: typography.small, marginTop: 6, lineHeight: 19 }}>{subtitle}</Text>
             </Pressable>
           );
         })}

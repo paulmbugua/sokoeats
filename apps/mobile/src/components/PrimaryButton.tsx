@@ -1,6 +1,6 @@
 import React from 'react';
-import { Pressable, Text, ViewStyle } from 'react-native';
-import { colors, radius } from '../theme/tokens';
+import { Pressable, Text, type ViewStyle } from 'react-native';
+import { colors, radius, shadow, typography } from '../theme/tokens';
 
 export default function PrimaryButton({
   title,
@@ -19,16 +19,21 @@ export default function PrimaryButton({
       disabled={disabled}
       style={({ pressed }) => [
         {
-          backgroundColor: disabled ? '#9BB6FF' : colors.primary,
+          minHeight: 56,
+          backgroundColor: disabled ? '#9CA3AF' : colors.primary,
           borderRadius: radius.lg,
-          paddingVertical: 14,
+          paddingVertical: 16,
+          paddingHorizontal: 18,
           alignItems: 'center',
-          opacity: pressed ? 0.9 : 1,
+          justifyContent: 'center',
+          opacity: pressed ? 0.88 : 1,
+          transform: [{ scale: pressed ? 0.99 : 1 }],
+          ...(disabled ? {} : shadow.lift),
         },
         style,
       ]}
     >
-      <Text style={{ color: 'white', fontWeight: '700', fontSize: 16 }}>{title}</Text>
+      <Text style={{ color: 'white', fontWeight: '900', fontSize: typography.body }}>{title}</Text>
     </Pressable>
   );
 }

@@ -1,12 +1,18 @@
 // apps/mobile/src/theme/tokens.ts
 export const colors = {
-  primary: '#16A34A', // Ekazi green
-  primaryDark: '#0F766E',
-  bg: '#FFFFFF',
+  primary: '#16A34A',
+  primaryDark: '#0B5F4E',
+  primarySoft: '#E8F8EE',
+  accent: '#FFB000',
+  accentDark: '#C76A00',
+  ink: '#0F172A',
+  bg: '#F7F8F4',
   text: '#111827',
   muted: '#6B7280',
+  mutedDark: '#374151',
   border: '#E5E7EB',
   card: '#FFFFFF',
+  surface: '#F9FAF5',
   success: '#16A34A',
   danger: '#DC2626',
   green: '#16A34A',
@@ -27,18 +33,36 @@ export const spacing = {
 };
 
 export const radius = {
-  sm: 10,
-  md: 14,
-  lg: 18,
-  xl: 24,
+  sm: 6,
+  md: 8,
+  lg: 8,
+  xl: 8,
   pill: 999,
 };
 
 export const typography = {
-  h1: 28,
-  h2: 22,
-  h3: 18,
-  body: 16,
+  hero: 38,
+  h1: 32,
+  h2: 24,
+  h3: 20,
+  body: 17,
   small: 14,
   tiny: 12,
+};
+
+export const shadow = {
+  card: {
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 3,
+  },
+  lift: {
+    shadowColor: '#0F172A',
+    shadowOpacity: 0.12,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 10 },
+    elevation: 5,
+  },
 };
