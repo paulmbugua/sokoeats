@@ -26,6 +26,7 @@ import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { useDeviceContext } from 'twrnc';
 import { registerForPushToken, initNotificationListeners } from '../utils/notifications';
 import App from './App';
+import { ModernAlertProvider } from './components/ModernAlert';
 import tw from '../tailwind';
 
 import {
@@ -308,10 +309,10 @@ const Root: React.FC = () => {
           <ShopContextProvider backendUrl={backendUrl} storage={storage}>
             <ChatProvider>
               <ThemeProvider tw={tw}>
-                <RootInner />
-
-                {/* ✅ Move host INSIDE ThemeProvider so portal content has theme context */}
-                <PortalHost name="classroom-host" />
+                <ModernAlertProvider>
+                  <RootInner />
+                  <PortalHost name="classroom-host" />
+                </ModernAlertProvider>
               </ThemeProvider>
             </ChatProvider>
           </ShopContextProvider>
