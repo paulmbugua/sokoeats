@@ -336,13 +336,22 @@ export const acceptQuote = async (req, res) => {
         payoutAmount,
       ],
     );
-    await client.query('COMMIT');
     const booking = bookingResult.rows[0];
+    const conversationResult = await client.query(
+      `INSERT INTO ekazi_conversations (booking_id, job_id, client_user_id, handyman_user_id)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (booking_id) DO UPDATE SET updated_at = ekazi_conversations.updated_at
+       RETURNING id`,
+      [booking.id, quote.job_id, clientId, quote.handyman_user_id],
+    );
+    await client.query('COMMIT');
+    const conversationId = conversationResult.rows[0]?.id;
     return res.json({
       ok: true,
-      booking: { ...booking, id: String(booking.id) },
+      booking: { ...booking, id: String(booking.id), conversationId: conversationId ? String(conversationId) : null },
       jobId: String(quote.job_id),
       quoteId: String(quote.id),
+      conversationId: conversationId ? String(conversationId) : null,
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
@@ -369,12 +378,14 @@ export const getBooking = async (req, res) => {
                j.flexible_schedule, j.latitude, j.longitude,
                hu.name AS handyman_name, hu.phone AS handyman_phone,
                cu.name AS client_name, cu.phone AS client_phone,
-               q.eta_minutes, q.duration_hours
+               q.eta_minutes, q.duration_hours,
+               c.id AS conversation_id
           FROM ekazi_bookings b
           JOIN ekazi_jobs j ON j.id = b.job_id
           JOIN ekazi_quotes q ON q.id = b.quote_id
           JOIN users hu ON hu.id = b.handyman_user_id
           JOIN users cu ON cu.id = b.client_user_id
+          LEFT JOIN ekazi_conversations c ON c.booking_id = b.id
          WHERE b.id = $1 AND (b.client_user_id = $2 OR b.handyman_user_id = $2)`,
       [req.params.id, userId(req)],
     );
@@ -383,6 +394,7 @@ export const getBooking = async (req, res) => {
     return res.json({
       booking: {
         id: String(row.id),
+        conversationId: row.conversation_id ? String(row.conversation_id) : null,
         status: row.status,
         subtotal: Number(row.subtotal),
         discountAmount: Number(row.discount_amount),

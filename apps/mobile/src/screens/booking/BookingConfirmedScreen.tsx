@@ -7,7 +7,7 @@ import SecondaryButton from '../../components/SecondaryButton';
 import { ScreenScroll } from '../../components/Screen';
 import { colors, radius } from '../../theme/tokens';
 
-const clientReasons = [
+const clientReasons: Array<[string, string]> = [
   ['schedule_changed', 'My schedule changed'],
   ['budget_changed', 'My budget changed'],
   ['no_longer_needed', 'I no longer need the service'],
@@ -16,7 +16,7 @@ const clientReasons = [
   ['fraud', 'Fraud or gross misconduct'],
 ];
 
-const handymanReasons = [
+const handymanReasons: Array<[string, string]> = [
   ['emergency', 'Emergency or illness'],
   ['materials_unavailable', 'Materials are unavailable'],
   ['client_unreachable', 'Client is unreachable'],
@@ -63,6 +63,26 @@ export default function BookingConfirmedScreen({ route, navigation }: any) {
       ? String(booking.job.latitude) + ',' + String(booking.job.longitude)
       : encodeURIComponent(booking.job.address || booking.job.estate + ', ' + booking.job.city);
     await Linking.openURL('https://www.google.com/maps/search/?api=1&query=' + query);
+  };
+
+  const openConversation = async () => {
+    try {
+      let conversationId = booking?.conversationId;
+      if (!conversationId) {
+        const { data } = await http.post('/api/bookings/' + bookingId + '/conversation');
+        conversationId = data?.conversationId;
+      }
+      if (!conversationId) {
+        Alert.alert('Messages unavailable', 'Could not open this booking conversation.');
+        return;
+      }
+      navigation.navigate('Conversation', {
+        conversationId: String(conversationId),
+        name: otherParty?.name || (isHandyman ? 'Client' : 'Handyman'),
+      });
+    } catch (error: any) {
+      Alert.alert('Messages unavailable', error?.response?.data?.message || 'Please try again.');
+    }
   };
 
   const shareBooking = async () => {
@@ -122,8 +142,9 @@ export default function BookingConfirmedScreen({ route, navigation }: any) {
         <Text style={{ color: colors.primary, fontWeight: '900', marginTop: 8 }}>{otherParty?.phone || 'Phone not available'}</Text>
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
           <SecondaryButton title={isHandyman ? 'Call Client' : 'Call Handyman'} onPress={() => void callOtherParty()} style={{ flex: 1 }} />
-          <SecondaryButton title="Open Map" onPress={() => void openMap()} style={{ flex: 1 }} />
+          <SecondaryButton title="Message" onPress={() => void openConversation()} style={{ flex: 1 }} />
         </View>
+        <SecondaryButton title="Open Map" onPress={() => void openMap()} style={{ marginTop: 10 }} />
       </Card>
 
       <Card style={{ marginTop: 14 }}>

@@ -8,6 +8,7 @@ const router = express.Router();
 
 router.get('/conversations', authUser, listConversations);
 router.post('/conversations/start', authUser, startConversation);
+router.post('/bookings/:bookingId/conversation', authUser, startConversation);
 router.get('/conversations/:id/messages', authUser, getMessages);
 router.post('/conversations/:id/messages', authUser, sendMessage);
 

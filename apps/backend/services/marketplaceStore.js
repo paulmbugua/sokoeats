@@ -64,10 +64,33 @@ export function ensureMarketplaceSchema() {
         cancelled_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS ekazi_conversations (
+        id BIGSERIAL PRIMARY KEY,
+        booking_id BIGINT NOT NULL UNIQUE REFERENCES ekazi_bookings(id) ON DELETE CASCADE,
+        job_id BIGINT NOT NULL REFERENCES ekazi_jobs(id) ON DELETE CASCADE,
+        client_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        handyman_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'open',
+        last_message TEXT,
+        last_message_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS ekazi_messages (
+        id BIGSERIAL PRIMARY KEY,
+        conversation_id BIGINT NOT NULL REFERENCES ekazi_conversations(id) ON DELETE CASCADE,
+        sender_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        body TEXT NOT NULL,
+        read_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
       CREATE INDEX IF NOT EXISTS ekazi_jobs_client_idx ON ekazi_jobs(client_user_id,status,created_at DESC);
       CREATE INDEX IF NOT EXISTS ekazi_jobs_open_idx ON ekazi_jobs(status,created_at DESC);
       CREATE INDEX IF NOT EXISTS ekazi_quotes_job_idx ON ekazi_quotes(job_id,status,created_at DESC);
       CREATE INDEX IF NOT EXISTS ekazi_quotes_handyman_idx ON ekazi_quotes(handyman_user_id,status,created_at DESC);
+      CREATE INDEX IF NOT EXISTS ekazi_conversations_client_idx ON ekazi_conversations(client_user_id,last_message_at DESC,created_at DESC);
+      CREATE INDEX IF NOT EXISTS ekazi_conversations_handyman_idx ON ekazi_conversations(handyman_user_id,last_message_at DESC,created_at DESC);
+      CREATE INDEX IF NOT EXISTS ekazi_messages_conversation_idx ON ekazi_messages(conversation_id,created_at ASC);
       ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS cancellation_count INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS cancellation_score NUMERIC(5,2) NOT NULL DEFAULT 100;
       ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ;
