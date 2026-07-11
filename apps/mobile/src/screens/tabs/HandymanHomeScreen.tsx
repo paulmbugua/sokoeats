@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
+import { Linking, Pressable, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useShopContext } from '@myhandymanapp/shared/context';
 import Card from '../../components/Card';
 import PrimaryButton from '../../components/PrimaryButton';
+import SecondaryButton from '../../components/SecondaryButton';
 import { Screen } from '../../components/Screen';
 import { colors, spacing } from '../../theme/tokens';
 
@@ -13,12 +14,23 @@ type Job = {
   description: string;
   estate: string;
   city: string;
+  address?: string;
+  latitude?: number;
+  longitude?: number;
   scheduleType: string;
   scheduledFor?: string;
   budgetMin?: number | null;
   budgetMax?: number | null;
   photoUrls?: string[];
+  client?: { name?: string; phone?: string };
 };
+
+function openMap(job: Job) {
+  const query = job.latitude && job.longitude
+    ? String(job.latitude) + ',' + String(job.longitude)
+    : encodeURIComponent(job.address || job.estate + ', ' + job.city);
+  return Linking.openURL('https://www.google.com/maps/search/?api=1&query=' + query);
+}
 
 export default function HandymanHomeScreen({ navigation }: any) {
   const { http, userName } = useShopContext();
@@ -45,12 +57,12 @@ export default function HandymanHomeScreen({ navigation }: any) {
   }, [load]);
 
   return (
-    <Screen backgroundColor="white">
+    <Screen backgroundColor={colors.bg}>
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
         contentContainerStyle={{ padding: spacing.xl, paddingBottom: 110 }}
       >
-        <Text style={{ fontSize: 25, fontWeight: '900' }}>
+        <Text style={{ fontSize: 25, fontWeight: '900', color: colors.ink }}>
           Jobs for {userName?.split(' ')[0] || 'you'}
         </Text>
         <Text style={{ color: colors.muted, marginTop: 5 }}>
@@ -81,10 +93,7 @@ export default function HandymanHomeScreen({ navigation }: any) {
         <Text style={{ fontSize: 17, fontWeight: '900', marginTop: 18 }}>Open jobs</Text>
         {jobs.length ? (
           jobs.map((job) => (
-            <Pressable
-              key={job.id}
-              onPress={() => navigation.navigate('SubmitQuote', { job })}
-            >
+            <Pressable key={job.id} onPress={() => navigation.navigate('SubmitQuote', { job })}>
               <Card style={{ marginTop: 10 }}>
                 <Text style={{ fontWeight: '900', fontSize: 16 }}>
                   {job.serviceName || job.categoryName || 'Handyman job'}
@@ -93,16 +102,22 @@ export default function HandymanHomeScreen({ navigation }: any) {
                   {job.description}
                 </Text>
                 <Text style={{ marginTop: 8, fontWeight: '800' }}>
-                  {job.estate}, {job.city} - {job.scheduleType}
+                  {job.address || job.estate + ', ' + job.city} - {job.scheduleType}
                 </Text>
+                {job.client?.phone ? (
+                  <Text style={{ color: colors.primary, fontWeight: '900', marginTop: 8 }}>
+                    Client contact: {job.client.phone}
+                  </Text>
+                ) : null}
                 {job.budgetMin || job.budgetMax ? (
                   <Text style={{ color: colors.green, marginTop: 6, fontWeight: '900' }}>
                     Client budget: KES {job.budgetMin || 0} - {job.budgetMax || 'Open'}
                   </Text>
                 ) : null}
-                <Text style={{ color: colors.primary, fontWeight: '900', marginTop: 10 }}>
-                  Review and quote
-                </Text>
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+                  <SecondaryButton title="Map" onPress={() => void openMap(job)} style={{ flex: 1 }} />
+                  <PrimaryButton title="Review and quote" onPress={() => navigation.navigate('SubmitQuote', { job })} style={{ flex: 1 }} />
+                </View>
               </Card>
             </Pressable>
           ))

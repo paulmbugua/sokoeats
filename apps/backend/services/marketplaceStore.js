@@ -28,6 +28,9 @@ export function ensureMarketplaceSchema() {
         service_radius_km NUMERIC(8,2) NOT NULL DEFAULT 20, bio TEXT,
         verified BOOLEAN NOT NULL DEFAULT FALSE, rating_avg NUMERIC(3,2) NOT NULL DEFAULT 0,
         rating_count INTEGER NOT NULL DEFAULT 0, jobs_completed INTEGER NOT NULL DEFAULT 0,
+        cancellation_count INTEGER NOT NULL DEFAULT 0,
+        cancellation_score NUMERIC(5,2) NOT NULL DEFAULT 100,
+        suspended_until TIMESTAMPTZ,
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE TABLE IF NOT EXISTS ekazi_quotes (
@@ -49,13 +52,37 @@ export function ensureMarketplaceSchema() {
         client_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         handyman_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         subtotal NUMERIC(12,2) NOT NULL, discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
-        total NUMERIC(12,2) NOT NULL, status TEXT NOT NULL DEFAULT 'confirmed',
+        total NUMERIC(12,2) NOT NULL,
+        organization_commission_percent NUMERIC(5,2) NOT NULL DEFAULT 15,
+        organization_commission_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        handyman_payout_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'confirmed',
+        cancelled_by TEXT,
+        cancellation_reason TEXT,
+        cancellation_reason_code TEXT,
+        cancellation_notes TEXT,
+        cancelled_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE INDEX IF NOT EXISTS ekazi_jobs_client_idx ON ekazi_jobs(client_user_id,status,created_at DESC);
       CREATE INDEX IF NOT EXISTS ekazi_jobs_open_idx ON ekazi_jobs(status,created_at DESC);
       CREATE INDEX IF NOT EXISTS ekazi_quotes_job_idx ON ekazi_quotes(job_id,status,created_at DESC);
       CREATE INDEX IF NOT EXISTS ekazi_quotes_handyman_idx ON ekazi_quotes(handyman_user_id,status,created_at DESC);
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS cancellation_count INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS cancellation_score NUMERIC(5,2) NOT NULL DEFAULT 100;
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS organization_commission_percent NUMERIC(5,2) NOT NULL DEFAULT 15;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS organization_commission_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS handyman_payout_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS cancelled_by TEXT;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS cancellation_reason TEXT;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS cancellation_reason_code TEXT;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS cancellation_notes TEXT;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_warning_count INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'active';
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS suspension_reason TEXT;
     `).catch((error) => {
       schemaPromise = undefined;
       throw error;
@@ -116,6 +143,14 @@ export function quoteJson(row) {
       ratingCount: Number(row.rating_count || 0),
       verifiedId: Boolean(row.verified),
       jobsCompleted: Number(row.jobs_completed || 0),
+      cancellationScore: Number(row.cancellation_score || 100),
+      suspendedUntil: row.suspended_until || null,
+      phone: row.handyman_phone || row.phone || null,
+    },
+    commission: {
+      percent: Number(row.organization_commission_percent || 15),
+      amount: Number(row.organization_commission_amount || 0),
+      handymanPayout: Number(row.handyman_payout_amount || 0),
     },
   };
 }

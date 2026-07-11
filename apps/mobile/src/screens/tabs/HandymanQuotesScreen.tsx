@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { RefreshControl, ScrollView, Text } from 'react-native';
+import { Alert, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useShopContext } from '@myhandymanapp/shared/context';
 import Card from '../../components/Card';
+import PrimaryButton from '../../components/PrimaryButton';
 import { Screen } from '../../components/Screen';
 import { colors, spacing } from '../../theme/tokens';
 
-export default function HandymanQuotesScreen() {
+export default function HandymanQuotesScreen({ navigation }: any) {
   const { http } = useShopContext();
   const [quotes, setQuotes] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
@@ -24,35 +25,42 @@ export default function HandymanQuotesScreen() {
     void load();
   }, [load]);
 
+  const openBooking = (quote: any) => {
+    if (!quote.booking?.id) {
+      Alert.alert('Waiting for client', 'The client has not accepted this quote yet.');
+      return;
+    }
+    navigation.navigate('BookingConfirmed', {
+      bookingId: quote.booking.id,
+      jobId: quote.jobId,
+      quoteId: quote.id,
+    });
+  };
+
   return (
-    <Screen backgroundColor="white">
+    <Screen backgroundColor={colors.bg}>
       <ScrollView
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={load} />}
         contentContainerStyle={{ padding: spacing.xl, paddingBottom: 110 }}
       >
-        <Text style={{ fontSize: 20, fontWeight: '900' }}>My Quotes</Text>
+        <Text style={{ fontSize: 20, fontWeight: '900', color: colors.ink }}>My Quotes</Text>
         {quotes.length ? (
           quotes.map((quote) => (
             <Card key={quote.id} style={{ marginTop: 12 }}>
-              <Text style={{ fontWeight: '900' }}>
-                {quote.job?.description || 'Job quote'}
-              </Text>
-              <Text style={{ color: colors.muted, marginTop: 5 }}>
-                {quote.job?.estate}, {quote.job?.city}
-              </Text>
-              <Text style={{ fontSize: 18, fontWeight: '900', marginTop: 10 }}>
-                KES {quote.total.toLocaleString()}
-              </Text>
-              <Text style={{ color: colors.primary, fontWeight: '900', marginTop: 5 }}>
-                {quote.status}
-              </Text>
+              <Text style={{ fontWeight: '900' }}>{quote.job?.description || 'Job quote'}</Text>
+              <Text style={{ color: colors.muted, marginTop: 5 }}>{quote.job?.estate}, {quote.job?.city}</Text>
+              <Text style={{ fontSize: 18, fontWeight: '900', marginTop: 10 }}>KES {quote.total.toLocaleString()}</Text>
+              <Text style={{ color: colors.danger, marginTop: 4 }}>Ekazi commission: KES {(quote.commission?.amount || Math.round(quote.total * 0.15)).toLocaleString()}</Text>
+              <Text style={{ color: colors.primary, fontWeight: '900', marginTop: 4 }}>Take-home: KES {(quote.commission?.handymanPayout || Math.round(quote.total * 0.85)).toLocaleString()}</Text>
+              <Text style={{ color: colors.primary, fontWeight: '900', marginTop: 5 }}>{quote.status}</Text>
+              <View style={{ marginTop: 12 }}>
+                <PrimaryButton title={quote.booking?.id ? 'View Job Contact' : 'Waiting for Client'} onPress={() => openBooking(quote)} />
+              </View>
             </Card>
           ))
         ) : (
           <Card style={{ marginTop: 12 }}>
-            <Text style={{ color: colors.muted }}>
-              Quotes you submit to clients will appear here.
-            </Text>
+            <Text style={{ color: colors.muted }}>Quotes you submit to clients will appear here.</Text>
           </Card>
         )}
       </ScrollView>

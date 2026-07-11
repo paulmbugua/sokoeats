@@ -36,6 +36,9 @@ export default function QuoteDetailScreen({ route, navigation }: any) {
     }
   };
 
+  const commissionAmount = Math.round(Number(quote?.total || 0) * 0.15);
+  const handymanPayout = Math.max(0, Number(quote?.total || 0) - commissionAmount);
+
   if (!quote) {
     return (
       <ScreenScroll backgroundColor="white" contentContainerStyle={{ justifyContent: 'center' }}>
@@ -79,6 +82,16 @@ export default function QuoteDetailScreen({ route, navigation }: any) {
               FIRST10: -KES {quote.discountAmount.toLocaleString()}
             </Text>
           ) : null}
+        </Card>
+
+        <Card style={{ marginTop: 14 }}>
+          <Text style={{ fontWeight: '900' }}>Ekazi commission</Text>
+          <Text style={{ color: colors.danger, marginTop: 8 }}>
+            15% organization commission: KES {commissionAmount.toLocaleString()}
+          </Text>
+          <Text style={{ color: colors.primary, fontWeight: '900', marginTop: 6 }}>
+            Handyman take-home after commission: KES {handymanPayout.toLocaleString()}
+          </Text>
         </Card>
 
         <Card style={{ marginTop: 14 }}>

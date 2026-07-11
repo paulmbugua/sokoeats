@@ -15,6 +15,27 @@ function userId(req) {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
+async function requireActiveUserContact(db, id, actorLabel) {
+  const { rows } = await db.query(
+    `SELECT id, phone, account_status, suspended_until
+       FROM users
+      WHERE id = $1`,
+    [id],
+  );
+  const user = rows[0];
+  if (!user) return { ok: false, status: 401, message: 'Account not found' };
+  if (user.account_status === 'banned') {
+    return { ok: false, status: 403, message: 'This account has been banned. Contact Ekazi support.' };
+  }
+  if (user.suspended_until && new Date(user.suspended_until).getTime() > Date.now()) {
+    return { ok: false, status: 403, message: 'This account is temporarily suspended. Try again after the suspension period.' };
+  }
+  if (!user.phone) {
+    return { ok: false, status: 400, message: `${actorLabel} must add a valid Kenyan phone number before using marketplace jobs.` };
+  }
+  return { ok: true, user };
+}
+
 async function firstJobEligibility(db, id, excludeJobId = null) {
   const { rows } = await db.query(
     `SELECT NOT EXISTS (
@@ -104,6 +125,10 @@ export const createJob = async (req, res) => {
     await ensureMarketplaceSchema();
     const id = userId(req);
     if (!id) return res.status(401).json({ message: 'Unauthorized' });
+    const contactCheck = await requireActiveUserContact(client, id, 'Client');
+    if (!contactCheck.ok) {
+      return res.status(contactCheck.status).json({ message: contactCheck.message });
+    }
     const body = req.body || {};
     for (const key of ['categoryId', 'description', 'estate', 'city', 'scheduleType']) {
       if (!body[key]) return res.status(400).json({ message: `${key} is required` });
@@ -230,10 +255,13 @@ export const listOpenJobsForHandyman = async (req, res) => {
     await ensureMarketplaceSchema();
     const id = userId(req);
     const { rows } = await pool.query(
-      `SELECT j.*, COUNT(q.id) FILTER (WHERE q.status = 'open') AS quote_count
+      `SELECT j.*, u.name AS client_name, u.phone AS client_phone,
+              COUNT(q.id) FILTER (WHERE q.status = 'open') AS quote_count
          FROM ekazi_jobs j
+         JOIN users u ON u.id = j.client_user_id
          LEFT JOIN ekazi_quotes q ON q.job_id = j.id
         WHERE j.status IN ('active','quoted')
+          AND u.phone IS NOT NULL
           AND j.client_user_id <> $1
           AND NOT EXISTS (
             SELECT 1 FROM ekazi_quotes own
@@ -247,9 +275,10 @@ export const listOpenJobsForHandyman = async (req, res) => {
     return res.json({
       jobs: rows.map((row) => ({
         ...jobJson(row),
-        address: null,
-        latitude: null,
-        longitude: null,
+        client: {
+          name: row.client_name,
+          phone: row.client_phone,
+        },
       })),
     });
   } catch (error) {
