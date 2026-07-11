@@ -12,6 +12,9 @@ import {
   Building2,
   BadgePercent,
   ShieldCheck,
+  LayoutDashboard,
+  ClipboardList,
+  CalendarCheck2,
 } from 'lucide-react';
 
 const navItem =
@@ -24,6 +27,29 @@ export default function Sidebar() {
   return (
     <aside className="w-[18%] min-h-screen border-r-2 border-gray-200 dark:border-darkCard">
       <nav className="flex flex-col gap-3 pt-6 pl-[20%] text-[15px]">
+        <NavLink
+          to="/approvals"
+          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
+        >
+          <LayoutDashboard className="w-5 h-5" />
+          <p className="hidden md:block">Approvals</p>
+        </NavLink>
+
+        <NavLink
+          to="/marketplace-jobs"
+          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
+        >
+          <ClipboardList className="w-5 h-5" />
+          <p className="hidden md:block">Requests</p>
+        </NavLink>
+
+        <NavLink
+          to="/marketplace-bookings"
+          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
+        >
+          <CalendarCheck2 className="w-5 h-5" />
+          <p className="hidden md:block">Bookings</p>
+        </NavLink>
         <NavLink
           to="/oer/openstax-ingest"
           className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}

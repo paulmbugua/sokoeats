@@ -24,6 +24,13 @@ import {
   upsertPackage, // same semantics as upsertPair; credits may be in body or param
   updatePackage, // legacy: update single row by :id
   deletePackage, // delete by :id OR (in newer impl) by :credits
+
+  // Ekazi marketplace approvals
+  getAdminApprovalsOverview,
+  listAdminMarketplaceJobs,
+  listAdminMarketplaceBookings,
+  listHandymanVerificationReviews,
+  reviewHandymanVerification,
 } from '../controllers/adminController.js';
 
 import { adminLogin } from '../controllers/userController.js';
@@ -148,6 +155,17 @@ adminRouter.post('/users/:id/reset-password', (req, res, next) =>
 // Impersonate user by :id (returns a JWT for that user)
 adminRouter.post('/users/:id/impersonate', (req, res, next) =>
   callIfFn(adminImpersonateUser, req, res, next),
+);
+
+/* -------- Ekazi marketplace approvals dashboard -------- */
+adminRouter.get('/approvals/overview', (req, res, next) =>
+  callIfFn(getAdminApprovalsOverview, req, res, next),
+);
+adminRouter.get('/marketplace/jobs', (req, res, next) =>
+  callIfFn(listAdminMarketplaceJobs, req, res, next),
+);
+adminRouter.get('/marketplace/bookings', (req, res, next) =>
+  callIfFn(listAdminMarketplaceBookings, req, res, next),
 );
 
 /* -------- Handyman verification approvals -------- */

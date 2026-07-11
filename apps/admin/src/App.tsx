@@ -22,11 +22,14 @@ import OrgPricingManage from './pages/OrgPricingManage';
 import OrgSubscriptionsManage from './pages/OrgSubscriptionsManage';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { ThemeProvider } from '@myhandymanapp/shared/hooks';
+import AdminThemeProvider from './components/AdminThemeProvider';
 import { useShopContext } from '@myhandymanapp/shared/context/ShopContext';
 import { Loader2 } from 'lucide-react';
 import YouTubeIngest from './pages/YouTubeIngest';
 import HandymanVerifications from './pages/HandymanVerifications';
+import ApprovalsDashboard from './pages/ApprovalsDashboard';
+import MarketplaceJobs from './pages/MarketplaceJobs';
+import MarketplaceBookings from './pages/MarketplaceBookings';
 
 /** Small full-screen splash while auth is rehydrating */
 function AuthSplash() {
@@ -156,7 +159,7 @@ function LoginChrome() {
 
 const App: React.FC = () => {
   return (
-    <ThemeProvider applyToDocument storageKey="theme">
+    <AdminThemeProvider storageKey="theme">
       <Routes>
         {/* Public login route (no admin chrome) */}
         <Route path="/login" element={<LoginChrome />} />
@@ -169,7 +172,10 @@ const App: React.FC = () => {
             </RequireRole>
           }
         >
-          <Route path="/" element={<Navigate to="/packages" replace />} />
+          <Route path="/" element={<Navigate to="/approvals" replace />} />
+          <Route path="/approvals" element={<ApprovalsDashboard />} />
+          <Route path="/marketplace-jobs" element={<MarketplaceJobs />} />
+          <Route path="/marketplace-bookings" element={<MarketplaceBookings />} />
           <Route path="/oer/openstax-ingest" element={<OpenStaxIngest />} />
           <Route path="/packages/create" element={<PackagesCreate />} />
           <Route path="/packages" element={<PackagesManage />} />
@@ -184,9 +190,9 @@ const App: React.FC = () => {
         </Route>
 
         {/* Fallback */}
-        <Route path="*" element={<Navigate to="/packages" replace />} />
+        <Route path="*" element={<Navigate to="/approvals" replace />} />
       </Routes>
-    </ThemeProvider>
+    </AdminThemeProvider>
   );
 };
 

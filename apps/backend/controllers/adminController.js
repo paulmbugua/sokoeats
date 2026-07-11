@@ -283,3 +283,144 @@ export async function reviewHandymanVerification(req, res) {
     client.release();
   }
 }
+
+
+export async function getAdminApprovalsOverview(_req, res) {
+  try {
+    await ensureMarketplaceSchema();
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'active'");
+    await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ');
+    const [verifications, jobs, quotes, bookings, users, recentDocs, recentCancellations] = await Promise.all([
+      pool.query(`
+        SELECT status, COUNT(*)::int AS count
+          FROM ekazi_handyman_verification_reviews
+         GROUP BY status
+      `),
+      pool.query(`
+        SELECT status, COUNT(*)::int AS count
+          FROM ekazi_jobs
+         GROUP BY status
+      `),
+      pool.query(`
+        SELECT status, COUNT(*)::int AS count
+          FROM ekazi_quotes
+         GROUP BY status
+      `),
+      pool.query(`
+        SELECT status, COUNT(*)::int AS count
+          FROM ekazi_bookings
+         GROUP BY status
+      `),
+      pool.query(`
+        SELECT
+          COUNT(*)::int AS total_users,
+          COUNT(*) FILTER (WHERE role = 'student')::int AS clients,
+          COUNT(*) FILTER (WHERE role = 'tutor')::int AS handymen,
+          COUNT(*) FILTER (WHERE phone IS NULL)::int AS missing_phone,
+          COUNT(*) FILTER (WHERE account_status = 'banned')::int AS banned,
+          COUNT(*) FILTER (WHERE suspended_until IS NOT NULL AND suspended_until > NOW())::int AS suspended
+          FROM users
+      `),
+      pool.query(`
+        SELECT r.id, r.document_type, r.document_url, r.status, r.updated_at,
+               u.name, u.email, u.phone, hp.business_name
+          FROM ekazi_handyman_verification_reviews r
+          JOIN users u ON u.id = r.handyman_user_id
+          LEFT JOIN ekazi_handyman_profiles hp ON hp.user_id = r.handyman_user_id
+         WHERE r.status = 'pending'
+         ORDER BY r.updated_at DESC
+         LIMIT 8
+      `),
+      pool.query(`
+        SELECT b.id, b.status, b.cancelled_by, b.cancellation_reason, b.cancellation_reason_code,
+               b.cancellation_notes, b.cancelled_at, j.description, cu.name AS client_name,
+               hu.name AS handyman_name
+          FROM ekazi_bookings b
+          JOIN ekazi_jobs j ON j.id = b.job_id
+          JOIN users cu ON cu.id = b.client_user_id
+          JOIN users hu ON hu.id = b.handyman_user_id
+         WHERE b.status = 'cancelled'
+         ORDER BY b.cancelled_at DESC NULLS LAST, b.created_at DESC
+         LIMIT 8
+      `),
+    ]);
+
+    const asMap = (rows) => Object.fromEntries(rows.map((row) => [row.status || 'unknown', Number(row.count || 0)]));
+    return res.json({
+      success: true,
+      counts: {
+        verifications: asMap(verifications.rows),
+        jobs: asMap(jobs.rows),
+        quotes: asMap(quotes.rows),
+        bookings: asMap(bookings.rows),
+        users: users.rows[0] || {},
+      },
+      queues: {
+        pendingVerifications: recentDocs.rows,
+        recentCancellations: recentCancellations.rows,
+      },
+    });
+  } catch (error) {
+    console.error('getAdminApprovalsOverview error:', error);
+    return res.status(500).json({ success: false, message: 'Could not load approvals overview' });
+  }
+}
+
+export async function listAdminMarketplaceJobs(req, res) {
+  try {
+    await ensureMarketplaceSchema();
+    const status = String(req.query?.status || 'all');
+    const params = [];
+    let where = '';
+    if (status !== 'all') {
+      params.push(status);
+      where = 'WHERE j.status = $1';
+    }
+    const { rows } = await pool.query(`
+      SELECT j.*, u.name AS client_name, u.email AS client_email, u.phone AS client_phone,
+             COUNT(q.id)::int AS quote_count
+        FROM ekazi_jobs j
+        JOIN users u ON u.id = j.client_user_id
+        LEFT JOIN ekazi_quotes q ON q.job_id = j.id
+       ${where}
+       GROUP BY j.id, u.id
+       ORDER BY j.created_at DESC
+       LIMIT 300
+    `, params);
+    return res.json({ success: true, jobs: rows });
+  } catch (error) {
+    console.error('listAdminMarketplaceJobs error:', error);
+    return res.status(500).json({ success: false, message: 'Could not load marketplace jobs' });
+  }
+}
+
+export async function listAdminMarketplaceBookings(req, res) {
+  try {
+    await ensureMarketplaceSchema();
+    const status = String(req.query?.status || 'all');
+    const params = [];
+    let where = '';
+    if (status !== 'all') {
+      params.push(status);
+      where = 'WHERE b.status = $1';
+    }
+    const { rows } = await pool.query(`
+      SELECT b.*, j.description, j.estate, j.city,
+             cu.name AS client_name, cu.email AS client_email, cu.phone AS client_phone,
+             hu.name AS handyman_name, hu.email AS handyman_email, hu.phone AS handyman_phone,
+             hp.business_name, hp.cancellation_score, hp.suspended_until
+        FROM ekazi_bookings b
+        JOIN ekazi_jobs j ON j.id = b.job_id
+        JOIN users cu ON cu.id = b.client_user_id
+        JOIN users hu ON hu.id = b.handyman_user_id
+        LEFT JOIN ekazi_handyman_profiles hp ON hp.user_id = b.handyman_user_id
+       ${where}
+       ORDER BY COALESCE(b.cancelled_at, b.created_at) DESC
+       LIMIT 300
+    `, params);
+    return res.json({ success: true, bookings: rows });
+  } catch (error) {
+    console.error('listAdminMarketplaceBookings error:', error);
+    return res.status(500).json({ success: false, message: 'Could not load bookings' });
+  }
+}

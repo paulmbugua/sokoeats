@@ -1,774 +1,361 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { GoogleLogin } from '@react-oauth/google';
 import {
-  BriefcaseBusiness,
-  CalendarClock,
-  CheckCircle2,
-  Hammer,
-  Home,
-  LogOut,
-  MapPin,
-  RefreshCw,
-  Send,
-  ShieldCheck,
-  WalletCards,
+  BadgeCheck, BriefcaseBusiness, CalendarClock, Camera, CheckCircle2, ChevronRight,
+  FileCheck2, Hammer, Home, ImagePlus, Loader2, LogOut, MapPin, MessageCircle,
+  Navigation, Phone, RefreshCw, Send, ShieldCheck, Sparkles, UploadCloud, WalletCards, XCircle,
 } from 'lucide-react';
 
-const API_BASE =
-  import.meta.env.VITE_BACKEND_URL ||
-  import.meta.env.VITE_API_URL ||
-  'https://server.ekazi.co.ke';
+const API_BASE = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'https://server.ekazi.co.ke';
+const CENTER = { latitude: -1.286389, longitude: 36.817223 };
+const DEFAULT_PROMPTS = ['Share the issue clearly', 'Add when it started', 'Mention access or materials needed'];
+const promptMap: Record<string, string[]> = {
+  plumbing: ['Where is the leak or blockage?', 'Is the main water supply affected?', 'Do you need parts supplied?'],
+  electrical: ['Which socket, light, or appliance is affected?', 'Is power tripping?', 'Is it urgent or scheduled?'],
+  cleaning: ['How many rooms or surfaces?', 'Do you need deep cleaning?', 'Any delicate items to avoid?'],
+  painting: ['How many rooms or walls?', 'Do you have paint already?', 'Any repair before painting?'],
+  carpentry: ['What item needs repair or fitting?', 'Share measurements if known', 'Do you need materials included?'],
+};
 
 type Role = 'client' | 'handyman';
-type User = { id: string | number; name?: string; email?: string; phone?: string; role: Role };
-type Category = { id: string; name: string };
-type Job = {
-  id: string;
-  categoryId?: string;
-  categoryName?: string;
-  serviceName?: string;
-  description: string;
-  estate: string;
-  city: string;
-  address?: string | null;
-  scheduleType?: string;
-  scheduledFor?: string | null;
-  budgetMin?: number | null;
-  budgetMax?: number | null;
-  quoteCount?: number;
-  status?: string;
-};
-type Quote = {
-  id: string;
-  total: number;
-  labor: number;
-  materials: number;
-  transport: number;
-  discountAmount?: number;
-  message?: string;
-  status?: string;
-  etaMinutes?: number;
-  durationHours?: number;
-  pro?: { name?: string; ratingAvg?: number; ratingCount?: number; jobsCompleted?: number };
-  job?: { description?: string; estate?: string; city?: string; status?: string };
-};
+type User = { id?: string | number; userId?: string | number; name?: string; email?: string; phone?: string | null; role?: string; profileComplete?: boolean; preferredCity?: string | null; preferredEstate?: string | null; contactPreference?: string | null };
+type Category = { id: string; name: string; description?: string };
+type Job = { id: string; categoryId?: string; categoryName?: string; serviceName?: string; description: string; photoUrls?: string[]; estate: string; city: string; address?: string | null; latitude?: number | null; longitude?: number | null; scheduleType?: string; scheduledFor?: string | null; budgetMin?: number | null; budgetMax?: number | null; quoteCount?: number; status?: string; distanceKm?: number | null; client?: { name?: string; phone?: string | null } };
+type Quote = { id: string; jobId?: string; total: number; labor: number; materials: number; transport: number; discountAmount?: number; status?: string; etaMinutes?: number; durationHours?: number | null; message?: string; pro?: { name?: string; phone?: string | null; ratingAvg?: number; ratingCount?: number; jobsCompleted?: number; profileImageUrl?: string | null; verifiedId?: boolean; profileImageStatus?: string; certificateStatus?: string; goodConductStatus?: string; fullyVerified?: boolean }; job?: { description?: string; estate?: string; city?: string; status?: string }; booking?: { id?: string; status?: string } | null; commission?: { percent?: number; amount?: number; handymanNet?: number } };
+type Verification = { profileImageUrl?: string | null; profileImageStatus?: string; idDocumentStatus?: string; certificateStatus?: string; goodConductStatus?: string; verified?: boolean; fullyVerified?: boolean; status?: string };
+type HandymanProfileData = { business_name?: string; businessName?: string; bio?: string; estate?: string; city?: string; address?: string; latitude?: number | null; longitude?: number | null; service_radius_km?: number; serviceRadiusKm?: number; categories?: string[]; verified?: boolean; profile_image_url?: string | null; profile_image_status?: string; id_document_status?: string; certificate_status?: string; good_conduct_status?: string; verification?: Verification };
+type Conversation = { id: string; bookingId?: string; job?: { description?: string; estate?: string; city?: string }; otherUser?: { name?: string; phone?: string | null; role?: string }; lastMessage?: string; lastAt?: string; unreadCount?: number };
+type ChatMessage = { id: string; body: string; sender?: string; mine?: boolean; createdAt?: string };
+type ApiInit = { method?: string; body?: unknown; headers?: Record<string, string> };
 
-const money = (value?: number | null) =>
-  `KES ${Number(value || 0).toLocaleString('en-KE', { maximumFractionDigits: 0 })}`;
+const money = (value?: number | null) => `KES ${Number(value || 0).toLocaleString('en-KE', { maximumFractionDigits: 0 })}`;
+const roleOf = (role?: string): Role => role === 'tutor' || role === 'handyman' ? 'handyman' : 'client';
+const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
 
 function readJson<T>(key: string, fallback: T): T {
-  try {
-    const value = localStorage.getItem(key);
-    return value ? (JSON.parse(value) as T) : fallback;
-  } catch {
-    return fallback;
-  }
+  try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; }
 }
 
-function App() {
+async function api<T>(path: string, init: ApiInit = {}, token?: string): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    method: init.method || 'GET',
+    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...(init.headers || {}) },
+    body: init.body == null ? undefined : JSON.stringify(init.body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data?.message || data?.error || `Request failed (${response.status})`);
+  return data as T;
+}
+
+async function uploadFile(file: File, token: string, kind: 'image' | 'doc') {
+  const body = new FormData();
+  body.append('file', file);
+  const response = await fetch(`${API_BASE}/api/profile/upload/${kind}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` }, body });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok || !data?.url) throw new Error(data?.message || 'Upload failed.');
+  return String(data.url);
+}
+
+export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem('ekazi_web_token') || '');
   const [user, setUser] = useState<User | null>(() => readJson<User | null>('ekazi_web_user', null));
   const [notice, setNotice] = useState('');
-
+  useEffect(() => { if (!notice) return undefined; const id = window.setTimeout(() => setNotice(''), 4500); return () => window.clearTimeout(id); }, [notice]);
   const onAuth = (nextToken: string, nextUser: User) => {
+    const normalized = { ...nextUser, role: roleOf(nextUser.role) };
     localStorage.setItem('ekazi_web_token', nextToken);
-    localStorage.setItem('ekazi_web_user', JSON.stringify(nextUser));
-    setToken(nextToken);
-    setUser(nextUser);
+    localStorage.setItem('ekazi_web_user', JSON.stringify(normalized));
+    setToken(nextToken); setUser(normalized);
   };
-
-  const logout = () => {
-    localStorage.removeItem('ekazi_web_token');
-    localStorage.removeItem('ekazi_web_user');
-    setToken('');
-    setUser(null);
+  const updateUser = (nextUser: User) => {
+    const normalized = { ...nextUser, role: roleOf(nextUser.role) };
+    localStorage.setItem('ekazi_web_user', JSON.stringify(normalized));
+    setUser(normalized);
   };
-
-  return (
-    <div className="app">
-      {notice ? <div className="toast">{notice}</div> : null}
-      {token && user ? (
-        <Workspace token={token} user={user} logout={logout} setNotice={setNotice} />
-      ) : (
-        <AuthPage onAuth={onAuth} setNotice={setNotice} />
-      )}
-    </div>
-  );
+  const logout = () => { localStorage.removeItem('ekazi_web_token'); localStorage.removeItem('ekazi_web_user'); setToken(''); setUser(null); };
+  return <div className="app">{notice ? <div className="toast">{notice}</div> : null}{token && user ? <Workspace token={token} user={user} updateUser={updateUser} logout={logout} setNotice={setNotice} /> : <AuthPage onAuth={onAuth} setNotice={setNotice} />}</div>;
 }
 
-function AuthPage({
-  onAuth,
-  setNotice,
-}: {
-  onAuth: (token: string, user: User) => void;
-  setNotice: (message: string) => void;
-}) {
+function AuthPage({ onAuth, setNotice }: { onAuth: (token: string, user: User) => void; setNotice: (message: string) => void }) {
   const [mode, setMode] = useState<'signin' | 'create'>('create');
   const [role, setRole] = useState<Role>('client');
-  const [form, setForm] = useState({
-    name: '',
-    email: '',
-    phone: '+254700000001',
-    password: '',
-    confirmPassword: '',
-  });
+  const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirmPassword: '' });
   const [loading, setLoading] = useState(false);
-
   const update = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
-
   const submit = async () => {
     setLoading(true);
     try {
-      if (mode === 'create' && form.password !== form.confirmPassword) {
-        throw new Error('Passwords do not match.');
-      }
-      const path = mode === 'create' ? '/api/auth/register' : '/api/auth/login';
-      const body =
-        mode === 'create'
-          ? { name: form.name, email: form.email, phone: form.phone, password: form.password, role }
-          : { phone: form.phone || form.email, password: form.password };
-      const data = await api<{ token: string; user: User }>(path, { method: 'POST', body });
+      if (mode === 'create' && form.password !== form.confirmPassword) throw new Error('Passwords do not match.');
+      const body = mode === 'create'
+        ? { name: form.name, email: form.email, phone: form.phone || undefined, password: form.password, role }
+        : { phone: form.phone || form.email, email: form.email || undefined, password: form.password };
+      const data = await api<{ token: string; user: User }>(mode === 'create' ? '/api/auth/register' : '/api/auth/login', { method: 'POST', body });
       onAuth(data.token, data.user);
-    } catch (error) {
-      setNotice(errorMessage(error));
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { setNotice(messageOf(error)); } finally { setLoading(false); }
   };
-
   const googleAuth = async (credential?: string) => {
     if (!credential) return setNotice('Google did not return a credential.');
     setLoading(true);
     try {
-      const data = await api<{ token: string; user: User }>('/api/auth/google', {
-        method: 'POST',
-        body: { idToken: credential, role, phone: form.phone || undefined },
-      });
+      const data = await api<{ token: string; user: User }>('/api/auth/google', { method: 'POST', body: { idToken: credential, role, phone: form.phone || undefined } });
       onAuth(data.token, data.user);
-    } catch (error) {
-      setNotice(errorMessage(error));
-    } finally {
-      setLoading(false);
-    }
+    } catch (error) { setNotice(messageOf(error)); } finally { setLoading(false); }
   };
-
-  return (
-    <main className="auth-shell">
-      <section className="brand-panel">
-        <div className="logo-mark">E</div>
-        <p className="eyebrow">Kenyan handyman marketplace</p>
-        <h1>Ekazi</h1>
-        <p className="lead">
-          Request reliable local help, compare real quotes, and let verified handymen win work across Nairobi.
-        </p>
-        <div className="trust-grid">
-          <span><ShieldCheck size={18} /> Google sign-in</span>
-          <span><WalletCards size={18} /> FIRST10 quotes</span>
-          <span><MapPin size={18} /> Estate-aware jobs</span>
-        </div>
-      </section>
-
-      <section className="auth-card">
-        <div className="mode-row">
-          <button className={mode === 'create' ? 'active' : ''} onClick={() => setMode('create')}>Create account</button>
-          <button className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>Sign in</button>
-        </div>
-
-        <div className="role-row">
-          <button className={role === 'client' ? 'role active' : 'role'} onClick={() => setRole('client')}>
-            <Home size={18} /> I need help
-          </button>
-          <button className={role === 'handyman' ? 'role active' : 'role'} onClick={() => setRole('handyman')}>
-            <Hammer size={18} /> I do jobs
-          </button>
-        </div>
-
-        <div className="google-box">
-          <GoogleLogin
-            onSuccess={(response) => void googleAuth(response.credential)}
-            onError={() => setNotice('Google sign-in could not start.')}
-            useOneTap={false}
-            text={mode === 'create' ? 'continue_with' : 'signin_with'}
-          />
-        </div>
-
-        <div className="divider"><span>or use phone and password</span></div>
-
-        {mode === 'create' ? (
-          <>
-            <Field label="Full name" value={form.name} onChange={(value) => update('name', value)} />
-            <Field label="Email" value={form.email} onChange={(value) => update('email', value)} />
-          </>
-        ) : null}
-        <Field label="Phone or email" value={form.phone} onChange={(value) => update('phone', value)} />
-        <Field label="Password" type="password" value={form.password} onChange={(value) => update('password', value)} />
-        {mode === 'create' ? (
-          <Field
-            label="Confirm password"
-            type="password"
-            value={form.confirmPassword}
-            onChange={(value) => update('confirmPassword', value)}
-          />
-        ) : null}
-
-        <button className="primary full" disabled={loading} onClick={() => void submit()}>
-          {loading ? 'Working...' : mode === 'create' ? 'Create account' : 'Sign in'}
-        </button>
-      </section>
-    </main>
-  );
+  return <main className="auth-shell">
+    <section className="brand-panel">
+      <div className="logo-lockup"><div className="logo-mark">E</div><span>Ekazi</span></div>
+      <div className="hero-copy"><p className="eyebrow light">Kenyan handyman marketplace</p><h1>Home jobs, real quotes, verified pros.</h1><p className="lead">Request a service, share photos, compare quotes, message after booking, and work with handymen whose identity is approved by Ekazi.</p></div>
+      <div className="hero-illustration" aria-hidden="true"><div className="iso-card a"><Hammer size={42} /><span>Fix</span></div><div className="iso-card b"><MapPin size={36} /><span>Near you</span></div><div className="iso-card c"><ShieldCheck size={36} /><span>Verified</span></div></div>
+    </section>
+    <section className="auth-card">
+      <div className="mode-row"><button className={mode === 'create' ? 'active' : ''} onClick={() => setMode('create')}>Create account</button><button className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>Sign in</button></div>
+      <div className="role-row"><button className={role === 'client' ? 'role active' : 'role'} onClick={() => setRole('client')}><Home size={18} /> Client</button><button className={role === 'handyman' ? 'role active' : 'role'} onClick={() => setRole('handyman')}><Hammer size={18} /> Handyman</button></div>
+      <div className="google-box"><GoogleLogin onSuccess={(res) => void googleAuth(res.credential)} onError={() => setNotice('Google sign-in could not start.')} useOneTap={false} text={mode === 'create' ? 'continue_with' : 'signin_with'} /></div>
+      <div className="divider"><span>or use email, phone and password</span></div>
+      {mode === 'create' ? <><Field label="Full name" value={form.name} onChange={(v) => update('name', v)} /><Field label="Email" value={form.email} onChange={(v) => update('email', v)} /></> : null}
+      <Field label={mode === 'signin' ? 'Phone or email' : 'Phone number'} value={form.phone} placeholder="+2547xx xxx xxx" onChange={(v) => update('phone', v)} />
+      <Field label="Password" type="password" value={form.password} onChange={(v) => update('password', v)} />
+      {mode === 'create' ? <Field label="Confirm password" type="password" value={form.confirmPassword} onChange={(v) => update('confirmPassword', v)} /> : null}
+      <button className="primary full" disabled={loading} onClick={() => void submit()}>{loading ? 'Working...' : mode === 'create' ? 'Create account' : 'Sign in'}</button>
+    </section>
+  </main>;
 }
 
-function Workspace({
-  token,
-  user,
-  logout,
-  setNotice,
-}: {
-  token: string;
-  user: User;
-  logout: () => void;
-  setNotice: (message: string) => void;
-}) {
-  const isHandyman = user.role === 'handyman';
-  const [tab, setTab] = useState(isHandyman ? 'jobs' : 'dashboard');
+function Workspace({ token, user, updateUser, logout, setNotice }: { token: string; user: User; updateUser: (user: User) => void; logout: () => void; setNotice: (message: string) => void }) {
+  const role = roleOf(user.role);
+  const isHandyman = role === 'handyman';
+  const [tab, setTab] = useState(isHandyman ? 'jobs' : 'home');
   const [categories, setCategories] = useState<Category[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [handymanJobs, setHandymanJobs] = useState<Job[]>([]);
   const [quotes, setQuotes] = useState<Record<string, Quote[]>>({});
   const [handymanQuotes, setHandymanQuotes] = useState<Quote[]>([]);
   const [promo, setPromo] = useState<{ eligible?: boolean; description?: string } | null>(null);
+  const [verification, setVerification] = useState<Verification | null>(null);
+  const [blockedMessage, setBlockedMessage] = useState('');
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const [refreshing, setRefreshing] = useState(false);
-
-  const authApi = useCallback(
-    <T,>(path: string, init?: ApiInit) => api<T>(path, init, token),
-    [token],
-  );
-
+  const authApi = useCallback(<T,>(path: string, init?: ApiInit) => api<T>(path, init, token), [token]);
+  const refreshAccount = useCallback(async () => {
+    const data = await authApi<{ user: User; profileComplete?: boolean }>('/api/auth/me');
+    updateUser({ ...data.user, profileComplete: data.profileComplete ?? data.user.profileComplete });
+  }, [authApi, updateUser]);
   const refresh = useCallback(async () => {
     setRefreshing(true);
     try {
       const catalog = await api<{ categories: Category[] }>('/api/categories');
       setCategories(catalog.categories || []);
+      await refreshAccount().catch(() => undefined);
+      const conv = await authApi<{ conversations: Conversation[] }>('/api/conversations').catch(() => ({ conversations: [] }));
+      setConversations(conv.conversations || []);
       if (isHandyman) {
-        const [openJobs, ownQuotes] = await Promise.all([
-          authApi<{ jobs: Job[] }>('/api/handyman/jobs'),
+        const [openJobs, ownQuotes, profile] = await Promise.all([
+          authApi<{ jobs: Job[]; verification?: Verification; blocked?: boolean; message?: string }>('/api/handyman/jobs'),
           authApi<{ quotes: Quote[] }>('/api/handyman/quotes'),
+          authApi<{ profile: HandymanProfileData | null; verification?: Verification }>('/api/handyman/profile'),
         ]);
-        setHandymanJobs(openJobs.jobs || []);
-        setHandymanQuotes(ownQuotes.quotes || []);
+        setHandymanJobs(openJobs.jobs || []); setHandymanQuotes(ownQuotes.quotes || []);
+        setVerification(openJobs.verification || profile.verification || profile.profile?.verification || null);
+        setBlockedMessage(openJobs.blocked ? openJobs.message || 'Complete verification to receive nearby jobs.' : '');
       } else {
-        const [clientJobs, promotion] = await Promise.all([
-          authApi<{ jobs: Job[] }>('/api/jobs?status=active'),
-          authApi<{ eligible?: boolean; description?: string }>('/api/promotions/first-job'),
-        ]);
-        setJobs(clientJobs.jobs || []);
-        setPromo(promotion);
+        const [clientJobs, promotion] = await Promise.all([authApi<{ jobs: Job[] }>('/api/jobs?status=active'), authApi<{ eligible?: boolean; description?: string }>('/api/promotions/first-job')]);
+        setJobs(clientJobs.jobs || []); setPromo(promotion);
       }
-    } catch (error) {
-      setNotice(errorMessage(error));
-    } finally {
-      setRefreshing(false);
-    }
-  }, [authApi, isHandyman, setNotice]);
-
-  useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  const loadQuotes = async (jobId: string) => {
-    try {
-      const data = await authApi<{ quotes: Quote[] }>(`/api/jobs/${jobId}/quotes`);
-      setQuotes((prev) => ({ ...prev, [jobId]: data.quotes || [] }));
-    } catch (error) {
-      setNotice(errorMessage(error));
-    }
-  };
-
+    } catch (error) { setNotice(messageOf(error)); } finally { setRefreshing(false); }
+  }, [authApi, isHandyman, refreshAccount, setNotice]);
+  useEffect(() => { void refresh(); }, [refresh]);
+  const loadQuotes = async (jobId: string) => { const data = await authApi<{ quotes: Quote[] }>(`/api/jobs/${jobId}/quotes`); setQuotes((prev) => ({ ...prev, [jobId]: data.quotes || [] })); };
   const navItems = isHandyman
-    ? [
-        ['jobs', 'Job board', BriefcaseBusiness],
-        ['quotes', 'My quotes', WalletCards],
-        ['profile', 'Profile', ShieldCheck],
-      ]
-    : [
-        ['dashboard', 'Dashboard', Home],
-        ['request', 'Request job', Send],
-        ['quotes', 'Quotes', WalletCards],
-      ];
-
-  return (
-    <main className="workspace">
-      <aside className="sidebar">
-        <div className="side-brand"><div className="logo-mark small">E</div><strong>Ekazi</strong></div>
-        <nav>
-          {navItems.map(([id, label, Icon]) => (
-            <button key={id as string} className={tab === id ? 'active' : ''} onClick={() => setTab(id as string)}>
-              <Icon size={18} /> {label as string}
-            </button>
-          ))}
-        </nav>
-        <button className="ghost" onClick={logout}><LogOut size={18} /> Logout</button>
-      </aside>
-
-      <section className="content">
-        <header className="topbar">
-          <div>
-            <p className="eyebrow">{isHandyman ? 'Handyman workspace' : 'Client workspace'}</p>
-            <h2>{user.name || 'Ekazi user'}</h2>
-          </div>
-          <button className="ghost" onClick={() => void refresh()} disabled={refreshing}>
-            <RefreshCw size={18} /> Refresh
-          </button>
-        </header>
-
-        {!isHandyman && tab === 'dashboard' ? (
-          <ClientDashboard jobs={jobs} promo={promo} loadQuotes={loadQuotes} quotes={quotes} />
-        ) : null}
-        {!isHandyman && tab === 'request' ? (
-          <RequestJob categories={categories} authApi={authApi} onCreated={refresh} setNotice={setNotice} />
-        ) : null}
-        {!isHandyman && tab === 'quotes' ? (
-          <ClientQuotes jobs={jobs} quotes={quotes} loadQuotes={loadQuotes} authApi={authApi} setNotice={setNotice} refresh={refresh} />
-        ) : null}
-        {isHandyman && tab === 'jobs' ? (
-          <HandymanJobs jobs={handymanJobs} authApi={authApi} setNotice={setNotice} refresh={refresh} />
-        ) : null}
-        {isHandyman && tab === 'quotes' ? <HandymanQuotes quotes={handymanQuotes} /> : null}
-        {isHandyman && tab === 'profile' ? (
-          <HandymanProfile categories={categories} authApi={authApi} setNotice={setNotice} />
-        ) : null}
-      </section>
-    </main>
-  );
-}
-
-function ClientDashboard({
-  jobs,
-  promo,
-  loadQuotes,
-  quotes,
-}: {
-  jobs: Job[];
-  promo: { eligible?: boolean; description?: string } | null;
-  loadQuotes: (jobId: string) => Promise<void>;
-  quotes: Record<string, Quote[]>;
-}) {
-  return (
-    <div className="grid two">
-      <section className="panel offer">
-        <p className="eyebrow">First booking</p>
-        <h3>FIRST10 {promo?.eligible ? 'is ready' : 'status'}</h3>
-        <p>{promo?.description || '10% is deducted from your first accepted quote when eligible.'}</p>
-      </section>
-      <section className="panel">
-        <p className="eyebrow">Active requests</p>
-        <h3>{jobs.length} job{jobs.length === 1 ? '' : 's'}</h3>
-        <p>Track quotes from verified handymen and accept the best fit.</p>
-      </section>
-      <section className="panel wide">
-        <h3>Recent jobs</h3>
-        <div className="list">
-          {jobs.map((job) => (
-            <JobRow key={job.id} job={job} actionLabel={`View ${job.quoteCount || 0} quotes`} onAction={() => void loadQuotes(job.id)} />
-          ))}
-          {!jobs.length ? <Empty text="No requests yet. Create a job to start receiving quotes." /> : null}
-        </div>
-        {Object.entries(quotes).map(([jobId, list]) => (
-          <QuoteList key={jobId} quotes={list} />
-        ))}
-      </section>
-    </div>
-  );
-}
-
-function RequestJob({
-  categories,
-  authApi,
-  onCreated,
-  setNotice,
-}: {
-  categories: Category[];
-  authApi: <T>(path: string, init?: ApiInit) => Promise<T>;
-  onCreated: () => Promise<void>;
-  setNotice: (message: string) => void;
-}) {
-  const [form, setForm] = useState({
-    categoryId: '',
-    description: '',
-    estate: 'Kilimani',
-    city: 'Nairobi',
-    address: '',
-    scheduleType: 'soon',
-    scheduledFor: '',
-    budgetMin: '1500',
-    budgetMax: '8000',
-    providerBringsMaterials: true,
-    notes: '',
-  });
-  const selectedCategory = useMemo(
-    () => categories.find((item) => item.id === form.categoryId) || categories[0],
-    [categories, form.categoryId],
-  );
-
-  useEffect(() => {
-    if (!form.categoryId && categories[0]) setForm((prev) => ({ ...prev, categoryId: categories[0].id }));
-  }, [categories, form.categoryId]);
-
-  const update = (key: keyof typeof form, value: string | boolean) => setForm((prev) => ({ ...prev, [key]: value }));
-
-  const submit = async () => {
-    try {
-      await authApi('/api/jobs', {
-        method: 'POST',
-        body: {
-          categoryId: form.categoryId,
-          categoryName: selectedCategory?.name,
-          description: form.description,
-          estate: form.estate,
-          city: form.city,
-          address: form.address,
-          scheduleType: form.scheduleType,
-          scheduledFor: form.scheduledFor || null,
-          flexibleSchedule: form.scheduleType === 'flexible',
-          budgetMin: Number(form.budgetMin) || null,
-          budgetMax: Number(form.budgetMax) || null,
-          providerBringsMaterials: form.providerBringsMaterials,
-          notes: form.notes,
-          discountCode: 'FIRST10',
-        },
-      });
-      setNotice('Job posted. Handymen can now send real quotes.');
-      setForm((prev) => ({ ...prev, description: '', notes: '' }));
-      await onCreated();
-    } catch (error) {
-      setNotice(errorMessage(error));
-    }
-  };
-
-  return (
-    <section className="panel wide">
-      <h3>Request a quote</h3>
-      <div className="category-grid">
-        {categories.map((category) => (
-          <button
-            key={category.id}
-            className={form.categoryId === category.id ? 'chip active' : 'chip'}
-            onClick={() => update('categoryId', category.id)}
-          >
-            {category.name}
-          </button>
-        ))}
-      </div>
-      <div className="form-grid">
-        <Field label="Describe the job" value={form.description} onChange={(value) => update('description', value)} textarea />
-        <Field label="Estate" value={form.estate} onChange={(value) => update('estate', value)} />
-        <Field label="City" value={form.city} onChange={(value) => update('city', value)} />
-        <Field label="Address / landmark" value={form.address} onChange={(value) => update('address', value)} />
-        <Field label="Schedule type" value={form.scheduleType} onChange={(value) => update('scheduleType', value)} />
-        <Field label="Scheduled for" type="datetime-local" value={form.scheduledFor} onChange={(value) => update('scheduledFor', value)} />
-        <Field label="Minimum budget" value={form.budgetMin} onChange={(value) => update('budgetMin', value)} />
-        <Field label="Maximum budget" value={form.budgetMax} onChange={(value) => update('budgetMax', value)} />
-        <Field label="Notes" value={form.notes} onChange={(value) => update('notes', value)} textarea />
-      </div>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={form.providerBringsMaterials}
-          onChange={(event) => update('providerBringsMaterials', event.target.checked)}
-        />
-        Ask provider to include materials in the quote.
-      </label>
-      <button className="primary" onClick={() => void submit()}><Send size={18} /> Post job</button>
+    ? [['jobs', 'Nearby jobs', BriefcaseBusiness], ['quotes', 'Quotes', WalletCards], ['messages', 'Messages', MessageCircle], ['profile', 'Profile', ShieldCheck]]
+    : [['home', 'Home', Home], ['request', 'Request', Send], ['quotes', 'Quotes', WalletCards], ['messages', 'Messages', MessageCircle], ['profile', 'Profile', ShieldCheck]];
+  return <main className="workspace">
+    <aside className="sidebar"><div className="side-brand"><div className="logo-mark small">E</div><strong>Ekazi</strong></div><nav>{navItems.map(([id, label, Icon]) => <button key={id as string} className={tab === id ? 'active' : ''} onClick={() => setTab(id as string)}><Icon size={18} /><span>{label as string}</span></button>)}</nav><button className="ghost logout" onClick={logout}><LogOut size={18} /> Logout</button></aside>
+    <section className="content"><header className="topbar"><div><p className="eyebrow">{isHandyman ? 'Handyman workspace' : 'Client workspace'}</p><h2>{user.name || 'Ekazi user'}</h2><p className="muted"><Phone size={15} /> {user.phone || 'Contact pending'}</p></div><button className="ghost" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />} Refresh</button></header>
+      {!user.profileComplete || !user.phone ? <CompleteProfile user={user} role={role} categories={categories} authApi={authApi} updateUser={updateUser} setNotice={setNotice} /> : null}
+      {!isHandyman && tab === 'home' ? <ClientHome jobs={jobs} promo={promo} quotes={quotes} loadQuotes={loadQuotes} /> : null}
+      {!isHandyman && tab === 'request' ? <RequestJob token={token} categories={categories} authApi={authApi} onCreated={refresh} setNotice={setNotice} /> : null}
+      {!isHandyman && tab === 'quotes' ? <ClientQuotes jobs={jobs} quotes={quotes} loadQuotes={loadQuotes} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : null}
+      {isHandyman && tab === 'jobs' ? <HandymanJobs jobs={handymanJobs} verification={verification} blockedMessage={blockedMessage} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : null}
+      {isHandyman && tab === 'quotes' ? <HandymanQuotes quotes={handymanQuotes} /> : null}
+      {tab === 'messages' ? <Messages conversations={conversations} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : null}
+      {tab === 'profile' ? <ProfilePanel role={role} user={user} token={token} categories={categories} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : null}
     </section>
-  );
+  </main>;
 }
 
-function ClientQuotes({
-  jobs,
-  quotes,
-  loadQuotes,
-  authApi,
-  setNotice,
-  refresh,
-}: {
-  jobs: Job[];
-  quotes: Record<string, Quote[]>;
-  loadQuotes: (jobId: string) => Promise<void>;
-  authApi: <T>(path: string, init?: ApiInit) => Promise<T>;
-  setNotice: (message: string) => void;
-  refresh: () => Promise<void>;
-}) {
-  const accept = async (quoteId: string) => {
-    try {
-      await authApi(`/api/quotes/${quoteId}/accept`, { method: 'POST' });
-      setNotice('Quote accepted. Your booking is confirmed.');
-      await refresh();
-    } catch (error) {
-      setNotice(errorMessage(error));
-    }
-  };
-
-  return (
-    <section className="panel wide">
-      <h3>Quotes received</h3>
-      <div className="list">
-        {jobs.map((job) => (
-          <div key={job.id} className="quote-group">
-            <JobRow job={job} actionLabel="Load quotes" onAction={() => void loadQuotes(job.id)} />
-            <QuoteList quotes={quotes[job.id] || []} onAccept={accept} />
-          </div>
-        ))}
-        {!jobs.length ? <Empty text="No jobs yet. Post a request and quotes will appear here." /> : null}
-      </div>
-    </section>
-  );
-}
-
-function HandymanJobs({
-  jobs,
-  authApi,
-  setNotice,
-  refresh,
-}: {
-  jobs: Job[];
-  authApi: <T>(path: string, init?: ApiInit) => Promise<T>;
-  setNotice: (message: string) => void;
-  refresh: () => Promise<void>;
-}) {
-  const [activeJob, setActiveJob] = useState<Job | null>(null);
-
-  return (
-    <div className="grid two">
-      <section className="panel">
-        <h3>Available jobs</h3>
-        <div className="list">
-          {jobs.map((job) => (
-            <JobRow key={job.id} job={job} actionLabel="Send quote" onAction={() => setActiveJob(job)} />
-          ))}
-          {!jobs.length ? <Empty text="No open jobs right now. Refresh after clients post new requests." /> : null}
-        </div>
-      </section>
-      <QuoteForm job={activeJob} authApi={authApi} setNotice={setNotice} refresh={refresh} />
-    </div>
-  );
-}
-
-function QuoteForm({
-  job,
-  authApi,
-  setNotice,
-  refresh,
-}: {
-  job: Job | null;
-  authApi: <T>(path: string, init?: ApiInit) => Promise<T>;
-  setNotice: (message: string) => void;
-  refresh: () => Promise<void>;
-}) {
-  const [form, setForm] = useState({
-    labor: '2500',
-    materials: '0',
-    transport: '500',
-    etaMinutes: '60',
-    durationHours: '2',
-    message: '',
-  });
+function CompleteProfile({ user, role, categories, authApi, updateUser, setNotice }: { user: User; role: Role; categories: Category[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; updateUser: (user: User) => void; setNotice: (message: string) => void }) {
+  const [form, setForm] = useState({ name: user.name || '', phone: user.phone || '', city: user.preferredCity || 'Nairobi', estate: user.preferredEstate || '', emergencyContact: '', contactPreference: user.contactPreference || 'phone', businessName: user.name ? `${user.name} Services` : '', bio: '', serviceRadiusKm: '20' });
+  const [selected, setSelected] = useState<string[]>(categories[0] ? [categories[0].id] : []);
+  const [saving, setSaving] = useState(false);
   const update = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
+  const save = async () => {
+    setSaving(true);
+    try {
+      const data = await authApi<{ user: User }>('/api/auth/profile/complete', { method: 'PATCH', body: { ...form, serviceRadiusKm: Number(form.serviceRadiusKm), categories: selected } });
+      updateUser(data.user); setNotice('Profile completed. You can now continue.');
+    } catch (error) { setNotice(messageOf(error)); } finally { setSaving(false); }
+  };
+  return <section className="panel attention"><div className="section-head"><div><p className="eyebrow">Required setup</p><h3>Add your contact details</h3><p className="muted">Google accounts need a Kenyan phone number before jobs, quotes, and messages are unlocked.</p></div><ShieldCheck size={34} /></div><div className="form-grid"><Field label="Full name" value={form.name} onChange={(v) => update('name', v)} /><Field label="Phone" value={form.phone} placeholder="+2547xx xxx xxx" onChange={(v) => update('phone', v)} /><Field label="City" value={form.city} onChange={(v) => update('city', v)} /><Field label="Estate" value={form.estate} onChange={(v) => update('estate', v)} /><Field label="Emergency contact" value={form.emergencyContact} placeholder="Optional" onChange={(v) => update('emergencyContact', v)} /><label className="field"><span>Contact preference</span><select value={form.contactPreference} onChange={(e) => update('contactPreference', e.target.value)}><option value="phone">Phone</option><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option></select></label>{role === 'handyman' ? <Field label="Business name" value={form.businessName} onChange={(v) => update('businessName', v)} /> : null}{role === 'handyman' ? <Field label="Service radius km" value={form.serviceRadiusKm} onChange={(v) => update('serviceRadiusKm', v)} /> : null}{role === 'handyman' ? <Field label="Short bio" value={form.bio} onChange={(v) => update('bio', v)} textarea /> : null}</div>{role === 'handyman' ? <CategoryPicker categories={categories} selected={selected} setSelected={setSelected} /> : null}<button className="primary" disabled={saving} onClick={() => void save()}>{saving ? 'Saving...' : 'Save and continue'}</button></section>;
+}
 
+function ClientHome({ jobs, promo, quotes, loadQuotes }: { jobs: Job[]; promo: { eligible?: boolean; description?: string } | null; quotes: Record<string, Quote[]>; loadQuotes: (jobId: string) => Promise<void> }) {
+  return <div className="grid two"><section className="panel offer"><p className="eyebrow">First booking</p><h3>FIRST10 {promo?.eligible ? 'available' : 'status'}</h3><p>{promo?.description || 'Eligible first jobs receive the live promotion from the backend.'}</p></section><section className="panel stats"><p className="eyebrow">Requests</p><h3>{jobs.length} active</h3><p>Only real requests and quote counts are shown here.</p></section><section className="panel wide"><div className="section-head"><h3>Recent requests</h3><Sparkles size={26} /></div><div className="list">{jobs.map((job) => <JobRow key={job.id} job={job} actionLabel={`View ${job.quoteCount || 0} quotes`} onAction={() => void loadQuotes(job.id)} />)}{!jobs.length ? <Empty text="No active requests yet. Create a job to start receiving quotes." /> : null}</div>{Object.entries(quotes).map(([jobId, list]) => <QuoteList key={jobId} quotes={list} />)}</section></div>;
+}
+
+function RequestJob({ token, categories, authApi, onCreated, setNotice }: { token: string; categories: Category[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; onCreated: () => Promise<void>; setNotice: (message: string) => void }) {
+  const [form, setForm] = useState({ categoryId: '', description: '', estate: 'Kilimani', city: 'Nairobi', address: '', latitude: String(CENTER.latitude), longitude: String(CENTER.longitude), scheduleType: 'soon', scheduledFor: '', budgetMin: '1500', budgetMax: '8000', providerBringsMaterials: true, notes: '' });
+  const [files, setFiles] = useState<File[]>([]);
+  const [previews, setPreviews] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const selectedCategory = categories.find((item) => item.id === form.categoryId) || categories[0];
+  const prompts = useMemo(() => dynamicPrompts(selectedCategory?.name || form.categoryId), [selectedCategory, form.categoryId]);
+  useEffect(() => { if (!form.categoryId && categories[0]) setForm((prev) => ({ ...prev, categoryId: categories[0].id })); }, [categories, form.categoryId]);
+  useEffect(() => () => previews.forEach((url) => URL.revokeObjectURL(url)), [previews]);
+  const update = (key: keyof typeof form, value: string | boolean) => setForm((prev) => ({ ...prev, [key]: value }));
+  const chooseFiles = (picked: FileList | null) => { const next = Array.from(picked || []).slice(0, 6); previews.forEach((url) => URL.revokeObjectURL(url)); setFiles(next); setPreviews(next.map((file) => URL.createObjectURL(file))); };
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const created = await authApi<{ job: Job }>('/api/jobs', { method: 'POST', body: { ...form, categoryName: selectedCategory?.name, latitude: Number(form.latitude) || null, longitude: Number(form.longitude) || null, budgetMin: Number(form.budgetMin) || null, budgetMax: Number(form.budgetMax) || null, discountCode: 'FIRST10' } });
+      if (files.length && created.job?.id) { const urls = await Promise.all(files.map((file) => uploadFile(file, token, 'image'))); await authApi(`/api/jobs/${created.job.id}/photos`, { method: 'POST', body: { photoUrls: urls } }); }
+      setNotice('Job posted. Nearby verified handymen can now send quotes.'); setForm((prev) => ({ ...prev, description: '', notes: '' })); setFiles([]); setPreviews([]); await onCreated();
+    } catch (error) { setNotice(messageOf(error)); } finally { setSaving(false); }
+  };
+  return <section className="panel wide"><div className="section-head"><div><p className="eyebrow">Request flow</p><h3>Request a quote</h3></div><Send size={28} /></div><CategoryPicker categories={categories} selected={[form.categoryId]} setSelected={(next) => update('categoryId', next[next.length - 1] || '')} single /><div className="prompt-strip">{prompts.map((prompt) => <button key={prompt} onClick={() => update('description', `${form.description}${form.description ? '\n' : ''}${prompt}: `)}>{prompt}</button>)}</div><div className="form-grid"><Field label="Describe the job" value={form.description} onChange={(v) => update('description', v)} textarea /><Field label="Estate" value={form.estate} onChange={(v) => update('estate', v)} /><Field label="City" value={form.city} onChange={(v) => update('city', v)} /><Field label="Address or landmark" value={form.address} onChange={(v) => update('address', v)} /><Field label="Latitude" value={form.latitude} onChange={(v) => update('latitude', v)} /><Field label="Longitude" value={form.longitude} onChange={(v) => update('longitude', v)} /><label className="field"><span>Schedule type</span><select value={form.scheduleType} onChange={(e) => update('scheduleType', e.target.value)}><option value="soon">As soon as possible</option><option value="scheduled">Scheduled</option><option value="flexible">Flexible</option></select></label><Field label="Scheduled for" type="datetime-local" value={form.scheduledFor} onChange={(v) => update('scheduledFor', v)} /><Field label="Minimum budget" value={form.budgetMin} onChange={(v) => update('budgetMin', v)} /><Field label="Maximum budget" value={form.budgetMax} onChange={(v) => update('budgetMax', v)} /><Field label="Notes" value={form.notes} onChange={(v) => update('notes', v)} textarea /></div><LocationPreview lat={Number(form.latitude)} lng={Number(form.longitude)} label={`${form.estate}, ${form.city}`} /><label className="upload-box"><input type="file" accept="image/*" multiple onChange={(e) => chooseFiles(e.target.files)} /><ImagePlus size={22} /> Add photos with preview</label>{previews.length ? <div className="preview-grid">{previews.map((url) => <img key={url} src={url} alt="Job preview" />)}</div> : null}<label className="check"><input type="checkbox" checked={form.providerBringsMaterials} onChange={(e) => update('providerBringsMaterials', e.target.checked)} /> Ask the handyman to include materials.</label><button className="primary" disabled={saving} onClick={() => void submit()}>{saving ? 'Posting...' : 'Post request'}</button></section>;
+}
+
+
+function ClientQuotes({ jobs, quotes, loadQuotes, authApi, setNotice, refresh }: { jobs: Job[]; quotes: Record<string, Quote[]>; loadQuotes: (jobId: string) => Promise<void>; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+  const accept = async (quoteId: string) => {
+    try { await authApi(`/api/quotes/${quoteId}/accept`, { method: 'POST' }); setNotice('Quote accepted. Messaging is now available from Messages.'); await refresh(); }
+    catch (error) { setNotice(messageOf(error)); }
+  };
+  return <section className="panel wide"><div className="section-head"><h3>Quotes received</h3><WalletCards size={26} /></div><div className="list">{jobs.map((job) => <div key={job.id} className="quote-group"><JobRow job={job} actionLabel="Load real quotes" onAction={() => void loadQuotes(job.id)} /><QuoteList quotes={quotes[job.id] || []} onAccept={accept} /></div>)}{!jobs.length ? <Empty text="No requests yet. Quotes will appear only after handymen submit them." /> : null}</div></section>;
+}
+
+function HandymanJobs({ jobs, verification, blockedMessage, authApi, setNotice, refresh }: { jobs: Job[]; verification: Verification | null; blockedMessage: string; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+  const [activeJob, setActiveJob] = useState<Job | null>(null);
+  return <div className="grid two">{blockedMessage ? <VerificationGate verification={verification} message={blockedMessage} /> : null}<section className="panel"><div className="section-head"><h3>Nearest open jobs</h3><Navigation size={25} /></div><div className="list">{jobs.map((job) => <JobRow key={job.id} job={job} actionLabel="Send quote" onAction={() => setActiveJob(job)} />)}{!jobs.length && !blockedMessage ? <Empty text="No nearby jobs in your categories and service radius right now." /> : null}</div></section><QuoteForm job={activeJob} authApi={authApi} setNotice={setNotice} refresh={refresh} /></div>;
+}
+
+function QuoteForm({ job, authApi, setNotice, refresh }: { job: Job | null; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+  const [form, setForm] = useState({ labor: '2500', materials: '0', transport: '500', etaMinutes: '60', durationHours: '2', message: '' });
+  const update = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
+  const subtotal = Number(form.labor || 0) + Number(form.materials || 0) + Number(form.transport || 0);
+  const commission = subtotal * 0.15;
   const submit = async () => {
     if (!job) return;
-    try {
-      await authApi(`/api/handyman/jobs/${job.id}/quotes`, {
-        method: 'POST',
-        body: {
-          labor: Number(form.labor),
-          materials: Number(form.materials),
-          transport: Number(form.transport),
-          etaMinutes: Number(form.etaMinutes),
-          durationHours: Number(form.durationHours),
-          message: form.message,
-        },
-      });
-      setNotice('Quote sent to the client.');
-      await refresh();
-    } catch (error) {
-      setNotice(errorMessage(error));
-    }
+    try { await authApi(`/api/handyman/jobs/${job.id}/quotes`, { method: 'POST', body: { labor: Number(form.labor), materials: Number(form.materials), transport: Number(form.transport), etaMinutes: Number(form.etaMinutes), durationHours: Number(form.durationHours), message: form.message } }); setNotice('Quote sent to the client.'); await refresh(); }
+    catch (error) { setNotice(messageOf(error)); }
   };
-
-  return (
-    <section className="panel">
-      <h3>{job ? 'Send quote' : 'Select a job'}</h3>
-      {job ? <p className="muted">{job.description} in {job.estate}, {job.city}</p> : <Empty text="Pick a job from the board to quote." />}
-      <div className="form-grid single">
-        <Field label="Labour" value={form.labor} onChange={(value) => update('labor', value)} />
-        <Field label="Materials" value={form.materials} onChange={(value) => update('materials', value)} />
-        <Field label="Transport" value={form.transport} onChange={(value) => update('transport', value)} />
-        <Field label="ETA minutes" value={form.etaMinutes} onChange={(value) => update('etaMinutes', value)} />
-        <Field label="Duration hours" value={form.durationHours} onChange={(value) => update('durationHours', value)} />
-        <Field label="Message" value={form.message} onChange={(value) => update('message', value)} textarea />
-      </div>
-      <button className="primary" disabled={!job} onClick={() => void submit()}><Send size={18} /> Submit quote</button>
-    </section>
-  );
+  return <section className="panel"><h3>{job ? 'Send quote' : 'Select a job'}</h3>{job ? <><p className="muted"><MapPin size={15} /> {job.estate}, {job.city}{job.distanceKm != null ? ` - ${job.distanceKm.toFixed(1)} km` : ''}</p><p>{job.description}</p></> : <Empty text="Pick a nearby job from the board to quote." />}<div className="form-grid single"><Field label="Labour" value={form.labor} onChange={(v) => update('labor', v)} /><Field label="Materials" value={form.materials} onChange={(v) => update('materials', v)} /><Field label="Transport" value={form.transport} onChange={(v) => update('transport', v)} /><Field label="ETA minutes" value={form.etaMinutes} onChange={(v) => update('etaMinutes', v)} /><Field label="Duration hours" value={form.durationHours} onChange={(v) => update('durationHours', v)} /><Field label="Message" value={form.message} onChange={(v) => update('message', v)} textarea /></div><div className="commission-box"><span>Ekazi commission 15%</span><strong>{money(commission)}</strong><small>Estimated net: {money(subtotal - commission)}</small></div><button className="primary" disabled={!job} onClick={() => void submit()}><Send size={18} /> Submit quote</button></section>;
 }
 
 function HandymanQuotes({ quotes }: { quotes: Quote[] }) {
-  return (
-    <section className="panel wide">
-      <h3>My quotes</h3>
-      <QuoteList quotes={quotes} />
-      {!quotes.length ? <Empty text="Quotes you send to clients will appear here." /> : null}
-    </section>
-  );
+  return <section className="panel wide"><div className="section-head"><h3>My quotes</h3><WalletCards size={26} /></div><QuoteList quotes={quotes} />{!quotes.length ? <Empty text="Quotes you send to clients will appear here." /> : null}</section>;
 }
 
-function HandymanProfile({
-  categories,
-  authApi,
-  setNotice,
-}: {
-  categories: Category[];
-  authApi: <T>(path: string, init?: ApiInit) => Promise<T>;
-  setNotice: (message: string) => void;
-}) {
-  const [form, setForm] = useState({
-    address: 'Nairobi CBD',
-    estate: 'Kilimani',
-    city: 'Nairobi',
-    latitude: '-1.2921',
-    longitude: '36.8219',
-  });
+function ProfilePanel({ role, user, token, categories, authApi, setNotice, refresh }: { role: Role; user: User; token: string; categories: Category[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+  return role === 'handyman' ? <HandymanProfile token={token} categories={categories} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : <ClientProfile user={user} />;
+}
+
+function ClientProfile({ user }: { user: User }) {
+  return <section className="panel wide"><div className="profile-hero"><div><p className="eyebrow">Client profile</p><h3>{user.name}</h3><p>{user.email}</p><p><Phone size={15} /> {user.phone || 'Phone missing'}</p></div><BadgeCheck size={36} /></div><div className="grid two"><div className="mini-card"><strong>Preferred estate</strong><span>{user.preferredEstate || 'Not set'}</span></div><div className="mini-card"><strong>Contact</strong><span>{user.contactPreference || 'phone'}</span></div></div></section>;
+}
+
+function HandymanProfile({ token, categories, authApi, setNotice, refresh }: { token: string; categories: Category[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+  const [profile, setProfile] = useState<HandymanProfileData | null>(null);
+  const [verification, setVerification] = useState<Verification | null>(null);
+  const [form, setForm] = useState({ address: 'Nairobi CBD', estate: 'Kilimani', city: 'Nairobi', latitude: String(CENTER.latitude), longitude: String(CENTER.longitude), serviceRadiusKm: '20' });
   const [selected, setSelected] = useState<string[]>([]);
-
-  const save = async () => {
-    try {
-      await authApi('/api/handyman/profile/location', {
-        method: 'PUT',
-        body: {
-          ...form,
-          latitude: Number(form.latitude),
-          longitude: Number(form.longitude),
-          categories: selected,
-        },
-      });
-      setNotice('Service location saved.');
-    } catch (error) {
-      setNotice(errorMessage(error));
+  const [busy, setBusy] = useState('');
+  const load = useCallback(async () => {
+    const data = await authApi<{ profile: HandymanProfileData | null; verification?: Verification }>('/api/handyman/profile');
+    setProfile(data.profile); setVerification(data.verification || data.profile?.verification || null);
+    if (data.profile) {
+      setForm({ address: data.profile.address || 'Nairobi CBD', estate: data.profile.estate || 'Kilimani', city: data.profile.city || 'Nairobi', latitude: String(data.profile.latitude ?? CENTER.latitude), longitude: String(data.profile.longitude ?? CENTER.longitude), serviceRadiusKm: String(data.profile.serviceRadiusKm || data.profile.service_radius_km || 20) });
+      setSelected(data.profile.categories || []);
     }
+  }, [authApi]);
+  useEffect(() => { void load(); }, [load]);
+  const saveLocation = async () => {
+    try { await authApi('/api/handyman/profile/location', { method: 'PUT', body: { ...form, latitude: Number(form.latitude), longitude: Number(form.longitude), serviceRadiusKm: Number(form.serviceRadiusKm), categories: selected } }); setNotice('Service profile saved.'); await load(); await refresh(); }
+    catch (error) { setNotice(messageOf(error)); }
   };
+  const uploadVerification = async (documentType: 'profile_image' | 'id_document' | 'certificate' | 'good_conduct', file: File | null) => {
+    if (!file) return; setBusy(documentType);
+    try { const url = await uploadFile(file, token, documentType === 'profile_image' ? 'image' : 'doc'); const data = await authApi<{ profile: HandymanProfileData; verification?: Verification }>('/api/handyman/profile/verification', { method: 'PUT', body: { documentType, url } }); setProfile(data.profile); setVerification(data.verification || data.profile?.verification || null); setNotice('Document submitted for admin review.'); await refresh(); }
+    catch (error) { setNotice(messageOf(error)); } finally { setBusy(''); }
+  };
+  return <section className="panel wide"><div className="section-head"><div><p className="eyebrow">Handyman profile</p><h3>Service area and verification</h3></div><ShieldCheck size={30} /></div><div className="profile-grid"><div><div className="form-grid"><Field label="Address" value={form.address} onChange={(v) => setForm((p) => ({ ...p, address: v }))} /><Field label="Estate" value={form.estate} onChange={(v) => setForm((p) => ({ ...p, estate: v }))} /><Field label="City" value={form.city} onChange={(v) => setForm((p) => ({ ...p, city: v }))} /><Field label="Service radius km" value={form.serviceRadiusKm} onChange={(v) => setForm((p) => ({ ...p, serviceRadiusKm: v }))} /><Field label="Latitude" value={form.latitude} onChange={(v) => setForm((p) => ({ ...p, latitude: v }))} /><Field label="Longitude" value={form.longitude} onChange={(v) => setForm((p) => ({ ...p, longitude: v }))} /></div><CategoryPicker categories={categories} selected={selected} setSelected={setSelected} /><LocationPreview lat={Number(form.latitude)} lng={Number(form.longitude)} label={form.estate} /><button className="primary" onClick={() => void saveLocation()}><CheckCircle2 size={18} /> Save service profile</button></div><div><VerificationGate verification={verification || profileVerification(profile)} message="Profile photo and national ID must be approved before jobs and quotes are active." /><DocumentUploader title="Profile photo" required status={verification?.profileImageStatus || profile?.profile_image_status} busy={busy === 'profile_image'} accept="image/*" onPick={(file) => void uploadVerification('profile_image', file)} icon={<Camera size={20} />} /><DocumentUploader title="National ID" required status={verification?.idDocumentStatus || profile?.id_document_status} busy={busy === 'id_document'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('id_document', file)} icon={<ShieldCheck size={20} />} /><DocumentUploader title="Qualification certificate" status={verification?.certificateStatus || profile?.certificate_status} busy={busy === 'certificate'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('certificate', file)} icon={<FileCheck2 size={20} />} /><DocumentUploader title="Good conduct" status={verification?.goodConductStatus || profile?.good_conduct_status} busy={busy === 'good_conduct'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('good_conduct', file)} icon={<BadgeCheck size={20} />} /></div></div></section>;
+}
 
-  return (
-    <section className="panel wide">
-      <h3>Service profile</h3>
-      <div className="category-grid">
-        {categories.map((category) => (
-          <button
-            key={category.id}
-            className={selected.includes(category.id) ? 'chip active' : 'chip'}
-            onClick={() =>
-              setSelected((prev) =>
-                prev.includes(category.id) ? prev.filter((id) => id !== category.id) : [...prev, category.id],
-              )
-            }
-          >
-            {category.name}
-          </button>
-        ))}
-      </div>
-      <div className="form-grid">
-        {(['address', 'estate', 'city', 'latitude', 'longitude'] as const).map((key) => (
-          <Field key={key} label={key} value={form[key]} onChange={(value) => setForm((prev) => ({ ...prev, [key]: value }))} />
-        ))}
-      </div>
-      <button className="primary" onClick={() => void save()}><CheckCircle2 size={18} /> Save profile</button>
-    </section>
-  );
+function Messages({ conversations, authApi, setNotice, refresh }: { conversations: Conversation[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+  const [active, setActive] = useState<Conversation | null>(conversations[0] || null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [body, setBody] = useState('');
+  useEffect(() => { if (!active && conversations[0]) setActive(conversations[0]); }, [active, conversations]);
+  useEffect(() => { if (!active) return; authApi<{ messages: ChatMessage[] }>(`/api/conversations/${active.id}/messages`).then((data) => setMessages(data.messages || [])).catch((e) => setNotice(messageOf(e))); }, [active, authApi, setNotice]);
+  const send = async () => {
+    if (!active || !body.trim()) return;
+    try { const data = await authApi<{ message: ChatMessage }>(`/api/conversations/${active.id}/messages`, { method: 'POST', body: { body } }); setMessages((prev) => [...prev, data.message]); setBody(''); await refresh(); }
+    catch (error) { setNotice(messageOf(error)); }
+  };
+  return <section className="panel wide messages-panel"><div className="conversation-list">{conversations.map((item) => <button key={item.id} className={active?.id === item.id ? 'active' : ''} onClick={() => setActive(item)}><strong>{item.otherUser?.name || 'Ekazi chat'}</strong><span>{item.job?.description || item.lastMessage || 'Booking conversation'}</span></button>)}{!conversations.length ? <Empty text="Messages open after a quote is accepted and a booking conversation starts." /> : null}</div><div className="chat-pane"><h3>{active?.otherUser?.name || 'Messages'}</h3><div className="chat-messages">{messages.map((message) => <div key={message.id} className={message.mine || message.sender === 'user' ? 'bubble mine' : 'bubble'}>{message.body}</div>)}{active && !messages.length ? <Empty text="No messages yet. Send the first update." /> : null}</div><div className="chat-input"><input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Type a message" /><button className="primary" onClick={() => void send()}><Send size={17} /></button></div></div></section>;
 }
 
 function JobRow({ job, actionLabel, onAction }: { job: Job; actionLabel: string; onAction: () => void }) {
-  return (
-    <article className="row-card">
-      <div>
-        <p className="eyebrow">{job.categoryName || job.serviceName || 'Ekazi job'}</p>
-        <h4>{job.description}</h4>
-        <p className="muted"><MapPin size={14} /> {job.estate}, {job.city}</p>
-        <p className="muted"><CalendarClock size={14} /> {job.scheduleType || 'soon'} {job.scheduledFor ? `- ${new Date(job.scheduledFor).toLocaleString()}` : ''}</p>
-      </div>
-      <button className="secondary" onClick={onAction}>{actionLabel}</button>
-    </article>
-  );
+  return <article className="row-card"><div className="row-main"><p className="eyebrow">{job.categoryName || job.serviceName || 'Ekazi job'}</p><h4>{job.description}</h4><p className="muted"><MapPin size={14} /> {job.estate}, {job.city}{job.distanceKm != null ? ` - ${job.distanceKm.toFixed(1)} km` : ''}</p><p className="muted"><CalendarClock size={14} /> {job.scheduleType || 'soon'} {job.scheduledFor ? `- ${new Date(job.scheduledFor).toLocaleString()}` : ''}</p>{job.client?.phone ? <p className="contact-line"><Phone size={14} /> Client: {job.client.phone}</p> : null}{job.photoUrls?.length ? <div className="thumb-strip">{job.photoUrls.slice(0, 4).map((url) => <img key={url} src={url} alt="Job" />)}</div> : null}</div><button className="secondary" onClick={onAction}>{actionLabel}<ChevronRight size={16} /></button></article>;
 }
 
 function QuoteList({ quotes, onAccept }: { quotes: Quote[]; onAccept?: (id: string) => Promise<void> }) {
-  if (!quotes.length) return null;
-  return (
-    <div className="quote-list">
-      {quotes.map((quote) => (
-        <article className="quote-card" key={quote.id}>
-          <div>
-            <p className="eyebrow">{quote.pro?.name || quote.job?.description || 'Handyman quote'}</p>
-            <h4>{money(quote.total)}</h4>
-            <p className="muted">
-              Labour {money(quote.labor)} + materials {money(quote.materials)} + transport {money(quote.transport)}
-            </p>
-            {quote.discountAmount ? <p className="saving">FIRST10 saving: {money(quote.discountAmount)}</p> : null}
-            {quote.message ? <p>{quote.message}</p> : null}
-          </div>
-          {onAccept ? <button className="primary" onClick={() => void onAccept(quote.id)}>Accept</button> : <span className="status">{quote.status || 'open'}</span>}
-        </article>
-      ))}
-    </div>
-  );
+  if (!quotes.length) return <Empty text="No real quotes received yet." />;
+  return <div className="quote-list">{quotes.map((quote) => <article className="quote-card" key={quote.id}>{quote.pro?.profileImageUrl ? <img className="avatar" src={quote.pro.profileImageUrl} alt={quote.pro.name || 'Handyman'} /> : <div className="avatar fallback"><Hammer size={22} /></div>}<div className="quote-body"><p className="eyebrow">{quote.pro?.name || quote.job?.description || 'Handyman quote'}</p><h4>{money(quote.total)}</h4><p className="muted">Labour {money(quote.labor)} + materials {money(quote.materials)} + transport {money(quote.transport)}</p>{quote.discountAmount ? <p className="saving">FIRST10 saving: {money(quote.discountAmount)}</p> : null}{quote.message ? <p>{quote.message}</p> : null}<TrustBadges quote={quote} /></div><div className="quote-actions">{quote.pro?.phone ? <a className="secondary" href={`tel:${quote.pro.phone}`}><Phone size={16} /> Call</a> : null}{onAccept && quote.status === 'open' ? <button className="primary" onClick={() => void onAccept(quote.id)}>Accept</button> : <span className="status">{quote.status || 'open'}</span>}</div></article>)}</div>;
 }
 
-function Field({
-  label,
-  value,
-  onChange,
-  type = 'text',
-  textarea = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-  textarea?: boolean;
-}) {
-  return (
-    <label className={textarea ? 'field span' : 'field'}>
-      <span>{label}</span>
-      {textarea ? (
-        <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={4} />
-      ) : (
-        <input type={type} value={value} onChange={(event) => onChange(event.target.value)} />
-      )}
-    </label>
-  );
+function TrustBadges({ quote }: { quote: Quote }) {
+  const badges = [quote.pro?.verifiedId ? 'ID verified' : '', quote.pro?.profileImageStatus === 'approved' ? 'Photo verified' : '', quote.pro?.certificateStatus === 'approved' ? 'Certificate' : '', quote.pro?.goodConductStatus === 'approved' ? 'Good conduct' : '', quote.pro?.fullyVerified ? 'Fully verified' : ''].filter(Boolean);
+  return badges.length ? <div className="badge-row">{badges.map((badge) => <span key={badge}><BadgeCheck size={13} /> {badge}</span>)}</div> : null;
 }
 
-function Empty({ text }: { text: string }) {
-  return <div className="empty">{text}</div>;
+function VerificationGate({ verification, message }: { verification: Verification | null; message: string }) {
+  const active = Boolean(verification?.verified);
+  return <section className={active ? 'verify-card active' : 'verify-card'}><div><p className="eyebrow">Verification</p><h3>{active ? 'Active for jobs' : 'Action required'}</h3><p>{message}</p></div><div className="verify-status"><StatusPill status={verification?.profileImageStatus} label="Photo" /><StatusPill status={verification?.idDocumentStatus} label="ID" /><StatusPill status={verification?.certificateStatus} label="Certificate" /><StatusPill status={verification?.goodConductStatus} label="Good conduct" /></div></section>;
 }
 
-type ApiInit = { method?: string; body?: unknown };
-
-async function api<T>(path: string, init: ApiInit = {}, token?: string): Promise<T> {
-  const response = await fetch(`${API_BASE}${path}`, {
-    method: init.method || 'GET',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: init.body == null ? undefined : JSON.stringify(init.body),
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data?.message || `Request failed (${response.status})`);
-  return data as T;
+function DocumentUploader({ title, status, required, busy, accept, onPick, icon }: { title: string; status?: string; required?: boolean; busy: boolean; accept: string; onPick: (file: File | null) => void; icon: React.ReactNode }) {
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  return <div className="document-row"><div>{icon}<strong>{title}{required ? ' *' : ''}</strong><StatusPill status={status} /></div><input ref={inputRef} type="file" accept={accept} onChange={(e) => onPick(e.target.files?.[0] || null)} /><button className="secondary" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? <Loader2 className="spin" size={16} /> : <UploadCloud size={16} />} {status && status !== 'missing' ? 'Replace' : 'Upload'}</button></div>;
 }
 
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+function StatusPill({ status, label }: { status?: string; label?: string }) {
+  const value = status || 'missing';
+  const Icon = value === 'approved' ? CheckCircle2 : value === 'rejected' ? XCircle : value === 'pending' ? Loader2 : ShieldCheck;
+  return <span className={`pill ${value}`}><Icon size={13} /> {label ? `${label}: ` : ''}{value.replace('_', ' ')}</span>;
 }
 
-export default App;
+function CategoryPicker({ categories, selected, setSelected, single = false }: { categories: Category[]; selected: string[]; setSelected: (next: string[]) => void; single?: boolean }) {
+  return <div className="category-grid">{categories.map((category) => <button key={category.id} className={selected.includes(category.id) ? 'chip active' : 'chip'} onClick={() => setSelected(single ? [category.id] : selected.includes(category.id) ? selected.filter((id) => id !== category.id) : [...selected, category.id])}>{category.name}</button>)}</div>;
+}
+
+function LocationPreview({ lat, lng, label }: { lat: number; lng: number; label: string }) {
+  const ok = Number.isFinite(lat) && Number.isFinite(lng);
+  const src = ok ? `https://www.google.com/maps?q=${lat},${lng}&z=14&output=embed` : '';
+  return <div className="map-card">{ok ? <iframe title="Ekazi location map" src={src} loading="lazy" /> : <div className="map-placeholder"><MapPin /> Add coordinates to preview the map.</div>}<span>{label}</span></div>;
+}
+
+function Field({ label, value, onChange, type = 'text', textarea = false, placeholder = '' }: { label: string; value: string; onChange: (value: string) => void; type?: string; textarea?: boolean; placeholder?: string }) {
+  return <label className={textarea ? 'field span' : 'field'}><span>{label}</span>{textarea ? <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={4} placeholder={placeholder} /> : <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />}</label>;
+}
+
+function Empty({ text }: { text: string }) { return <div className="empty">{text}</div>; }
+
+function dynamicPrompts(category: string) {
+  const key = Object.keys(promptMap).find((item) => category.toLowerCase().includes(item));
+  return key ? promptMap[key] : DEFAULT_PROMPTS;
+}
+
+function profileVerification(profile: HandymanProfileData | null): Verification | null {
+  if (!profile) return null;
+  return { profileImageUrl: profile.profile_image_url, profileImageStatus: profile.profile_image_status || 'missing', idDocumentStatus: profile.id_document_status || 'missing', certificateStatus: profile.certificate_status || 'missing', goodConductStatus: profile.good_conduct_status || 'missing', verified: Boolean(profile.verified) };
+}
