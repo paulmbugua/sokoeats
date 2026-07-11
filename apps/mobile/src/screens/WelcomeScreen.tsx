@@ -1,31 +1,47 @@
 import React from 'react';
-import { Text, View } from 'react-native';
+import { ScrollView, Text, useWindowDimensions, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, radius, shadow, spacing, typography } from '../theme/tokens';
+import { colors, radius, shadow, spacing } from '../theme/tokens';
 import PrimaryButton from '../components/PrimaryButton';
 import SecondaryButton from '../components/SecondaryButton';
 import { Screen } from '../components/Screen';
 import { ServiceHeroIllustration } from '../components/Illustrations';
 
 export default function WelcomeScreen({ navigation }: any) {
+  const { height, width } = useWindowDimensions();
+  const compact = height < 760;
+  const horizontalPadding = width < 380 ? spacing.lg : spacing.xl;
+  const heroWidth = Math.min(width - horizontalPadding * 2 - spacing.lg * 2, compact ? 230 : 286);
+  const heroHeight = Math.round(heroWidth * 0.79);
+  const titleSize = width < 380 ? 34 : compact ? 35 : 38;
+  const titleLineHeight = Math.round(titleSize * 1.1);
+
   return (
     <Screen backgroundColor={colors.bg} keyboard={false}>
-      <View style={{ flex: 1, paddingHorizontal: spacing.xl, paddingTop: spacing.lg }}>
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingHorizontal: horizontalPadding,
+          paddingTop: spacing.lg,
+          paddingBottom: spacing.xl,
+        }}
+      >
         <LinearGradient
           colors={['#FFFFFF', '#E8F8EE']}
           style={{
-            flex: 1,
             borderRadius: radius.lg,
             paddingHorizontal: spacing.lg,
-            paddingTop: spacing.xl,
-            overflow: 'hidden',
+            paddingTop: compact ? spacing.lg : spacing.xl,
+            paddingBottom: spacing.xl,
             ...shadow.card,
           }}
         >
           <View
             style={{
               alignSelf: 'flex-start',
+              maxWidth: '100%',
               flexDirection: 'row',
               alignItems: 'center',
               gap: 8,
@@ -38,54 +54,65 @@ export default function WelcomeScreen({ navigation }: any) {
             }}
           >
             <Ionicons name="shield-checkmark-outline" size={18} color={colors.primary} />
-            <Text style={{ color: colors.ink, fontWeight: '900' }}>Verified Kenyan pros</Text>
+            <Text
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.84}
+              style={{ color: colors.ink, fontWeight: '900', flexShrink: 1 }}
+            >
+              Verified Kenyan pros
+            </Text>
           </View>
 
-          <View style={{ alignItems: 'center', marginTop: spacing.lg }}>
-            <ServiceHeroIllustration width={286} height={226} />
+          <View style={{ alignItems: 'center', marginTop: compact ? spacing.md : spacing.lg }}>
+            <ServiceHeroIllustration width={heroWidth} height={heroHeight} />
           </View>
 
           <Text
+            maxFontSizeMultiplier={1.08}
             style={{
               color: colors.ink,
-              fontSize: typography.hero,
+              fontSize: titleSize,
               fontWeight: '900',
-              lineHeight: 43,
-              marginTop: spacing.md,
+              lineHeight: titleLineHeight,
+              marginTop: compact ? spacing.sm : spacing.md,
             }}
           >
             Get home jobs done without the back and forth.
           </Text>
           <Text
+            maxFontSizeMultiplier={1.12}
             style={{
               color: colors.mutedDark,
-              fontSize: typography.body,
+              fontSize: compact ? 16 : 17,
               marginTop: spacing.sm,
-              lineHeight: 25,
+              lineHeight: compact ? 23 : 25,
             }}
           >
             Ekazi connects clients with nearby handymen for clear quotes, scheduled visits and trusted service.
           </Text>
         </LinearGradient>
-      </View>
 
-      <View
-        style={{
-          padding: spacing.xl,
-          paddingTop: spacing.lg,
-          backgroundColor: colors.bg,
-        }}
-      >
-        <PrimaryButton title="Create Account" onPress={() => navigation.navigate('SignUp')} />
-        <SecondaryButton
-          title="Sign In"
-          onPress={() => navigation.navigate('Login')}
-          style={{ marginTop: 12 }}
-        />
-        <Text style={{ textAlign: 'center', marginTop: 14, color: colors.muted, fontWeight: '700' }}>
-          Built for clients and handymen across Kenya.
-        </Text>
-      </View>
+        <View
+          style={{
+            paddingTop: spacing.lg,
+            backgroundColor: colors.bg,
+          }}
+        >
+          <PrimaryButton title="Create Account" onPress={() => navigation.navigate('SignUp')} />
+          <SecondaryButton
+            title="Sign In"
+            onPress={() => navigation.navigate('Login')}
+            style={{ marginTop: 12 }}
+          />
+          <Text
+            maxFontSizeMultiplier={1.08}
+            style={{ textAlign: 'center', marginTop: 14, color: colors.muted, fontWeight: '700', lineHeight: 20 }}
+          >
+            Built for clients and handymen across Kenya.
+          </Text>
+        </View>
+      </ScrollView>
     </Screen>
   );
 }
