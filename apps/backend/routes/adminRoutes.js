@@ -150,6 +150,14 @@ adminRouter.post('/users/:id/impersonate', (req, res, next) =>
   callIfFn(adminImpersonateUser, req, res, next),
 );
 
+/* -------- Handyman verification approvals -------- */
+adminRouter.get('/handyman-verifications', (req, res, next) =>
+  callIfFn(listHandymanVerificationReviews, req, res, next),
+);
+adminRouter.patch('/handyman-verifications/:id', (req, res, next) =>
+  callIfFn(reviewHandymanVerification, req, res, next),
+);
+
 /* -------- Orgs & Org Pricing -------- */
 adminRouter.get('/orgs', adminListOrgs);
 adminRouter.get('/orgs/:orgId/subscriptions', adminOrgSubscriptions);

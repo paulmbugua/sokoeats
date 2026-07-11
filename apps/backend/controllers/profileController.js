@@ -1017,11 +1017,11 @@ export const removeProfileItem = async (req, res) => {
 export const uploadSingleFile = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ message: 'No file.' });
-    const paramType = (req.params?.type || '').toLowerCase(); // 'image' | 'video'
+    const paramType = (req.params?.type || '').toLowerCase(); // 'image' | 'video' | 'doc'
     const mime = req.file.mimetype || '';
-    const inferred = mime.startsWith('video/') ? 'video' : 'image';
+    const inferred = mime.startsWith('video/') ? 'video' : mime.startsWith('image/') ? 'image' : 'doc';
     const resourceType =
-      paramType === 'video' || paramType === 'image' ? paramType : inferred;
+      ['video', 'image', 'doc'].includes(paramType) ? paramType : inferred;
 
     // Optional: add a quick log while testing
     console.log(

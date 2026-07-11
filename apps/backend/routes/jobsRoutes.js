@@ -13,6 +13,7 @@ import {
   listOpenJobsForHandyman,
   getHandymanProfile,
   updateHandymanLocation,
+  updateHandymanVerificationDocuments,
 } from '../controllers/jobsController.js';
 
 const router = express.Router();
@@ -21,6 +22,7 @@ router.get('/promotions/first-job', authUser, getFirstJobPromotion);
 router.get('/handyman/jobs', authUser, listOpenJobsForHandyman);
 router.get('/handyman/profile', authUser, getHandymanProfile);
 router.put('/handyman/profile/location', authUser, updateHandymanLocation);
+router.put('/handyman/profile/verification', authUser, express.json(), updateHandymanVerificationDocuments);
 router.get('/jobs', authUser, listJobs);
 router.post('/jobs', authUser, createJob);
 router.get('/jobs/:id', authUser, getJob);

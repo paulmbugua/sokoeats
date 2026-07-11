@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, ScrollView, Text, View } from 'react-native';
+import { Alert, Image, ScrollView, Text, View } from 'react-native';
 import { useShopContext } from '@myhandymanapp/shared/context';
 import { Screen, ScreenScroll } from '../../components/Screen';
 import Card from '../../components/Card';
@@ -51,12 +51,19 @@ export default function QuoteDetailScreen({ route, navigation }: any) {
     <Screen backgroundColor="white">
       <ScrollView contentContainerStyle={{ padding: spacing.xl, paddingBottom: 110 }}>
         <Card>
+          {quote.pro?.profileImageUrl ? (
+            <Image source={{ uri: quote.pro.profileImageUrl }} style={{ width: 86, height: 86, borderRadius: 43, marginBottom: 10 }} />
+          ) : null}
           <Text style={{ fontWeight: '900', fontSize: 18 }}>{quote.pro?.name}</Text>
           <Text style={{ color: colors.muted, marginTop: 6 }}>
             Rating {quote.pro?.ratingAvg || 'New'} ({quote.pro?.ratingCount || 0} reviews)
           </Text>
           <View style={{ flexDirection: 'row', marginTop: 10, flexWrap: 'wrap' }}>
             {quote.pro?.verifiedId ? <Badge label="ID Verified" tone="green" /> : null}
+            {quote.pro?.profileImageStatus === 'approved' ? <Badge label="Photo Verified" tone="blue" /> : null}
+            {quote.pro?.certificateStatus === 'approved' ? <Badge label="Certificate" tone="purple" /> : null}
+            {quote.pro?.goodConductStatus === 'approved' ? <Badge label="Good Conduct" tone="green" /> : null}
+            {quote.pro?.fullyVerified ? <Badge label="Fully Verified" tone="green" /> : null}
           </View>
           <Text style={{ color: colors.muted, marginTop: 10 }}>
             {quote.pro?.jobsCompleted || 0} jobs completed

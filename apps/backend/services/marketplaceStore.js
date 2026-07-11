@@ -31,6 +31,15 @@ export function ensureMarketplaceSchema() {
         cancellation_count INTEGER NOT NULL DEFAULT 0,
         cancellation_score NUMERIC(5,2) NOT NULL DEFAULT 100,
         suspended_until TIMESTAMPTZ,
+        profile_image_url TEXT,
+        profile_image_status TEXT NOT NULL DEFAULT 'missing',
+        id_document_url TEXT,
+        id_document_status TEXT NOT NULL DEFAULT 'missing',
+        certificate_url TEXT,
+        certificate_status TEXT NOT NULL DEFAULT 'missing',
+        good_conduct_url TEXT,
+        good_conduct_status TEXT NOT NULL DEFAULT 'missing',
+        verification_status TEXT NOT NULL DEFAULT 'incomplete',
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
       CREATE TABLE IF NOT EXISTS ekazi_quotes (
@@ -94,6 +103,29 @@ export function ensureMarketplaceSchema() {
       ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS cancellation_count INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS cancellation_score NUMERIC(5,2) NOT NULL DEFAULT 100;
       ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ;
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS profile_image_url TEXT;
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS profile_image_status TEXT NOT NULL DEFAULT 'missing';
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS id_document_url TEXT;
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS id_document_status TEXT NOT NULL DEFAULT 'missing';
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS certificate_url TEXT;
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS certificate_status TEXT NOT NULL DEFAULT 'missing';
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS good_conduct_url TEXT;
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS good_conduct_status TEXT NOT NULL DEFAULT 'missing';
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'incomplete';
+      CREATE TABLE IF NOT EXISTS ekazi_handyman_verification_reviews (
+        id BIGSERIAL PRIMARY KEY,
+        handyman_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        document_type TEXT NOT NULL,
+        document_url TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        notes TEXT,
+        reviewed_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(handyman_user_id, document_type)
+      );
+      CREATE INDEX IF NOT EXISTS ekazi_handyman_verification_reviews_status_idx ON ekazi_handyman_verification_reviews(status, created_at DESC);
       ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS organization_commission_percent NUMERIC(5,2) NOT NULL DEFAULT 15;
       ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS organization_commission_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
       ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS handyman_payout_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
@@ -141,6 +173,8 @@ export function jobJson(row) {
     discountPercent: Number(row.discount_percent || 0),
     quoteCount: Number(row.quote_count || 0),
     createdAt: row.created_at,
+    distanceKm: row.distance_km == null ? null : Number(row.distance_km),
+    nearestRank: row.nearest_rank == null ? null : Number(row.nearest_rank),
   };
 }
 
@@ -165,6 +199,13 @@ export function quoteJson(row) {
       ratingAvg: Number(row.rating_avg || 0),
       ratingCount: Number(row.rating_count || 0),
       verifiedId: Boolean(row.verified),
+      profileImageUrl: row.profile_image_url || null,
+      idDocumentStatus: row.id_document_status || 'missing',
+      profileImageStatus: row.profile_image_status || 'missing',
+      certificateStatus: row.certificate_status || 'missing',
+      goodConductStatus: row.good_conduct_status || 'missing',
+      fullyVerified: Boolean(row.verified && row.certificate_status === 'approved' && row.good_conduct_status === 'approved'),
+      verificationStatus: row.verification_status || (row.verified ? 'active' : 'incomplete'),
       jobsCompleted: Number(row.jobs_completed || 0),
       cancellationScore: Number(row.cancellation_score || 100),
       suspendedUntil: row.suspended_until || null,

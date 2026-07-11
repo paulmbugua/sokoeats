@@ -379,6 +379,7 @@ if (isProduction) {
 // User & profiles
 app.use('/api/user', userLimiter, userRouter);
 app.use('/api/profile', profileRoutes);
+app.use('/api/admin', adminRoutes);
 
 app.use('/api/push', pushRoutes);
 app.use('/api/auth', authRoutes);

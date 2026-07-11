@@ -22,6 +22,7 @@ type Job = {
   budgetMin?: number | null;
   budgetMax?: number | null;
   photoUrls?: string[];
+  distanceKm?: number | null;
   client?: { name?: string; phone?: string };
 };
 
@@ -90,7 +91,16 @@ export default function HandymanHomeScreen({ navigation }: any) {
           </View>
         </Card>
 
-        <Text style={{ fontSize: 17, fontWeight: '900', marginTop: 18 }}>Open jobs</Text>
+        {jobs.length === 0 && profile && !profile.verified ? (
+          <Card style={{ marginTop: 14, backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }}>
+            <Text style={{ fontWeight: '900' }}>Verification blocked</Text>
+            <Text style={{ color: colors.muted, marginTop: 6 }}>
+              Upload your profile photo and national ID in Profile. Ekazi admin must approve them before nearby jobs appear.
+            </Text>
+          </Card>
+        ) : null}
+
+        <Text style={{ fontSize: 17, fontWeight: '900', marginTop: 18 }}>Nearest open jobs</Text>
         {jobs.length ? (
           jobs.map((job) => (
             <Pressable key={job.id} onPress={() => navigation.navigate('SubmitQuote', { job })}>
@@ -104,6 +114,11 @@ export default function HandymanHomeScreen({ navigation }: any) {
                 <Text style={{ marginTop: 8, fontWeight: '800' }}>
                   {job.address || job.estate + ', ' + job.city} - {job.scheduleType}
                 </Text>
+                {job.distanceKm != null ? (
+                  <Text style={{ color: colors.green, marginTop: 5, fontWeight: '900' }}>
+                    Distance: {job.distanceKm.toFixed(1)} km from your service base
+                  </Text>
+                ) : null}
                 {job.client?.phone ? (
                   <Text style={{ color: colors.primary, fontWeight: '900', marginTop: 8 }}>
                     Client contact: {job.client.phone}

@@ -11,6 +11,7 @@ import {
   BadgeCheck,
   Building2,
   BadgePercent,
+  ShieldCheck,
 } from 'lucide-react';
 
 const navItem =
@@ -86,6 +87,16 @@ export default function Sidebar() {
           <BadgePercent className="w-5 h-5" />
           <p className="hidden md:block">Org Pricing</p>
         </NavLink>
+
+        <NavLink
+          to="/handyman-verifications"
+          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
+        >
+          <ShieldCheck className="w-5 h-5" />
+          <p className="hidden md:block">Verifications</p>
+        </NavLink>
+
+
 
         <NavLink to="/users" className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}>
           <Users className="w-5 h-5" />

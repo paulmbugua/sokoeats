@@ -1,6 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, ScrollView, Text, TextInput, View } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import { useShopContext } from '@myhandymanapp/shared/context';
+import { uploadAsset } from '@myhandymanapp/shared/api/uploadAsset';
 import { categories } from '@myhandymanapp/shared/api/kenya-data';
 import Card from '../../components/Card';
 import Chip from '../../components/Chip';
@@ -17,6 +20,8 @@ function toggle(list: string[], value: string) {
 export default function ProfileScreen() {
   const {
     http,
+    backendUrl,
+    token,
     logout,
     profile,
     userEmail,
@@ -49,8 +54,18 @@ export default function ProfileScreen() {
   const [bio, setBio] = useState('');
   const [serviceRadiusKm, setServiceRadiusKm] = useState('20');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [uploadingVerification, setUploadingVerification] = useState<string | null>(null);
 
   const displayName = profile?.name?.trim() || userName?.trim() || 'Ekazi customer';
+  const verification = handymanProfile?.verification || {
+    profileImageUrl: handymanProfile?.profile_image_url,
+    profileImageStatus: handymanProfile?.profile_image_status || 'missing',
+    idDocumentStatus: handymanProfile?.id_document_status || 'missing',
+    certificateStatus: handymanProfile?.certificate_status || 'missing',
+    goodConductStatus: handymanProfile?.good_conduct_status || 'missing',
+    verified: Boolean(handymanProfile?.verified),
+    fullyVerified: Boolean(handymanProfile?.verified && handymanProfile?.certificate_status === 'approved' && handymanProfile?.good_conduct_status === 'approved'),
+  };
 
   const load = useCallback(async () => {
     try {
@@ -115,6 +130,63 @@ export default function ProfileScreen() {
         .join(', ') || 'No services selected',
     [selectedCategories],
   );
+
+
+  const statusTone = (status?: string) => {
+    if (status === 'approved') return { bg: '#DCFCE7', fg: '#166534', label: 'Approved' };
+    if (status === 'pending') return { bg: '#FEF3C7', fg: '#92400E', label: 'Pending review' };
+    if (status === 'rejected') return { bg: '#FEE2E2', fg: '#991B1B', label: 'Rejected' };
+    return { bg: '#F1F5F9', fg: '#475569', label: 'Missing' };
+  };
+
+  const uploadVerification = async (documentType: 'profile_image' | 'id_document' | 'certificate' | 'good_conduct') => {
+    if (!backendUrl || !token) {
+      Alert.alert('Session missing', 'Please sign in again before uploading documents.');
+      return;
+    }
+    setUploadingVerification(documentType);
+    try {
+      let file: { uri?: string; name?: string; type?: string } | null = null;
+      let uploadKind: 'image' | 'doc' = 'doc';
+      if (documentType === 'profile_image') {
+        const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (!permission.granted) {
+          Alert.alert('Gallery permission required', 'Allow Ekazi to access photos from your device settings.');
+          return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ['images'],
+          allowsEditing: true,
+          aspect: [1, 1],
+          quality: 0.85,
+        });
+        if (result.canceled) return;
+        const asset = result.assets?.[0];
+        if (!asset) return;
+        file = { uri: asset.uri, name: asset.fileName || 'ekazi-profile-photo.jpg', type: asset.mimeType || 'image/jpeg' };
+        uploadKind = 'image';
+      } else {
+        const result = await DocumentPicker.getDocumentAsync({
+          type: ['application/pdf', 'image/*'],
+          copyToCacheDirectory: true,
+          multiple: false,
+        });
+        if (result.canceled) return;
+        const asset = result.assets?.[0];
+        if (!asset) return;
+        file = { uri: asset.uri, name: asset.name || documentType + '.pdf', type: asset.mimeType || 'application/pdf' };
+      }
+      if (!file?.uri) return;
+      const url = await uploadAsset(backendUrl, token, file as any, uploadKind);
+      const { data } = await http.put('/api/handyman/profile/verification', { documentType, url });
+      setHandymanProfile(data.profile || null);
+      Alert.alert('Submitted for review', 'Ekazi admin will review this document before it becomes visible as approved.');
+    } catch (error: any) {
+      Alert.alert('Upload failed', error?.response?.data?.message || error?.message || 'Please try again.');
+    } finally {
+      setUploadingVerification(null);
+    }
+  };
 
   const saveProfile = async () => {
     setSaving(true);
@@ -239,6 +311,53 @@ export default function ProfileScreen() {
                 </Text>
               ) : null}
             </Card>
+
+            <Text style={{ marginTop: 18, color: colors.muted, fontWeight: '800' }}>SECURITY VERIFICATION</Text>
+            <Card style={{ marginTop: 10 }}>
+              <Text style={{ fontWeight: '900', fontSize: 16 }}>Trust documents</Text>
+              <Text style={{ color: colors.muted, marginTop: 6 }}>
+                Profile photo and national ID must be approved before you receive nearby jobs or send quotes.
+              </Text>
+              {verification.profileImageUrl ? (
+                <Image source={{ uri: verification.profileImageUrl }} style={{ width: 86, height: 86, borderRadius: 43, marginTop: 12 }} />
+              ) : null}
+              {[
+                ['profile_image', 'Profile photo', verification.profileImageStatus, true],
+                ['id_document', 'National ID', verification.idDocumentStatus, true],
+                ['certificate', 'Qualification certificate', verification.certificateStatus, false],
+                ['good_conduct', 'Good conduct', verification.goodConductStatus, false],
+              ].map(([docType, label, status, required]: any) => {
+                const tone = statusTone(status);
+                const busy = uploadingVerification === docType;
+                return (
+                  <View key={docType} style={{ marginTop: 12, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontWeight: '900' }}>{label}{required ? ' *' : ''}</Text>
+                        <Text style={{ color: colors.muted, marginTop: 3 }}>{required ? 'Required for active handyman status' : 'Optional, improves client trust'}</Text>
+                      </View>
+                      <View style={{ backgroundColor: tone.bg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 }}>
+                        <Text style={{ color: tone.fg, fontWeight: '900', fontSize: 12 }}>{tone.label}</Text>
+                      </View>
+                    </View>
+                    <View style={{ marginTop: 10 }}>
+                      <SecondaryButton
+                        title={busy ? 'Uploading...' : status === 'missing' ? 'Upload' : 'Replace'}
+                        onPress={uploadingVerification ? () => undefined : () => void uploadVerification(docType)}
+                      />
+                    </View>
+                    {busy ? <ActivityIndicator color={colors.primary} style={{ marginTop: 8 }} /> : null}
+                  </View>
+                );
+              })}
+              <Text style={{ color: verification.verified ? colors.green : colors.danger, marginTop: 12, fontWeight: '900' }}>
+                {verification.verified ? 'Account active for nearby jobs and quotes.' : 'Account not active for jobs until profile photo and ID are approved.'}
+              </Text>
+              {verification.fullyVerified ? (
+                <Text style={{ color: colors.green, marginTop: 6, fontWeight: '900' }}>Fully verified: ID, profile, certificate and good conduct approved.</Text>
+              ) : null}
+            </Card>
+
           </>
         ) : null}
 

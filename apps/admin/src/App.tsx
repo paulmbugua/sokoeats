@@ -26,6 +26,7 @@ import { ThemeProvider } from '@myhandymanapp/shared/hooks';
 import { useShopContext } from '@myhandymanapp/shared/context/ShopContext';
 import { Loader2 } from 'lucide-react';
 import YouTubeIngest from './pages/YouTubeIngest';
+import HandymanVerifications from './pages/HandymanVerifications';
 
 /** Small full-screen splash while auth is rehydrating */
 function AuthSplash() {
@@ -177,6 +178,7 @@ const App: React.FC = () => {
           <Route path="/orgs" element={<OrgSubscriptionsManage />} />
           <Route path="/org-pricing" element={<OrgPricingManage />} />
           <Route path="/users" element={<Users />} />
+          <Route path="/handyman-verifications" element={<HandymanVerifications />} />
           <Route path="/certifications" element={<Certifications />} />
           <Route path="/oer/youtube-ingest" element={<YouTubeIngest />} />
         </Route>

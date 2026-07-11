@@ -11,7 +11,9 @@ const COMMISSION_PERCENT = 15;
 const quoteSelect = `
   SELECT q.*, u.name AS handyman_name, u.phone AS handyman_phone,
          hp.business_name, hp.rating_avg, hp.rating_count,
-         hp.verified, hp.jobs_completed, hp.cancellation_score, hp.suspended_until
+         hp.verified, hp.profile_image_url, hp.profile_image_status, hp.id_document_status,
+         hp.certificate_status, hp.good_conduct_status, hp.verification_status,
+         hp.jobs_completed, hp.cancellation_score, hp.suspended_until
     FROM ekazi_quotes q
     JOIN users u ON u.id = q.handyman_user_id
     LEFT JOIN ekazi_handyman_profiles hp ON hp.user_id = q.handyman_user_id
@@ -27,6 +29,28 @@ function normalizeCancellation(input) {
     code: code.slice(0, 80) || null,
     notes: notes.slice(0, 500) || null,
   };
+}
+
+async function requireActiveVerifiedHandyman(db, id) {
+  const { rows } = await db.query(
+    `SELECT u.id, u.phone, u.account_status, u.suspended_until,
+            hp.verified, hp.profile_image_status, hp.id_document_status, hp.verification_status
+       FROM users u
+       LEFT JOIN ekazi_handyman_profiles hp ON hp.user_id = u.id
+      WHERE u.id = $1`,
+    [id],
+  );
+  const row = rows[0];
+  if (!row) return { ok: false, status: 401, message: 'Account not found' };
+  if (row.account_status === 'banned') return { ok: false, status: 403, message: 'This account has been banned. Contact Ekazi support.' };
+  if (row.suspended_until && new Date(row.suspended_until).getTime() > Date.now()) {
+    return { ok: false, status: 403, message: 'This account is temporarily suspended. Try again after the suspension period.' };
+  }
+  if (!row.phone) return { ok: false, status: 400, message: 'Handyman must add a valid Kenyan phone number before continuing.' };
+  if (!row.verified || row.profile_image_status !== 'approved' || row.id_document_status !== 'approved') {
+    return { ok: false, status: 403, message: 'Your Ekazi handyman account must have an approved profile photo and national ID before receiving or sending quotes.' };
+  }
+  return { ok: true, user: row };
 }
 
 async function requireActiveContact(db, id, actorLabel) {
@@ -126,7 +150,7 @@ export const submitQuote = async (req, res) => {
       return res.status(400).json({ message: 'Quote total must be greater than zero' });
     }
 
-    const contactCheck = await requireActiveContact(pool, handymanId, 'Handyman');
+    const contactCheck = await requireActiveVerifiedHandyman(pool, handymanId);
     if (!contactCheck.ok) {
       return res.status(contactCheck.status).json({ message: contactCheck.message });
     }
@@ -273,11 +297,13 @@ export const acceptQuote = async (req, res) => {
       return res.status(clientContact.status).json({ message: clientContact.message });
     }
     const result = await client.query(
-      `SELECT q.*, j.client_user_id, j.status AS job_status, cu.phone AS client_phone, hu.phone AS handyman_phone
+      `SELECT q.*, j.client_user_id, j.status AS job_status, cu.phone AS client_phone, hu.phone AS handyman_phone,
+              hp.verified AS handyman_verified, hp.profile_image_status, hp.id_document_status
          FROM ekazi_quotes q
          JOIN ekazi_jobs j ON j.id = q.job_id
          JOIN users cu ON cu.id = j.client_user_id
          JOIN users hu ON hu.id = q.handyman_user_id
+         LEFT JOIN ekazi_handyman_profiles hp ON hp.user_id = q.handyman_user_id
         WHERE q.id = $1 AND j.client_user_id = $2
         FOR UPDATE OF q, j`,
       [req.params.id, clientId],
@@ -294,6 +320,10 @@ export const acceptQuote = async (req, res) => {
     if (!quote.handyman_phone) {
       await client.query('ROLLBACK');
       return res.status(400).json({ message: 'This handyman must add a phone number before their quote can be accepted.' });
+    }
+    if (!quote.handyman_verified || quote.profile_image_status !== 'approved' || quote.id_document_status !== 'approved') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'This handyman is not yet approved by Ekazi for client bookings.' });
     }
     if (!['active', 'quoted'].includes(quote.job_status) || quote.status !== 'open') {
       await client.query('ROLLBACK');

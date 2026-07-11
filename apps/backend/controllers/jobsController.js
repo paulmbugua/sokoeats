@@ -15,6 +15,54 @@ function userId(req) {
   return Number.isSafeInteger(id) && id > 0 ? id : null;
 }
 
+const verificationTypes = new Set(['profile_image', 'id_document', 'certificate', 'good_conduct']);
+
+function verificationPatch(documentType, url) {
+  if (documentType === 'profile_image') return { column: 'profile_image_url', statusColumn: 'profile_image_status', url };
+  if (documentType === 'id_document') return { column: 'id_document_url', statusColumn: 'id_document_status', url };
+  if (documentType === 'certificate') return { column: 'certificate_url', statusColumn: 'certificate_status', url };
+  if (documentType === 'good_conduct') return { column: 'good_conduct_url', statusColumn: 'good_conduct_status', url };
+  return null;
+}
+
+async function recalculateHandymanVerification(db, handymanId) {
+  const { rows } = await db.query(
+    `UPDATE ekazi_handyman_profiles
+        SET verified = profile_image_status = 'approved' AND id_document_status = 'approved',
+            verification_status = CASE
+              WHEN profile_image_status = 'approved' AND id_document_status = 'approved' THEN 'active'
+              WHEN profile_image_url IS NOT NULL OR id_document_url IS NOT NULL OR certificate_url IS NOT NULL OR good_conduct_url IS NOT NULL THEN 'pending_review'
+              ELSE 'incomplete'
+            END,
+            updated_at = NOW()
+      WHERE user_id = $1
+      RETURNING *`,
+    [handymanId],
+  );
+  return rows[0] || null;
+}
+
+function handymanVerificationJson(profile) {
+  return profile && {
+    profileImageUrl: profile.profile_image_url || null,
+    profileImageStatus: profile.profile_image_status || 'missing',
+    idDocumentUrl: profile.id_document_url || null,
+    idDocumentStatus: profile.id_document_status || 'missing',
+    certificateUrl: profile.certificate_url || null,
+    certificateStatus: profile.certificate_status || 'missing',
+    goodConductUrl: profile.good_conduct_url || null,
+    goodConductStatus: profile.good_conduct_status || 'missing',
+    verified: Boolean(profile.verified),
+    fullyVerified: Boolean(profile.verified && profile.certificate_status === 'approved' && profile.good_conduct_status === 'approved'),
+    status: profile.verification_status || (profile.verified ? 'active' : 'incomplete'),
+    required: {
+      profileImage: profile.profile_image_status === 'approved',
+      identityCard: profile.id_document_status === 'approved',
+    },
+  };
+}
+
+
 async function requireActiveUserContact(db, id, actorLabel) {
   const { rows } = await db.query(
     `SELECT id, phone, account_status, suspended_until
@@ -254,25 +302,56 @@ export const listOpenJobsForHandyman = async (req, res) => {
   try {
     await ensureMarketplaceSchema();
     const id = userId(req);
+    if (!id) return res.status(401).json({ message: 'Unauthorized' });
+    const profileResult = await pool.query('SELECT * FROM ekazi_handyman_profiles WHERE user_id = $1', [id]);
+    const profile = await recalculateHandymanVerification(pool, id) || profileResult.rows[0] || null;
+    const verification = handymanVerificationJson(profile);
+    if (!profile?.verified) {
+      return res.json({
+        jobs: [],
+        verification,
+        blocked: true,
+        message: 'Upload and get approval for your profile photo and national ID before receiving nearby jobs.',
+      });
+    }
     const { rows } = await pool.query(
-      `SELECT j.*, u.name AS client_name, u.phone AS client_phone,
-              COUNT(q.id) FILTER (WHERE q.status = 'open') AS quote_count
-         FROM ekazi_jobs j
-         JOIN users u ON u.id = j.client_user_id
-         LEFT JOIN ekazi_quotes q ON q.job_id = j.id
-        WHERE j.status IN ('active','quoted')
-          AND u.phone IS NOT NULL
-          AND j.client_user_id <> $1
-          AND NOT EXISTS (
-            SELECT 1 FROM ekazi_quotes own
-             WHERE own.job_id = j.id AND own.handyman_user_id = $1
-          )
-        GROUP BY j.id
-        ORDER BY j.created_at DESC
+      `WITH hm AS (
+         SELECT * FROM ekazi_handyman_profiles WHERE user_id = $1
+       ), candidates AS (
+         SELECT j.*, u.name AS client_name, u.phone AS client_phone,
+                COUNT(q.id) FILTER (WHERE q.status = 'open') AS quote_count,
+                CASE
+                  WHEN hm.latitude IS NOT NULL AND hm.longitude IS NOT NULL AND j.latitude IS NOT NULL AND j.longitude IS NOT NULL THEN
+                    6371 * acos(LEAST(1, GREATEST(-1,
+                      cos(radians(hm.latitude)) * cos(radians(j.latitude)) * cos(radians(j.longitude) - radians(hm.longitude)) +
+                      sin(radians(hm.latitude)) * sin(radians(j.latitude))
+                    )))
+                  ELSE NULL
+                END AS distance_km,
+                CASE WHEN hm.latitude IS NOT NULL AND hm.longitude IS NOT NULL AND j.latitude IS NOT NULL AND j.longitude IS NOT NULL THEN 0 ELSE 1 END AS nearest_rank,
+                hm.service_radius_km
+           FROM ekazi_jobs j
+           JOIN users u ON u.id = j.client_user_id
+           CROSS JOIN hm
+           LEFT JOIN ekazi_quotes q ON q.job_id = j.id
+          WHERE j.status IN ('active','quoted')
+            AND u.phone IS NOT NULL
+            AND j.client_user_id <> $1
+            AND (cardinality(hm.categories) = 0 OR j.category_id = ANY(hm.categories) OR COALESCE(j.service_id, '') = ANY(hm.categories))
+            AND NOT EXISTS (
+              SELECT 1 FROM ekazi_quotes own
+               WHERE own.job_id = j.id AND own.handyman_user_id = $1
+            )
+          GROUP BY j.id, u.name, u.phone, hm.latitude, hm.longitude, hm.service_radius_km
+       )
+       SELECT * FROM candidates
+        WHERE distance_km IS NULL OR distance_km <= service_radius_km
+        ORDER BY nearest_rank ASC, distance_km ASC NULLS LAST, created_at DESC
         LIMIT 100`,
       [id],
     );
     return res.json({
+      verification,
       jobs: rows.map((row) => ({
         ...jobJson(row),
         client: {
@@ -338,9 +417,64 @@ export const getHandymanProfile = async (req, res) => {
       'SELECT * FROM ekazi_handyman_profiles WHERE user_id = $1',
       [userId(req)],
     );
-    return res.json({ profile: rows[0] || null });
+    const profile = rows[0] ? await recalculateHandymanVerification(pool, userId(req)) : null;
+    return res.json({ profile, verification: handymanVerificationJson(profile) });
   } catch (error) {
     console.error('getHandymanProfile error:', error);
     return res.status(500).json({ message: 'Could not load handyman profile' });
+  }
+};
+
+
+export const updateHandymanVerificationDocuments = async (req, res) => {
+  try {
+    await ensureMarketplaceSchema();
+    const id = userId(req);
+    if (!id) return res.status(401).json({ message: 'Unauthorized' });
+    const documentType = String(req.body?.documentType || '').trim();
+    const documentUrl = String(req.body?.url || '').trim();
+    if (!verificationTypes.has(documentType)) {
+      return res.status(400).json({ message: 'Unsupported verification document type' });
+    }
+    if (!/^https?:\/\//i.test(documentUrl)) {
+      return res.status(400).json({ message: 'A valid uploaded document URL is required' });
+    }
+    const patch = verificationPatch(documentType, documentUrl);
+    const roleResult = await pool.query('SELECT id, name, role FROM users WHERE id = $1', [id]);
+    const user = roleResult.rows[0];
+    if (user?.role !== 'tutor') return res.status(403).json({ message: 'Handyman account required' });
+    await pool.query(
+      `INSERT INTO ekazi_handyman_profiles (user_id, business_name, updated_at)
+       VALUES ($1, $2, NOW())
+       ON CONFLICT (user_id) DO NOTHING`,
+      [id, user.name || 'Ekazi Handyman'],
+    );
+    await pool.query(
+      `UPDATE ekazi_handyman_profiles
+          SET ${patch.column} = $2,
+              ${patch.statusColumn} = 'pending',
+              verified = FALSE,
+              verification_status = 'pending_review',
+              updated_at = NOW()
+        WHERE user_id = $1`,
+      [id, documentUrl],
+    );
+    await pool.query(
+      `INSERT INTO ekazi_handyman_verification_reviews (handyman_user_id, document_type, document_url, status, updated_at)
+       VALUES ($1,$2,$3,'pending',NOW())
+       ON CONFLICT (handyman_user_id, document_type) DO UPDATE SET
+         document_url = EXCLUDED.document_url,
+         status = 'pending',
+         notes = NULL,
+         reviewed_by = NULL,
+         reviewed_at = NULL,
+         updated_at = NOW()`,
+      [id, documentType, documentUrl],
+    );
+    const { rows } = await pool.query('SELECT * FROM ekazi_handyman_profiles WHERE user_id = $1', [id]);
+    return res.json({ profile: rows[0], verification: handymanVerificationJson(rows[0]) });
+  } catch (error) {
+    console.error('updateHandymanVerificationDocuments error:', error);
+    return res.status(500).json({ message: 'Could not save verification document' });
   }
 };
