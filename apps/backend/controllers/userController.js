@@ -17,6 +17,44 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID_WEB);
 const createToken = (id) =>
   jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '1d' });
 
+let userProfileSchemaReady;
+
+async function ensureUserProfileSchema() {
+  if (!userProfileSchemaReady) {
+    userProfileSchemaReady = (async () => {
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(32)');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completed_at TIMESTAMPTZ');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_city TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_estate TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(32)');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_preference TEXT');
+      await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'active'");
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS suspension_reason TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_warning_count INTEGER NOT NULL DEFAULT 0');
+      await pool.query(
+        'CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users (phone) WHERE phone IS NOT NULL',
+      );
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS org_learner_profiles (
+          id BIGSERIAL PRIMARY KEY,
+          user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          name TEXT,
+          photo_url TEXT,
+          class_label TEXT,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      await pool.query('CREATE INDEX IF NOT EXISTS org_learner_profiles_user_created_idx ON org_learner_profiles(user_id, created_at DESC)');
+    })().catch((error) => {
+      userProfileSchemaReady = undefined;
+      throw error;
+    });
+  }
+  return userProfileSchemaReady;
+}
+
+
 /** --------------------
  *  User Login (email/password)
  -------------------- */
@@ -234,6 +272,8 @@ export const getUser = async (req, res) => {
         .status(400)
         .json({ success: false, message: 'Invalid user ID' });
     }
+
+    await ensureUserProfileSchema();
 
     // 1) Base user info (same as before)
     const { rows } = await pool.query(
