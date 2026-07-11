@@ -54,6 +54,8 @@ interface ApiUserMeResponse {
   tokens?: number;
   userId?: string | number | null;
   role?: string | null;
+  profileComplete?: boolean | null;
+  profileRequiredActions?: string[];
 }
 
 /** Augment your existing context type with org/admin tokens and shared axios */
@@ -63,7 +65,7 @@ export type ShopContextValue = BaseShopContextValue & {
   /** login as institution (persists via session storage) */
   loginOrg: (t: string, meta?: { userId?: string; email?: string }) => Promise<void>;
   /** login as consumer (persists via session storage) */
-  loginConsumer: (t: string, meta?: { userId?: string; email?: string }) => Promise<void>;
+  loginConsumer: (t: string, meta?: { userId?: string; email?: string; name?: string; phone?: string; role?: string; profileComplete?: boolean | null }) => Promise<void>;
   /** Hydrate auth state on app start */
   hydrateAuth: () => Promise<void>;
   /** Shared axios instance with guards & baseURL */
@@ -193,6 +195,8 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
   const [tokens, setTokens] = useState<number>(0);
   const [userId, setUserId] = useState<string | null>(null);
   const [role, setRole] = useState<UserRole>(null);
+  const [profileComplete, setProfileComplete] = useState<boolean | null>(null);
+  const [profileRequiredActions, setProfileRequiredActions] = useState<string[]>([]);
 
   const token = authMode === 'consumer' ? accessToken ?? '' : '';
   const orgToken = authMode === 'org' ? accessToken ?? '' : '';
@@ -244,6 +248,8 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
     setUserPhone(null);
     setUserId(null);
     setRole(null);
+    setProfileComplete(null);
+    setProfileRequiredActions([]);
     setTokens(0);
     delete httpRef.current.defaults.headers.common.Authorization;
     await clearAuthSession();
@@ -352,7 +358,7 @@ if (isDev) {
   }, [hydrateAuth]);
 
   const loginConsumer = useCallback(
-    async (newToken: string, meta?: { userId?: string; email?: string }) => {
+    async (newToken: string, meta?: { userId?: string; email?: string; name?: string; phone?: string; role?: string; profileComplete?: boolean | null }) => {
       hasAutoClearedRef.current = false;
       await setConsumerSession(newToken, {
         userId: meta?.userId,
@@ -362,6 +368,13 @@ if (isDev) {
       setAccessToken(newToken);
       if (meta?.userId) setUserId(meta.userId);
       if (meta?.email) setUserEmail(meta.email);
+      if (meta?.name) setUserName(meta.name);
+      if (meta?.phone) setUserPhone(meta.phone);
+      if (meta?.role) setRole(normalizeRole(meta.role));
+      if (typeof meta?.profileComplete === 'boolean') {
+        setProfileComplete(meta.profileComplete);
+        setProfileRequiredActions(meta.profileComplete ? [] : ['phone']);
+      }
     },
     []
   );
@@ -456,6 +469,14 @@ if (isDev) {
     const incomingRole = normalizeRole(data.role ?? null);
     if (incomingRole !== role) setRole(incomingRole);
 
+    const incomingProfileComplete = typeof data.profileComplete === 'boolean' ? data.profileComplete : Boolean(data.phone);
+    if (incomingProfileComplete !== profileComplete) setProfileComplete(incomingProfileComplete);
+
+    const incomingRequiredActions = Array.isArray(data.profileRequiredActions) ? data.profileRequiredActions.map(String) : [];
+    if (incomingRequiredActions.join('|') !== profileRequiredActions.join('|')) {
+      setProfileRequiredActions(incomingRequiredActions);
+    }
+
     // persist role for reloads
     if (storage) {
       if (incomingRole) {
@@ -464,7 +485,7 @@ if (isDev) {
         await storage.removeItem('role');
       }
     }
-  }, [userEmail, userName, userPhone, tokens, userId, role, storage]);
+  }, [userEmail, userName, userPhone, tokens, userId, role, profileComplete, profileRequiredActions, storage]);
 
   useEffect(() => {
     if (!hydrated || !token || adminToken || isOrgMode) return; // ✅ skip when org logged in
@@ -487,6 +508,8 @@ if (isDev) {
       hydrated,
       initializing,
       userId,
+      profileComplete,
+      profileRequiredActions,
       language,
       loginConsumer,
       loginOrg,
@@ -524,6 +547,8 @@ if (isDev) {
       hydrated,
       initializing,
       userId,
+      profileComplete,
+      profileRequiredActions,
       language,
       loginConsumer,
       loginOrg,

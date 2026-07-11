@@ -23,6 +23,8 @@ import SignUpScreen from './screens/auth/SignUpScreen';
 
 import OtpVerifyScreen from './screens/auth/OtpVerifyScreen';
 
+import CompleteProfileScreen from './screens/auth/CompleteProfileScreen';
+
 import HomeScreen from './screens/tabs/HomeScreen';
 import HandymanHomeScreen from './screens/tabs/HandymanHomeScreen';
 import HandymanQuotesScreen from './screens/tabs/HandymanQuotesScreen';
@@ -103,9 +105,9 @@ function Tabs() {
 
 export default function App() {
 
-  const { token, initializing } = useShopContext();
+  const { token, initializing, profileComplete } = useShopContext();
 
-  if (initializing) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'white' }}><ActivityIndicator color={primary} /></View>;
+  if (initializing || (token && profileComplete === null)) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'white' }}><ActivityIndicator color={primary} /></View>;
 
   return (
 
@@ -122,6 +124,10 @@ export default function App() {
         <Stack.Screen name="SignUp" component={SignUpScreen} options={{ title: 'Create Account' }} />
 
         <Stack.Screen name="OtpVerify" component={OtpVerifyScreen} options={{ title: 'Verify Phone Number' }} />
+
+      </> : profileComplete === false ? <>
+
+        <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} options={{ headerShown: false }} />
 
       </> : <>
 

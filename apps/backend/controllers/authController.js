@@ -78,6 +78,18 @@ function createToken(id) {
   return jwt.sign({ id: Number(id), scope: 'ekazi-mobile' }, JWT_SECRET, { expiresIn: '30d' });
 }
 
+function isProfileComplete(user) {
+  return Boolean(user?.phone && user?.profile_completed_at);
+}
+
+function profileRequirements(user) {
+  const missing = [];
+  if (!user?.phone) missing.push('phone');
+  if (!user?.name || user.name === 'Ekazi User') missing.push('name');
+  if (!user?.profile_completed_at) missing.push('profile_details');
+  return missing;
+}
+
 function publicUser(user) {
   return {
     id: user.id,
@@ -86,6 +98,11 @@ function publicUser(user) {
     phone: user.phone,
     role: user.role === 'tutor' ? 'handyman' : 'client',
     emailVerified: Boolean(user.email_verified),
+    profileComplete: isProfileComplete(user),
+    profileRequiredActions: profileRequirements(user),
+    preferredCity: user.preferred_city || null,
+    preferredEstate: user.preferred_estate || null,
+    contactPreference: user.contact_preference || 'phone',
   };
 }
 
@@ -154,6 +171,11 @@ async function ensureMobileAuthSchema() {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_token_hash TEXT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verification_expires_at TIMESTAMPTZ');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completed_at TIMESTAMPTZ');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_city TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_estate TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(32)');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS contact_preference TEXT');
       await pool.query(
         'CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users (phone) WHERE phone IS NOT NULL',
       );
@@ -426,7 +448,7 @@ export const resendEmailConfirmation = async (req, res) => {
       return res.status(401).json({ message: 'Invalid user session' });
     }
     const { rows } = await pool.query(
-      'SELECT id, name, email, phone, role, email_verified FROM users WHERE id = $1',
+      'SELECT id, name, email, phone, role, email_verified, profile_completed_at, preferred_city, preferred_estate, contact_preference FROM users WHERE id = $1',
       [userId],
     );
     const user = rows[0];
@@ -485,13 +507,112 @@ export const me = async (req, res) => {
       return res.status(401).json({ message: 'Invalid user session' });
     }
     const { rows } = await pool.query(
-      'SELECT id, name, email, phone, role, email_verified FROM users WHERE id = $1',
+      'SELECT id, name, email, phone, role, email_verified, profile_completed_at, preferred_city, preferred_estate, contact_preference FROM users WHERE id = $1',
       [userId],
     );
     if (!rows.length) return res.status(401).json({ message: 'User no longer exists' });
-    return res.json({ user: publicUser(rows[0]) });
+    const user = rows[0];
+    return res.json({
+      user: publicUser(user),
+      profileComplete: isProfileComplete(user),
+      profileRequiredActions: profileRequirements(user),
+    });
   } catch (error) {
     console.error('mobile me error:', error);
     return res.status(500).json({ message: 'Could not load account' });
+  }
+};
+
+
+export const completeProfile = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await ensureMobileAuthSchema();
+    await ensureMarketplaceSchema();
+    const userId = Number(req.user?.id);
+    if (!Number.isSafeInteger(userId) || userId <= 0) {
+      return res.status(401).json({ message: 'Invalid user session' });
+    }
+    const name = String(req.body?.name || '').trim();
+    const phone = normalizePhone(req.body?.phone);
+    const city = String(req.body?.city || 'Nairobi').trim().slice(0, 80);
+    const estate = String(req.body?.estate || '').trim().slice(0, 120);
+    const emergencyContact = normalizePhone(req.body?.emergencyContact) || null;
+    const contactPreference = ['phone', 'whatsapp', 'sms'].includes(String(req.body?.contactPreference || '').toLowerCase())
+      ? String(req.body.contactPreference).toLowerCase()
+      : 'phone';
+    if (name.length < 2) return res.status(400).json({ message: 'Enter your full name.' });
+    if (!phone) return res.status(400).json({ message: 'Enter a valid Kenyan phone number.' });
+
+    await client.query('BEGIN');
+    const currentResult = await client.query('SELECT id, role FROM users WHERE id = $1 FOR UPDATE', [userId]);
+    const current = currentResult.rows[0];
+    if (!current) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'User not found' });
+    }
+    const duplicate = await client.query('SELECT id FROM users WHERE phone = $1 AND id <> $2 LIMIT 1', [phone, userId]);
+    if (duplicate.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'This phone number is already used by another Ekazi account.' });
+    }
+
+    const userResult = await client.query(
+      `UPDATE users
+          SET name = $2,
+              phone = $3,
+              preferred_city = $4,
+              preferred_estate = $5,
+              emergency_contact = $6,
+              contact_preference = $7,
+              profile_completed_at = NOW()
+        WHERE id = $1
+        RETURNING id, name, email, phone, role, email_verified, profile_completed_at, preferred_city, preferred_estate, contact_preference`,
+      [userId, name, phone, city, estate || null, emergencyContact, contactPreference],
+    );
+    const user = userResult.rows[0];
+
+    if (current.role === 'tutor') {
+      const businessName = String(req.body?.businessName || name).trim().slice(0, 120);
+      const bio = String(req.body?.bio || '').trim().slice(0, 600);
+      const categories = Array.isArray(req.body?.categories) ? req.body.categories.map(String).filter(Boolean).slice(0, 8) : [];
+      const radius = Number(req.body?.serviceRadiusKm || 20);
+      if (!businessName) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ message: 'Business name is required for handymen.' });
+      }
+      if (!categories.length) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ message: 'Select at least one service category.' });
+      }
+      await client.query(
+        `INSERT INTO ekazi_handyman_profiles
+           (user_id, business_name, categories, estate, city, service_radius_km, bio, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+         ON CONFLICT (user_id) DO UPDATE SET
+           business_name = EXCLUDED.business_name,
+           categories = EXCLUDED.categories,
+           estate = EXCLUDED.estate,
+           city = EXCLUDED.city,
+           service_radius_km = EXCLUDED.service_radius_km,
+           bio = EXCLUDED.bio,
+           updated_at = NOW()`,
+        [userId, businessName, categories, estate || null, city, Number.isFinite(radius) && radius > 0 ? radius : 20, bio || null],
+      );
+    }
+
+    await client.query('COMMIT');
+    return res.json({
+      ok: true,
+      user: publicUser(user),
+      profileComplete: true,
+      profileRequiredActions: [],
+    });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    console.error('complete profile error:', error);
+    return res.status(500).json({ message: 'Could not save profile details' });
+  } finally {
+    client.release();
   }
 };

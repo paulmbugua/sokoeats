@@ -5,6 +5,7 @@ export type RootStackParamList = {
   SignUp: undefined;
   OtpVerify: { phone: string };
   Tabs: undefined;
+  CompleteProfile: undefined;
 
   CategorySelect: undefined;
   TaskSelect: { categoryId: number; categoryName: string };

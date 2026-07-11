@@ -19,6 +19,10 @@ export default function LoginScreen({ navigation }: any) {
     await loginConsumer(data.token, {
       userId: String(data.user?.id || ''),
       email: data.user?.email,
+      name: data.user?.name,
+      phone: data.user?.phone,
+      role: data.user?.role,
+      profileComplete: typeof data.user?.profileComplete === 'boolean' ? data.user.profileComplete : data.profileComplete,
     });
   };
 

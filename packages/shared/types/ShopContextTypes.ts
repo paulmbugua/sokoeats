@@ -66,8 +66,10 @@ export interface ShopContextValue {
   accessToken: string | null;
   token: string;
   userId: string | null;
+  profileComplete: boolean | null;
+  profileRequiredActions: string[];
   language: string; // keep liberal; provider currently uses 'EN' | 'FR'
-  loginConsumer: (newToken: string, meta?: { userId?: string; email?: string }) => Promise<void>;
+  loginConsumer: (newToken: string, meta?: { userId?: string; email?: string; name?: string; phone?: string; role?: string; profileComplete?: boolean | null }) => Promise<void>;
   loginOrg: (newToken: string, meta?: { userId?: string; email?: string }) => Promise<void>;
   hydrateAuth: () => Promise<void>;
   toggleLanguage: () => void;

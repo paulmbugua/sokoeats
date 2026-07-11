@@ -11,6 +11,7 @@ import {
   me,
   confirmEmail,
   resendEmailConfirmation,
+  completeProfile,
 } from '../controllers/authController.js';
 
 const router = express.Router();
@@ -24,5 +25,6 @@ router.post('/email/confirm', confirmEmail);
 router.post('/email/resend', authUser, resendEmailConfirmation);
 router.post('/otp/verify', verifyOtp);
 router.get('/me', authUser, me);
+router.patch('/profile/complete', authUser, completeProfile);
 
 export default router;

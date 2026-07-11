@@ -245,6 +245,10 @@ export const getUser = async (req, res) => {
         u.tokens,
         u.role,
         u.must_change_password,
+        u.profile_completed_at,
+        u.preferred_city,
+        u.preferred_estate,
+        u.contact_preference,
         COALESCE(p.name, u.name) AS name
       FROM users u
       LEFT JOIN LATERAL (
@@ -291,6 +295,15 @@ export const getUser = async (req, res) => {
       name: u.name || '',
       must_change_password: !!u.must_change_password,
       mustChangePassword: !!u.must_change_password,
+      profileComplete: Boolean(u.phone && u.profile_completed_at),
+      profileRequiredActions: [
+        ...(!u.phone ? ['phone'] : []),
+        ...(!u.name || u.name === 'Ekazi User' ? ['name'] : []),
+        ...(!u.profile_completed_at ? ['profile_details'] : []),
+      ],
+      preferredCity: u.preferred_city || null,
+      preferredEstate: u.preferred_estate || null,
+      contactPreference: u.contact_preference || 'phone',
     };
 
     // Expose profile under multiple keys (snake + camel + array),
