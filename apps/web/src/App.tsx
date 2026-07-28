@@ -3,12 +3,14 @@ import { GoogleLogin } from '@react-oauth/google';
 import {
   BadgeCheck, BriefcaseBusiness, CalendarClock, Camera, CheckCircle2, ChevronRight,
   FileCheck2, Hammer, Home, ImagePlus, Loader2, LogOut, MapPin, MessageCircle,
-  Navigation, Phone, RefreshCw, Send, ShieldCheck, Sparkles, UploadCloud, WalletCards, XCircle,
+  Navigation, Phone, RefreshCw, Send, ShieldCheck, Sparkles, Star, UploadCloud, WalletCards, XCircle,
 } from 'lucide-react';
 
-const API_BASE = import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || 'https://server.ekazi.co.ke';
+const API_BASE = (import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:4005' : 'https://server.ekazi.co.ke')).replace(/\/+$/, '');
 const CENTER = { latitude: -1.286389, longitude: 36.817223 };
 const DEFAULT_PROMPTS = ['Share the issue clearly', 'Add when it started', 'Mention access or materials needed'];
+const PROVIDER_FREE_SERVICE_LIMIT = 2;
+const EXTRA_SERVICE_CERTIFICATE_STATUSES = new Set(['pending', 'approved']);
 const promptMap: Record<string, string[]> = {
   plumbing: ['Where is the leak or blockage?', 'Is the main water supply affected?', 'Do you need parts supplied?'],
   electrical: ['Which socket, light, or appliance is affected?', 'Is power tripping?', 'Is it urgent or scheduled?'],
@@ -20,10 +22,10 @@ const promptMap: Record<string, string[]> = {
 type Role = 'client' | 'handyman';
 type User = { id?: string | number; userId?: string | number; name?: string; email?: string; phone?: string | null; role?: string; profileComplete?: boolean; preferredCity?: string | null; preferredEstate?: string | null; contactPreference?: string | null };
 type Category = { id: string; name: string; description?: string };
-type Job = { id: string; categoryId?: string; categoryName?: string; serviceName?: string; description: string; photoUrls?: string[]; estate: string; city: string; address?: string | null; latitude?: number | null; longitude?: number | null; scheduleType?: string; scheduledFor?: string | null; budgetMin?: number | null; budgetMax?: number | null; quoteCount?: number; status?: string; distanceKm?: number | null; client?: { name?: string; phone?: string | null } };
+type Job = { id: string; categoryId?: string; categoryName?: string; serviceName?: string; description: string; photoUrls?: string[]; estate: string; city: string; address?: string | null; latitude?: number | null; longitude?: number | null; scheduleType?: string; scheduledFor?: string | null; budgetMin?: number | null; budgetMax?: number | null; quoteCount?: number; status?: string; distanceKm?: number | null; discountPercent?: number; client?: { name?: string; phone?: string | null }; booking?: { id?: string; quoteId?: string | null; status?: string | null; providerName?: string | null; review?: { rating?: number | null; comment?: string; reviewedAt?: string | null } | null } | null };
 type Quote = { id: string; jobId?: string; total: number; labor: number; materials: number; transport: number; discountAmount?: number; status?: string; etaMinutes?: number; durationHours?: number | null; message?: string; pro?: { name?: string; phone?: string | null; ratingAvg?: number; ratingCount?: number; jobsCompleted?: number; profileImageUrl?: string | null; verifiedId?: boolean; profileImageStatus?: string; certificateStatus?: string; goodConductStatus?: string; fullyVerified?: boolean }; job?: { description?: string; estate?: string; city?: string; status?: string }; booking?: { id?: string; status?: string } | null; commission?: { percent?: number; amount?: number; handymanNet?: number } };
-type Verification = { profileImageUrl?: string | null; profileImageStatus?: string; idDocumentStatus?: string; certificateStatus?: string; goodConductStatus?: string; verified?: boolean; fullyVerified?: boolean; status?: string };
-type HandymanProfileData = { business_name?: string; businessName?: string; bio?: string; estate?: string; city?: string; address?: string; latitude?: number | null; longitude?: number | null; service_radius_km?: number; serviceRadiusKm?: number; categories?: string[]; verified?: boolean; profile_image_url?: string | null; profile_image_status?: string; id_document_status?: string; certificate_status?: string; good_conduct_status?: string; verification?: Verification };
+type Verification = { profileImageUrl?: string | null; idDocumentUrl?: string | null; certificateUrl?: string | null; goodConductUrl?: string | null; profileImageStatus?: string; idDocumentStatus?: string; certificateStatus?: string; goodConductStatus?: string; verified?: boolean; fullyVerified?: boolean; status?: string };
+type HandymanProfileData = { business_name?: string; businessName?: string; bio?: string; estate?: string; city?: string; address?: string; latitude?: number | null; longitude?: number | null; service_radius_km?: number; serviceRadiusKm?: number; categories?: string[]; verified?: boolean; profile_image_url?: string | null; id_document_url?: string | null; certificate_url?: string | null; good_conduct_url?: string | null; profile_image_status?: string; id_document_status?: string; certificate_status?: string; good_conduct_status?: string; verification?: Verification };
 type Conversation = { id: string; bookingId?: string; job?: { description?: string; estate?: string; city?: string }; otherUser?: { name?: string; phone?: string | null; role?: string }; lastMessage?: string; lastAt?: string; unreadCount?: number };
 type ChatMessage = { id: string; body: string; sender?: string; mine?: boolean; createdAt?: string };
 type ApiInit = { method?: string; body?: unknown; headers?: Record<string, string> };
@@ -31,6 +33,20 @@ type ApiInit = { method?: string; body?: unknown; headers?: Record<string, strin
 const money = (value?: number | null) => `KES ${Number(value || 0).toLocaleString('en-KE', { maximumFractionDigits: 0 })}`;
 const roleOf = (role?: string): Role => role === 'tutor' || role === 'handyman' ? 'handyman' : 'client';
 const messageOf = (error: unknown) => error instanceof Error ? error.message : 'Something went wrong. Please try again.';
+const extraServiceQualificationReady = (verification?: Verification | null, profile?: HandymanProfileData | null) => {
+  const status = String(verification?.certificateStatus || profile?.certificate_status || '').toLowerCase();
+  return Boolean(verification?.certificateUrl || profile?.certificate_url || EXTRA_SERVICE_CERTIFICATE_STATUSES.has(status));
+};
+
+const POLICY_LINKS: Array<[string, string]> = [
+  ['Privacy Policy', 'https://ekazi.co.ke/privacy-policy'],
+  ['Terms of Service', 'https://ekazi.co.ke/terms'],
+  ['Anti-Spam Policy', 'https://ekazi.co.ke/anti-spam-policy'],
+  ['Complaints & Feedback', 'https://ekazi.co.ke/complaints-feedback'],
+  ['Refund & Cancellation Policy', 'https://ekazi.co.ke/refunds'],
+  ['Fulfillment & Delivery Policy', 'https://ekazi.co.ke/fulfillment'],
+  ['How Payments Work', 'https://ekazi.co.ke/payment-flow'],
+];
 
 function readJson<T>(key: string, fallback: T): T {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; }
@@ -61,18 +77,28 @@ export default function App() {
   const [user, setUser] = useState<User | null>(() => readJson<User | null>('ekazi_web_user', null));
   const [notice, setNotice] = useState('');
   useEffect(() => { if (!notice) return undefined; const id = window.setTimeout(() => setNotice(''), 4500); return () => window.clearTimeout(id); }, [notice]);
-  const onAuth = (nextToken: string, nextUser: User) => {
+  const onAuth = useCallback((nextToken: string, nextUser: User) => {
     const normalized = { ...nextUser, role: roleOf(nextUser.role) };
     localStorage.setItem('ekazi_web_token', nextToken);
     localStorage.setItem('ekazi_web_user', JSON.stringify(normalized));
-    setToken(nextToken); setUser(normalized);
-  };
-  const updateUser = (nextUser: User) => {
-    const normalized = { ...nextUser, role: roleOf(nextUser.role) };
-    localStorage.setItem('ekazi_web_user', JSON.stringify(normalized));
+    setToken(nextToken);
     setUser(normalized);
-  };
-  const logout = () => { localStorage.removeItem('ekazi_web_token'); localStorage.removeItem('ekazi_web_user'); setToken(''); setUser(null); };
+  }, []);
+  const updateUser = useCallback((nextUser: User) => {
+    const normalized = { ...nextUser, role: roleOf(nextUser.role) };
+    const serialized = JSON.stringify(normalized);
+    localStorage.setItem('ekazi_web_user', serialized);
+    setUser((prev) => {
+      if (prev && JSON.stringify(prev) === serialized) return prev;
+      return normalized;
+    });
+  }, []);
+  const logout = useCallback(() => {
+    localStorage.removeItem('ekazi_web_token');
+    localStorage.removeItem('ekazi_web_user');
+    setToken('');
+    setUser(null);
+  }, []);
   return <div className="app">{notice ? <div className="toast">{notice}</div> : null}{token && user ? <Workspace token={token} user={user} updateUser={updateUser} logout={logout} setNotice={setNotice} /> : <AuthPage onAuth={onAuth} setNotice={setNotice} />}</div>;
 }
 
@@ -104,12 +130,12 @@ function AuthPage({ onAuth, setNotice }: { onAuth: (token: string, user: User) =
   return <main className="auth-shell">
     <section className="brand-panel">
       <div className="logo-lockup"><div className="logo-mark">E</div><span>Ekazi</span></div>
-      <div className="hero-copy"><p className="eyebrow light">Kenyan handyman marketplace</p><h1>Home jobs, real quotes, verified pros.</h1><p className="lead">Request a service, share photos, compare quotes, message after booking, and work with handymen whose identity is approved by Ekazi.</p></div>
+      <div className="hero-copy"><p className="eyebrow light">Kenyan service provider marketplace</p><h1>Home jobs, real quotes, verified pros.</h1><p className="lead">Request a service, share photos, compare quotes, message after booking, and work with providers whose identity is approved by Ekazi.</p></div>
       <div className="hero-illustration" aria-hidden="true"><div className="iso-card a"><Hammer size={42} /><span>Fix</span></div><div className="iso-card b"><MapPin size={36} /><span>Near you</span></div><div className="iso-card c"><ShieldCheck size={36} /><span>Verified</span></div></div>
     </section>
     <section className="auth-card">
       <div className="mode-row"><button className={mode === 'create' ? 'active' : ''} onClick={() => setMode('create')}>Create account</button><button className={mode === 'signin' ? 'active' : ''} onClick={() => setMode('signin')}>Sign in</button></div>
-      <div className="role-row"><button className={role === 'client' ? 'role active' : 'role'} onClick={() => setRole('client')}><Home size={18} /> Client</button><button className={role === 'handyman' ? 'role active' : 'role'} onClick={() => setRole('handyman')}><Hammer size={18} /> Handyman</button></div>
+      <div className="role-row"><button className={role === 'client' ? 'role active' : 'role'} onClick={() => setRole('client')}><Home size={18} /> Client</button><button className={role === 'handyman' ? 'role active' : 'role'} onClick={() => setRole('handyman')}><Hammer size={18} /> Provider</button></div>
       <div className="google-box"><GoogleLogin onSuccess={(res) => void googleAuth(res.credential)} onError={() => setNotice('Google sign-in could not start.')} useOneTap={false} text={mode === 'create' ? 'continue_with' : 'signin_with'} /></div>
       <div className="divider"><span>or use email, phone and password</span></div>
       {mode === 'create' ? <><Field label="Full name" value={form.name} onChange={(v) => update('name', v)} /><Field label="Email" value={form.email} onChange={(v) => update('email', v)} /></> : null}
@@ -117,6 +143,7 @@ function AuthPage({ onAuth, setNotice }: { onAuth: (token: string, user: User) =
       <Field label="Password" type="password" value={form.password} onChange={(v) => update('password', v)} />
       {mode === 'create' ? <Field label="Confirm password" type="password" value={form.confirmPassword} onChange={(v) => update('confirmPassword', v)} /> : null}
       <button className="primary full" disabled={loading} onClick={() => void submit()}>{loading ? 'Working...' : mode === 'create' ? 'Create account' : 'Sign in'}</button>
+      <PolicyFooter compact />
     </section>
   </main>;
 }
@@ -127,6 +154,7 @@ function Workspace({ token, user, updateUser, logout, setNotice }: { token: stri
   const [tab, setTab] = useState(isHandyman ? 'jobs' : 'home');
   const [categories, setCategories] = useState<Category[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [completedJobs, setCompletedJobs] = useState<Job[]>([]);
   const [handymanJobs, setHandymanJobs] = useState<Job[]>([]);
   const [quotes, setQuotes] = useState<Record<string, Quote[]>>({});
   const [handymanQuotes, setHandymanQuotes] = useState<Quote[]>([]);
@@ -158,8 +186,8 @@ function Workspace({ token, user, updateUser, logout, setNotice }: { token: stri
         setVerification(openJobs.verification || profile.verification || profile.profile?.verification || null);
         setBlockedMessage(openJobs.blocked ? openJobs.message || 'Complete verification to receive nearby jobs.' : '');
       } else {
-        const [clientJobs, promotion] = await Promise.all([authApi<{ jobs: Job[] }>('/api/jobs?status=active'), authApi<{ eligible?: boolean; description?: string }>('/api/promotions/first-job')]);
-        setJobs(clientJobs.jobs || []); setPromo(promotion);
+        const [clientJobs, clientCompletedJobs, promotion] = await Promise.all([authApi<{ jobs: Job[] }>('/api/jobs?status=active'), authApi<{ jobs: Job[] }>('/api/jobs?status=completed'), authApi<{ eligible?: boolean; description?: string }>('/api/promotions/first-job')]);
+        setJobs(clientJobs.jobs || []); setCompletedJobs(clientCompletedJobs.jobs || []); setPromo(promotion);
       }
     } catch (error) { setNotice(messageOf(error)); } finally { setRefreshing(false); }
   }, [authApi, isHandyman, refreshAccount, setNotice]);
@@ -170,15 +198,16 @@ function Workspace({ token, user, updateUser, logout, setNotice }: { token: stri
     : [['home', 'Home', Home], ['request', 'Request', Send], ['quotes', 'Quotes', WalletCards], ['messages', 'Messages', MessageCircle], ['profile', 'Profile', ShieldCheck]];
   return <main className="workspace">
     <aside className="sidebar"><div className="side-brand"><div className="logo-mark small">E</div><strong>Ekazi</strong></div><nav>{navItems.map(([id, label, Icon]) => <button key={id as string} className={tab === id ? 'active' : ''} onClick={() => setTab(id as string)}><Icon size={18} /><span>{label as string}</span></button>)}</nav><button className="ghost logout" onClick={logout}><LogOut size={18} /> Logout</button></aside>
-    <section className="content"><header className="topbar"><div><p className="eyebrow">{isHandyman ? 'Handyman workspace' : 'Client workspace'}</p><h2>{user.name || 'Ekazi user'}</h2><p className="muted"><Phone size={15} /> {user.phone || 'Contact pending'}</p></div><button className="ghost" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />} Refresh</button></header>
+    <section className="content"><header className="topbar"><div><p className="eyebrow">{isHandyman ? 'Provider workspace' : 'Client workspace'}</p><h2>{user.name || 'Ekazi user'}</h2><p className="muted"><Phone size={15} /> {user.phone || 'Contact pending'}</p></div><button className="ghost" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? <Loader2 className="spin" size={18} /> : <RefreshCw size={18} />} Refresh</button></header>
       {!user.profileComplete || !user.phone ? <CompleteProfile user={user} role={role} categories={categories} authApi={authApi} updateUser={updateUser} setNotice={setNotice} /> : null}
       {!isHandyman && tab === 'home' ? <ClientHome jobs={jobs} promo={promo} quotes={quotes} loadQuotes={loadQuotes} /> : null}
       {!isHandyman && tab === 'request' ? <RequestJob token={token} categories={categories} authApi={authApi} onCreated={refresh} setNotice={setNotice} /> : null}
-      {!isHandyman && tab === 'quotes' ? <ClientQuotes jobs={jobs} quotes={quotes} loadQuotes={loadQuotes} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : null}
+      {!isHandyman && tab === 'quotes' ? <ClientQuotes jobs={jobs} completedJobs={completedJobs} quotes={quotes} loadQuotes={loadQuotes} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : null}
       {isHandyman && tab === 'jobs' ? <HandymanJobs jobs={handymanJobs} verification={verification} blockedMessage={blockedMessage} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : null}
-      {isHandyman && tab === 'quotes' ? <HandymanQuotes quotes={handymanQuotes} /> : null}
+      {isHandyman && tab === 'quotes' ? <HandymanQuotes quotes={handymanQuotes} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : null}
       {tab === 'messages' ? <Messages conversations={conversations} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : null}
-      {tab === 'profile' ? <ProfilePanel role={role} user={user} token={token} categories={categories} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : null}
+      {tab === 'profile' ? <ProfilePanel role={role} user={user} token={token} categories={categories} authApi={authApi} setNotice={setNotice} refresh={refresh} logout={logout} /> : null}
+      <PolicyFooter />
     </section>
   </main>;
 }
@@ -195,11 +224,11 @@ function CompleteProfile({ user, role, categories, authApi, updateUser, setNotic
       updateUser(data.user); setNotice('Profile completed. You can now continue.');
     } catch (error) { setNotice(messageOf(error)); } finally { setSaving(false); }
   };
-  return <section className="panel attention"><div className="section-head"><div><p className="eyebrow">Required setup</p><h3>Add your contact details</h3><p className="muted">Google accounts need a Kenyan phone number before jobs, quotes, and messages are unlocked.</p></div><ShieldCheck size={34} /></div><div className="form-grid"><Field label="Full name" value={form.name} onChange={(v) => update('name', v)} /><Field label="Phone" value={form.phone} placeholder="+2547xx xxx xxx" onChange={(v) => update('phone', v)} /><Field label="City" value={form.city} onChange={(v) => update('city', v)} /><Field label="Estate" value={form.estate} onChange={(v) => update('estate', v)} /><Field label="Emergency contact" value={form.emergencyContact} placeholder="Optional" onChange={(v) => update('emergencyContact', v)} /><label className="field"><span>Contact preference</span><select value={form.contactPreference} onChange={(e) => update('contactPreference', e.target.value)}><option value="phone">Phone</option><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option></select></label>{role === 'handyman' ? <Field label="Business name" value={form.businessName} onChange={(v) => update('businessName', v)} /> : null}{role === 'handyman' ? <Field label="Service radius km" value={form.serviceRadiusKm} onChange={(v) => update('serviceRadiusKm', v)} /> : null}{role === 'handyman' ? <Field label="Short bio" value={form.bio} onChange={(v) => update('bio', v)} textarea /> : null}</div>{role === 'handyman' ? <CategoryPicker categories={categories} selected={selected} setSelected={setSelected} /> : null}<button className="primary" disabled={saving} onClick={() => void save()}>{saving ? 'Saving...' : 'Save and continue'}</button></section>;
+  return <section className="panel attention"><div className="section-head"><div><p className="eyebrow">Required setup</p><h3>Add your contact details</h3><p className="muted">Google accounts need a Kenyan phone number before jobs, quotes, and messages are unlocked.</p></div><ShieldCheck size={34} /></div><div className="form-grid"><Field label="Full name" value={form.name} onChange={(v) => update('name', v)} /><Field label="Phone" value={form.phone} placeholder="+2547xx xxx xxx" onChange={(v) => update('phone', v)} /><Field label="City" value={form.city} onChange={(v) => update('city', v)} /><Field label="Estate" value={form.estate} onChange={(v) => update('estate', v)} /><Field label="Emergency contact" value={form.emergencyContact} placeholder="Optional" onChange={(v) => update('emergencyContact', v)} /><label className="field"><span>Contact preference</span><select value={form.contactPreference} onChange={(e) => update('contactPreference', e.target.value)}><option value="phone">Phone</option><option value="whatsapp">WhatsApp</option><option value="sms">SMS</option></select></label>{role === 'handyman' ? <Field label="Business name" value={form.businessName} onChange={(v) => update('businessName', v)} /> : null}{role === 'handyman' ? <Field label="Service radius km" value={form.serviceRadiusKm} onChange={(v) => update('serviceRadiusKm', v)} /> : null}{role === 'handyman' ? <Field label="Short bio" value={form.bio} onChange={(v) => update('bio', v)} textarea /> : null}</div>{role === 'handyman' ? <><CategoryPicker categories={categories} selected={selected} setSelected={setSelected} maxSelection={PROVIDER_FREE_SERVICE_LIMIT} onLimitReached={() => setNotice('Choose up to 2 services for now. Upload a qualification certificate from Profile before adding a third service.')} /><p className="muted service-rule">Start with 1 or 2 core services. Extra services unlock after your qualification certificate is submitted.</p></> : null}<button className="primary" disabled={saving} onClick={() => void save()}>{saving ? 'Saving...' : 'Save and continue'}</button></section>;
 }
 
 function ClientHome({ jobs, promo, quotes, loadQuotes }: { jobs: Job[]; promo: { eligible?: boolean; description?: string } | null; quotes: Record<string, Quote[]>; loadQuotes: (jobId: string) => Promise<void> }) {
-  return <div className="grid two"><section className="panel offer"><p className="eyebrow">First booking</p><h3>FIRST10 {promo?.eligible ? 'available' : 'status'}</h3><p>{promo?.description || 'Eligible first jobs receive the live promotion from the backend.'}</p></section><section className="panel stats"><p className="eyebrow">Requests</p><h3>{jobs.length} active</h3><p>Only real requests and quote counts are shown here.</p></section><section className="panel wide"><div className="section-head"><h3>Recent requests</h3><Sparkles size={26} /></div><div className="list">{jobs.map((job) => <JobRow key={job.id} job={job} actionLabel={`View ${job.quoteCount || 0} quotes`} onAction={() => void loadQuotes(job.id)} />)}{!jobs.length ? <Empty text="No active requests yet. Create a job to start receiving quotes." /> : null}</div>{Object.entries(quotes).map(([jobId, list]) => <QuoteList key={jobId} quotes={list} />)}</section></div>;
+  return <div className="grid two"><section className="panel offer"><p className="eyebrow">First booking</p><h3>FIRST5 {promo?.eligible ? 'available' : 'status'}</h3><p>{promo?.description || 'Eligible first jobs receive the live promotion from the backend.'}</p></section><section className="panel stats"><p className="eyebrow">Requests</p><h3>{jobs.length} active</h3><p>Only real requests and quote counts are shown here.</p></section><section className="panel wide"><div className="section-head"><h3>Recent requests</h3><Sparkles size={26} /></div><div className="list">{jobs.map((job) => <JobRow key={job.id} job={job} actionLabel={`View ${job.quoteCount || 0} quotes`} onAction={() => void loadQuotes(job.id)} />)}{!jobs.length ? <Empty text="No active requests yet. Create a job to start receiving quotes." /> : null}</div>{Object.entries(quotes).map(([jobId, list]) => <QuoteList key={jobId} quotes={list} />)}</section></div>;
 }
 
 function RequestJob({ token, categories, authApi, onCreated, setNotice }: { token: string; categories: Category[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; onCreated: () => Promise<void>; setNotice: (message: string) => void }) {
@@ -216,54 +245,116 @@ function RequestJob({ token, categories, authApi, onCreated, setNotice }: { toke
   const submit = async () => {
     setSaving(true);
     try {
-      const created = await authApi<{ job: Job }>('/api/jobs', { method: 'POST', body: { ...form, categoryName: selectedCategory?.name, latitude: Number(form.latitude) || null, longitude: Number(form.longitude) || null, budgetMin: Number(form.budgetMin) || null, budgetMax: Number(form.budgetMax) || null, discountCode: 'FIRST10' } });
+      const created = await authApi<{ job: Job }>('/api/jobs', { method: 'POST', body: { ...form, categoryName: selectedCategory?.name, latitude: Number(form.latitude) || null, longitude: Number(form.longitude) || null, budgetMin: Number(form.budgetMin) || null, budgetMax: Number(form.budgetMax) || null, discountCode: 'FIRST5' } });
       if (files.length && created.job?.id) { const urls = await Promise.all(files.map((file) => uploadFile(file, token, 'image'))); await authApi(`/api/jobs/${created.job.id}/photos`, { method: 'POST', body: { photoUrls: urls } }); }
-      setNotice('Job posted. Nearby verified handymen can now send quotes.'); setForm((prev) => ({ ...prev, description: '', notes: '' })); setFiles([]); setPreviews([]); await onCreated();
+      setNotice('Job posted. Nearby verified providers can now send quotes.'); setForm((prev) => ({ ...prev, description: '', notes: '' })); setFiles([]); setPreviews([]); await onCreated();
     } catch (error) { setNotice(messageOf(error)); } finally { setSaving(false); }
   };
-  return <section className="panel wide"><div className="section-head"><div><p className="eyebrow">Request flow</p><h3>Request a quote</h3></div><Send size={28} /></div><CategoryPicker categories={categories} selected={[form.categoryId]} setSelected={(next) => update('categoryId', next[next.length - 1] || '')} single /><div className="prompt-strip">{prompts.map((prompt) => <button key={prompt} onClick={() => update('description', `${form.description}${form.description ? '\n' : ''}${prompt}: `)}>{prompt}</button>)}</div><div className="form-grid"><Field label="Describe the job" value={form.description} onChange={(v) => update('description', v)} textarea /><Field label="Estate" value={form.estate} onChange={(v) => update('estate', v)} /><Field label="City" value={form.city} onChange={(v) => update('city', v)} /><Field label="Address or landmark" value={form.address} onChange={(v) => update('address', v)} /><Field label="Latitude" value={form.latitude} onChange={(v) => update('latitude', v)} /><Field label="Longitude" value={form.longitude} onChange={(v) => update('longitude', v)} /><label className="field"><span>Schedule type</span><select value={form.scheduleType} onChange={(e) => update('scheduleType', e.target.value)}><option value="soon">As soon as possible</option><option value="scheduled">Scheduled</option><option value="flexible">Flexible</option></select></label><Field label="Scheduled for" type="datetime-local" value={form.scheduledFor} onChange={(v) => update('scheduledFor', v)} /><Field label="Minimum budget" value={form.budgetMin} onChange={(v) => update('budgetMin', v)} /><Field label="Maximum budget" value={form.budgetMax} onChange={(v) => update('budgetMax', v)} /><Field label="Notes" value={form.notes} onChange={(v) => update('notes', v)} textarea /></div><LocationPreview lat={Number(form.latitude)} lng={Number(form.longitude)} label={`${form.estate}, ${form.city}`} /><label className="upload-box"><input type="file" accept="image/*" multiple onChange={(e) => chooseFiles(e.target.files)} /><ImagePlus size={22} /> Add photos with preview</label>{previews.length ? <div className="preview-grid">{previews.map((url) => <img key={url} src={url} alt="Job preview" />)}</div> : null}<label className="check"><input type="checkbox" checked={form.providerBringsMaterials} onChange={(e) => update('providerBringsMaterials', e.target.checked)} /> Ask the handyman to include materials.</label><button className="primary" disabled={saving} onClick={() => void submit()}>{saving ? 'Posting...' : 'Post request'}</button></section>;
+  return <section className="panel wide"><div className="section-head"><div><p className="eyebrow">Request flow</p><h3>Request a quote</h3></div><Send size={28} /></div><CategoryPicker categories={categories} selected={[form.categoryId]} setSelected={(next) => update('categoryId', next[next.length - 1] || '')} single /><div className="prompt-strip">{prompts.map((prompt) => <button key={prompt} onClick={() => update('description', `${form.description}${form.description ? '\n' : ''}${prompt}: `)}>{prompt}</button>)}</div><div className="form-grid"><Field label="Describe the job" value={form.description} onChange={(v) => update('description', v)} textarea /><Field label="Estate" value={form.estate} onChange={(v) => update('estate', v)} /><Field label="City" value={form.city} onChange={(v) => update('city', v)} /><Field label="Address or landmark" value={form.address} onChange={(v) => update('address', v)} /><Field label="Latitude" value={form.latitude} onChange={(v) => update('latitude', v)} /><Field label="Longitude" value={form.longitude} onChange={(v) => update('longitude', v)} /><label className="field"><span>Schedule type</span><select value={form.scheduleType} onChange={(e) => update('scheduleType', e.target.value)}><option value="soon">As soon as possible</option><option value="scheduled">Scheduled</option><option value="flexible">Flexible</option></select></label><Field label="Scheduled for" type="datetime-local" value={form.scheduledFor} onChange={(v) => update('scheduledFor', v)} /><Field label="Minimum budget" value={form.budgetMin} onChange={(v) => update('budgetMin', v)} /><Field label="Maximum budget" value={form.budgetMax} onChange={(v) => update('budgetMax', v)} /><Field label="Notes" value={form.notes} onChange={(v) => update('notes', v)} textarea /></div><LocationPreview lat={Number(form.latitude)} lng={Number(form.longitude)} label={`${form.estate}, ${form.city}`} /><label className="upload-box"><input type="file" accept="image/*" multiple onChange={(e) => chooseFiles(e.target.files)} /><ImagePlus size={22} /> Add photos with preview</label>{previews.length ? <div className="preview-grid">{previews.map((url) => <img key={url} src={url} alt="Job preview" />)}</div> : null}<label className="check"><input type="checkbox" checked={form.providerBringsMaterials} onChange={(e) => update('providerBringsMaterials', e.target.checked)} /> Ask the provider to include materials.</label><button className="primary" disabled={saving} onClick={() => void submit()}>{saving ? 'Posting...' : 'Post request'}</button></section>;
 }
 
 
-function ClientQuotes({ jobs, quotes, loadQuotes, authApi, setNotice, refresh }: { jobs: Job[]; quotes: Record<string, Quote[]>; loadQuotes: (jobId: string) => Promise<void>; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+function ClientQuotes({ jobs, completedJobs, quotes, loadQuotes, authApi, setNotice, refresh }: { jobs: Job[]; completedJobs: Job[]; quotes: Record<string, Quote[]>; loadQuotes: (jobId: string) => Promise<void>; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
   const accept = async (quoteId: string) => {
     try { await authApi(`/api/quotes/${quoteId}/accept`, { method: 'POST' }); setNotice('Quote accepted. Messaging is now available from Messages.'); await refresh(); }
     catch (error) { setNotice(messageOf(error)); }
   };
-  return <section className="panel wide"><div className="section-head"><h3>Quotes received</h3><WalletCards size={26} /></div><div className="list">{jobs.map((job) => <div key={job.id} className="quote-group"><JobRow job={job} actionLabel="Load real quotes" onAction={() => void loadQuotes(job.id)} /><QuoteList quotes={quotes[job.id] || []} onAccept={accept} /></div>)}{!jobs.length ? <Empty text="No requests yet. Quotes will appear only after handymen submit them." /> : null}</div></section>;
+  const decline = async (quoteId: string) => {
+    try { const result = await authApi<{ forwardedTo?: number }>(`/api/quotes/${quoteId}/decline`, { method: 'POST', body: { reason: 'Price or fit did not work for me', reasonCode: 'price_or_fit' } }); setNotice(result.forwardedTo ? 'Quote declined. The next nearby provider has been alerted.' : 'Quote declined. Ekazi will keep looking for another provider.'); await refresh(); }
+    catch (error) { setNotice(messageOf(error)); }
+  };
+  const completedBookings = completedJobs.filter((job) => job.booking?.id);
+  return <section className="panel wide"><div className="section-head"><h3>Quotes received</h3><WalletCards size={26} /></div><div className="list">{jobs.map((job) => <div key={job.id} className="quote-group"><JobRow job={job} actionLabel="Load real quotes" onAction={() => void loadQuotes(job.id)} /><QuoteList quotes={quotes[job.id] || []} onAccept={accept} onDecline={decline} /></div>)}{completedBookings.map((job) => <ClientBookingRating key={job.booking?.id || job.id} job={job} authApi={authApi} setNotice={setNotice} refresh={refresh} />)}{!jobs.length && !completedBookings.length ? <Empty text="No requests yet. Quotes and completed bookings will appear here from real provider activity." /> : null}</div></section>;
+}
+
+function ClientBookingRating({ job, authApi, setNotice, refresh }: { job: Job; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+  const [rating, setRating] = useState(0);
+  const [comment, setComment] = useState('');
+  const [saving, setSaving] = useState(false);
+  const bookingId = job.booking?.id;
+  const savedRating = Number(job.booking?.review?.rating || 0);
+  const submit = async () => {
+    if (!bookingId) return;
+    if (!rating) return setNotice('Choose 1 to 5 stars before submitting.');
+    setSaving(true);
+    try {
+      await authApi(`/api/bookings/${bookingId}/rating`, { method: 'POST', body: { rating, comment: comment.trim() || undefined } });
+      setNotice('Provider rating saved. Thank you for helping keep Ekazi reliable.');
+      await refresh();
+    } catch (error) { setNotice(messageOf(error)); } finally { setSaving(false); }
+  };
+  return <article className="quote-card rating-card"><div className="quote-body"><p className="eyebrow">Completed booking #{bookingId}</p><h4>{job.booking?.providerName || 'Ekazi Provider'}</h4><p className="muted">{job.description}</p><p className="muted"><MapPin size={14} /> {job.estate}, {job.city}</p>{savedRating ? <p className="saving">You rated this provider {savedRating}/5.</p> : <><div className="star-row">{[1, 2, 3, 4, 5].map((value) => <button key={value} className={value <= rating ? 'star active' : 'star'} onClick={() => setRating(value)} aria-label={`Rate ${value} stars`}><Star size={18} fill="currentColor" /></button>)}</div><textarea className="inline-textarea" value={comment} onChange={(e) => setComment(e.target.value)} placeholder="Optional comment for the provider and Ekazi" rows={3} /></>}</div><div className="quote-actions">{savedRating ? <span className="status">Reviewed</span> : <button className="primary" disabled={saving} onClick={() => void submit()}>{saving ? 'Saving...' : 'Submit rating'}</button>}</div></article>;
 }
 
 function HandymanJobs({ jobs, verification, blockedMessage, authApi, setNotice, refresh }: { jobs: Job[]; verification: Verification | null; blockedMessage: string; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
   const [activeJob, setActiveJob] = useState<Job | null>(null);
-  return <div className="grid two">{blockedMessage ? <VerificationGate verification={verification} message={blockedMessage} /> : null}<section className="panel"><div className="section-head"><h3>Nearest open jobs</h3><Navigation size={25} /></div><div className="list">{jobs.map((job) => <JobRow key={job.id} job={job} actionLabel="Send quote" onAction={() => setActiveJob(job)} />)}{!jobs.length && !blockedMessage ? <Empty text="No nearby jobs in your categories and service radius right now." /> : null}</div></section><QuoteForm job={activeJob} authApi={authApi} setNotice={setNotice} refresh={refresh} /></div>;
+  const canReceiveJobs = Boolean(verification?.verified);
+  const visibleJobs = canReceiveJobs ? jobs : [];
+  const lockMessage = blockedMessage || 'Profile photo and national ID must be approved by Ekazi admin before nearby jobs or quote tools unlock.';
+  useEffect(() => { if (!canReceiveJobs && activeJob) setActiveJob(null); }, [canReceiveJobs, activeJob]);
+  return <div className="grid two">
+    <VerificationGate verification={verification} message={canReceiveJobs ? 'Account active for nearby jobs and quotes.' : lockMessage} />
+    <section className="panel">
+      <div className="section-head"><h3>{canReceiveJobs ? 'Nearest open jobs' : 'Nearby jobs locked'}</h3><Navigation size={25} /></div>
+      {!canReceiveJobs ? <Empty text="Upload your profile photo and National ID from Profile. Nearby work only appears after both are approved." /> : null}
+      <div className="list">{visibleJobs.map((job) => <JobRow key={job.id} job={job} actionLabel="Send quote" onAction={() => setActiveJob(job)} />)}{canReceiveJobs && !visibleJobs.length ? <Empty text="No nearby jobs in your categories and service radius right now." /> : null}</div>
+    </section>
+    {canReceiveJobs ? <QuoteForm job={activeJob} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : <section className="panel locked-panel"><h3>Quote submission locked</h3><p className="muted">Ekazi unlocks quote submission only after your required identity documents are approved.</p></section>}
+  </div>;
 }
 
-function QuoteForm({ job, authApi, setNotice, refresh }: { job: Job | null; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+function QuoteForm({ job, quote, authApi, setNotice, refresh }: { job: Job | null; quote?: Quote | null; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
   const [form, setForm] = useState({ labor: '2500', materials: '0', transport: '500', etaMinutes: '60', durationHours: '2', message: '' });
+  useEffect(() => {
+    if (quote) {
+      setForm({ labor: String(quote.labor || 0), materials: String(quote.materials || 0), transport: String(quote.transport || 0), etaMinutes: String(quote.etaMinutes || 60), durationHours: String(quote.durationHours || 2), message: quote.message || '' });
+    } else if (job) {
+      setForm({ labor: '2500', materials: '0', transport: '500', etaMinutes: '60', durationHours: '2', message: '' });
+    }
+  }, [job?.id, quote?.id]);
   const update = (key: keyof typeof form, value: string) => setForm((prev) => ({ ...prev, [key]: value }));
   const subtotal = Number(form.labor || 0) + Number(form.materials || 0) + Number(form.transport || 0);
-  const commission = subtotal * 0.15;
+  const discountPreview = Number(form.labor || 0) * (Number(job?.discountPercent || 0) / 100);
+  const commission = Math.max(0, Number(form.labor || 0) * 0.10 - discountPreview);
   const submit = async () => {
     if (!job) return;
-    try { await authApi(`/api/handyman/jobs/${job.id}/quotes`, { method: 'POST', body: { labor: Number(form.labor), materials: Number(form.materials), transport: Number(form.transport), etaMinutes: Number(form.etaMinutes), durationHours: Number(form.durationHours), message: form.message } }); setNotice('Quote sent to the client.'); await refresh(); }
+    try { await authApi(`/api/handyman/jobs/${job.id}/quotes`, { method: 'POST', body: { labor: Number(form.labor), materials: Number(form.materials), transport: Number(form.transport), etaMinutes: Number(form.etaMinutes), durationHours: Number(form.durationHours), message: form.message.trim() || undefined } }); setNotice(quote ? 'Quote updated for the client.' : 'Quote sent to the client.'); await refresh(); }
     catch (error) { setNotice(messageOf(error)); }
   };
-  return <section className="panel"><h3>{job ? 'Send quote' : 'Select a job'}</h3>{job ? <><p className="muted"><MapPin size={15} /> {job.estate}, {job.city}{job.distanceKm != null ? ` - ${job.distanceKm.toFixed(1)} km` : ''}</p><p>{job.description}</p></> : <Empty text="Pick a nearby job from the board to quote." />}<div className="form-grid single"><Field label="Labour" value={form.labor} onChange={(v) => update('labor', v)} /><Field label="Materials" value={form.materials} onChange={(v) => update('materials', v)} /><Field label="Transport" value={form.transport} onChange={(v) => update('transport', v)} /><Field label="ETA minutes" value={form.etaMinutes} onChange={(v) => update('etaMinutes', v)} /><Field label="Duration hours" value={form.durationHours} onChange={(v) => update('durationHours', v)} /><Field label="Message" value={form.message} onChange={(v) => update('message', v)} textarea /></div><div className="commission-box"><span>Ekazi commission 15%</span><strong>{money(commission)}</strong><small>Estimated net: {money(subtotal - commission)}</small></div><button className="primary" disabled={!job} onClick={() => void submit()}><Send size={18} /> Submit quote</button></section>;
+  return <section className="panel"><h3>{job ? (quote ? 'Edit quote' : 'Send quote') : 'Select a job'}</h3>{job ? <><p className="muted"><MapPin size={15} /> {job.estate}, {job.city}{job.distanceKm != null ? ` - ${job.distanceKm.toFixed(1)} km` : ''}</p><p>{job.description}</p></> : <Empty text="Pick a nearby job from the board to quote." />}<div className="form-grid single"><Field label="Labour" value={form.labor} onChange={(v) => update('labor', v)} /><Field label="Materials" value={form.materials} onChange={(v) => update('materials', v)} /><Field label="Transport" value={form.transport} onChange={(v) => update('transport', v)} /><Field label="ETA minutes" value={form.etaMinutes} onChange={(v) => update('etaMinutes', v)} /><Field label="Duration hours" value={form.durationHours} onChange={(v) => update('durationHours', v)} /><Field label="Message to client (optional)" value={form.message} onChange={(v) => update('message', v)} textarea placeholder="Optional: explain what is included and when you can start." /></div><div className="commission-box"><span>Ekazi net commission after platform discount</span><strong>{money(commission)}</strong><small>Estimated net: {money(subtotal - commission)}</small></div><button className="primary" disabled={!job} onClick={() => void submit()}><Send size={18} /> {quote ? 'Update quote' : 'Submit quote'}</button></section>;
 }
 
-function HandymanQuotes({ quotes }: { quotes: Quote[] }) {
-  return <section className="panel wide"><div className="section-head"><h3>My quotes</h3><WalletCards size={26} /></div><QuoteList quotes={quotes} />{!quotes.length ? <Empty text="Quotes you send to clients will appear here." /> : null}</section>;
+function HandymanQuotes({ quotes, authApi, setNotice, refresh }: { quotes: Quote[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+  const [editingQuote, setEditingQuote] = useState<Quote | null>(null);
+  const editJob = editingQuote ? { id: editingQuote.jobId || editingQuote.id, description: editingQuote.job?.description || 'Submitted quote', estate: editingQuote.job?.estate || '', city: editingQuote.job?.city || '', discountPercent: 0 } as Job : null;
+  return <section className="panel wide"><div className="section-head"><h3>My quotes</h3><WalletCards size={26} /></div><div className="quote-list">{quotes.map((quote) => <article className="quote-card" key={quote.id}><div className="quote-body"><p className="eyebrow">{quote.job?.description || 'Provider quote'}</p><h4>{money(quote.total)}</h4><p className="muted">Labour {money(quote.labor)} + materials {money(quote.materials)} + transport {money(quote.transport)}</p>{quote.message ? <p>{quote.message}</p> : null}</div><div className="quote-actions">{quote.status === 'open' && !quote.booking?.id ? <button className="secondary" onClick={() => setEditingQuote(quote)}>Edit</button> : <span className="status">{quote.status || 'open'}</span>}</div></article>)}</div>{editingQuote ? <QuoteForm job={editJob} quote={editingQuote} authApi={authApi} setNotice={setNotice} refresh={async () => { await refresh(); setEditingQuote(null); }} /> : null}{quotes.filter((quote) => quote.booking?.id).map((quote) => <ProviderBookingActions key={quote.booking?.id} quote={quote} authApi={authApi} setNotice={setNotice} refresh={refresh} />)}{!quotes.length ? <Empty text="Quotes you send to clients will appear here." /> : null}</section>;
 }
 
-function ProfilePanel({ role, user, token, categories, authApi, setNotice, refresh }: { role: Role; user: User; token: string; categories: Category[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
-  return role === 'handyman' ? <HandymanProfile token={token} categories={categories} authApi={authApi} setNotice={setNotice} refresh={refresh} /> : <ClientProfile user={user} />;
+function ProviderBookingActions({ quote, authApi, setNotice, refresh }: { quote: Quote; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+  const bookingId = quote.booking?.id;
+  const status = quote.booking?.status || '';
+  const [busy, setBusy] = useState('');
+  const action = async (next: 'arrived' | 'complete') => {
+    if (!bookingId) return;
+    setBusy(next);
+    try {
+      await authApi(`/api/bookings/${bookingId}/${next}`, { method: 'POST' });
+      setNotice(next === 'arrived' ? 'Arrival marked. The client can see that service is starting.' : 'Job completed. The client can now rate your service.');
+      await refresh();
+    } catch (error) { setNotice(messageOf(error)); } finally { setBusy(''); }
+  };
+  return <article className="row-card"><div className="row-main"><p className="eyebrow">Booking #{bookingId}</p><h4>{quote.job?.description || 'Accepted booking'}</h4><p className="muted"><MapPin size={14} /> {quote.job?.estate || 'Client location'}, {quote.job?.city || 'Kenya'}</p><p className="muted">Status: {status === 'in_progress' ? 'Provider arrived' : status === 'completed' ? 'Completed' : status || 'confirmed'}</p></div><div className="quote-actions">{status === 'confirmed' ? <button className="primary" disabled={Boolean(busy)} onClick={() => void action('arrived')}>{busy === 'arrived' ? 'Saving...' : 'Arrived'}</button> : null}{status === 'in_progress' ? <button className="primary" disabled={Boolean(busy)} onClick={() => void action('complete')}>{busy === 'complete' ? 'Completing...' : 'Mark Complete'}</button> : null}{status === 'completed' ? <span className="status">Waiting for client rating</span> : null}</div></article>;
 }
 
-function ClientProfile({ user }: { user: User }) {
-  return <section className="panel wide"><div className="profile-hero"><div><p className="eyebrow">Client profile</p><h3>{user.name}</h3><p>{user.email}</p><p><Phone size={15} /> {user.phone || 'Phone missing'}</p></div><BadgeCheck size={36} /></div><div className="grid two"><div className="mini-card"><strong>Preferred estate</strong><span>{user.preferredEstate || 'Not set'}</span></div><div className="mini-card"><strong>Contact</strong><span>{user.contactPreference || 'phone'}</span></div></div></section>;
+function ProfilePanel({ role, user, token, categories, authApi, setNotice, refresh, logout }: { role: Role; user: User; token: string; categories: Category[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void>; logout: () => void }) {
+  return role === 'handyman' ? <HandymanProfile token={token} categories={categories} authApi={authApi} setNotice={setNotice} refresh={refresh} logout={logout} /> : <ClientProfile user={user} authApi={authApi} setNotice={setNotice} logout={logout} />;
 }
 
-function HandymanProfile({ token, categories, authApi, setNotice, refresh }: { token: string; categories: Category[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
+function ClientProfile({ user, authApi, setNotice, logout }: { user: User; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; logout: () => void }) {
+  return <section className="panel wide"><div className="profile-hero"><div><p className="eyebrow">Client profile</p><h3>{user.name}</h3><p>{user.email}</p><p><Phone size={15} /> {user.phone || 'Phone missing'}</p></div><BadgeCheck size={36} /></div><div className="grid two"><div className="mini-card"><strong>Preferred estate</strong><span>{user.preferredEstate || 'Not set'}</span></div><div className="mini-card"><strong>Contact</strong><span>{user.contactPreference || 'phone'}</span></div></div><AccountControls authApi={authApi} setNotice={setNotice} logout={logout} /></section>;
+}
+
+function HandymanProfile({ token, categories, authApi, setNotice, refresh, logout }: { token: string; categories: Category[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void>; logout: () => void }) {
   const [profile, setProfile] = useState<HandymanProfileData | null>(null);
   const [verification, setVerification] = useState<Verification | null>(null);
   const [form, setForm] = useState({ address: 'Nairobi CBD', estate: 'Kilimani', city: 'Nairobi', latitude: String(CENTER.latitude), longitude: String(CENTER.longitude), serviceRadiusKm: '20' });
@@ -284,10 +375,27 @@ function HandymanProfile({ token, categories, authApi, setNotice, refresh }: { t
   };
   const uploadVerification = async (documentType: 'profile_image' | 'id_document' | 'certificate' | 'good_conduct', file: File | null) => {
     if (!file) return; setBusy(documentType);
-    try { const url = await uploadFile(file, token, documentType === 'profile_image' ? 'image' : 'doc'); const data = await authApi<{ profile: HandymanProfileData; verification?: Verification }>('/api/handyman/profile/verification', { method: 'PUT', body: { documentType, url } }); setProfile(data.profile); setVerification(data.verification || data.profile?.verification || null); setNotice('Document submitted for admin review.'); await refresh(); }
+    try { const uploadKind = file.type?.startsWith('image/') ? 'image' : documentType === 'profile_image' ? 'image' : 'doc'; const url = await uploadFile(file, token, uploadKind); const data = await authApi<{ profile: HandymanProfileData; verification?: Verification }>('/api/handyman/profile/verification', { method: 'PUT', body: { documentType, url } }); setProfile(data.profile); setVerification(data.verification || data.profile?.verification || null); setNotice('Document submitted for admin review.'); await load(); await refresh(); }
     catch (error) { setNotice(messageOf(error)); } finally { setBusy(''); }
   };
-  return <section className="panel wide"><div className="section-head"><div><p className="eyebrow">Handyman profile</p><h3>Service area and verification</h3></div><ShieldCheck size={30} /></div><div className="profile-grid"><div><div className="form-grid"><Field label="Address" value={form.address} onChange={(v) => setForm((p) => ({ ...p, address: v }))} /><Field label="Estate" value={form.estate} onChange={(v) => setForm((p) => ({ ...p, estate: v }))} /><Field label="City" value={form.city} onChange={(v) => setForm((p) => ({ ...p, city: v }))} /><Field label="Service radius km" value={form.serviceRadiusKm} onChange={(v) => setForm((p) => ({ ...p, serviceRadiusKm: v }))} /><Field label="Latitude" value={form.latitude} onChange={(v) => setForm((p) => ({ ...p, latitude: v }))} /><Field label="Longitude" value={form.longitude} onChange={(v) => setForm((p) => ({ ...p, longitude: v }))} /></div><CategoryPicker categories={categories} selected={selected} setSelected={setSelected} /><LocationPreview lat={Number(form.latitude)} lng={Number(form.longitude)} label={form.estate} /><button className="primary" onClick={() => void saveLocation()}><CheckCircle2 size={18} /> Save service profile</button></div><div><VerificationGate verification={verification || profileVerification(profile)} message="Profile photo and national ID must be approved before jobs and quotes are active." /><DocumentUploader title="Profile photo" required status={verification?.profileImageStatus || profile?.profile_image_status} busy={busy === 'profile_image'} accept="image/*" onPick={(file) => void uploadVerification('profile_image', file)} icon={<Camera size={20} />} /><DocumentUploader title="National ID" required status={verification?.idDocumentStatus || profile?.id_document_status} busy={busy === 'id_document'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('id_document', file)} icon={<ShieldCheck size={20} />} /><DocumentUploader title="Qualification certificate" status={verification?.certificateStatus || profile?.certificate_status} busy={busy === 'certificate'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('certificate', file)} icon={<FileCheck2 size={20} />} /><DocumentUploader title="Good conduct" status={verification?.goodConductStatus || profile?.good_conduct_status} busy={busy === 'good_conduct'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('good_conduct', file)} icon={<BadgeCheck size={20} />} /></div></div></section>;
+  const currentVerification = verification || profileVerification(profile);
+  const canAddExtraServices = extraServiceQualificationReady(currentVerification, profile);
+  return <section className="panel wide"><div className="section-head"><div><p className="eyebrow">Provider profile</p><h3>Service area and verification</h3></div><ShieldCheck size={30} /></div><div className="profile-grid"><div><div className="form-grid"><Field label="Address" value={form.address} onChange={(v) => setForm((p) => ({ ...p, address: v }))} /><Field label="Estate" value={form.estate} onChange={(v) => setForm((p) => ({ ...p, estate: v }))} /><Field label="City" value={form.city} onChange={(v) => setForm((p) => ({ ...p, city: v }))} /><Field label="Service radius km" value={form.serviceRadiusKm} onChange={(v) => setForm((p) => ({ ...p, serviceRadiusKm: v }))} /><Field label="Latitude" value={form.latitude} onChange={(v) => setForm((p) => ({ ...p, latitude: v }))} /><Field label="Longitude" value={form.longitude} onChange={(v) => setForm((p) => ({ ...p, longitude: v }))} /></div><CategoryPicker categories={categories} selected={selected} setSelected={setSelected} maxSelection={PROVIDER_FREE_SERVICE_LIMIT} canExceedLimit={canAddExtraServices} onLimitReached={() => setNotice('Upload a qualification certificate before adding a third service.')} /><p className="muted service-rule">Two services are available immediately. A submitted or approved qualification certificate unlocks extra service categories.</p><LocationPreview lat={Number(form.latitude)} lng={Number(form.longitude)} label={form.estate} /><button className="primary" onClick={() => void saveLocation()}><CheckCircle2 size={18} /> Save service profile</button></div><div><VerificationGate verification={currentVerification} message="Profile photo and national ID must be approved before nearby jobs and quote submission unlock." />{currentVerification?.profileImageUrl ? <img className="verification-avatar" src={currentVerification.profileImageUrl} alt="Approved or submitted profile" /> : null}<DocumentUploader title="Profile photo" required description="Required for active provider status. Use a clear face photo." status={currentVerification?.profileImageStatus || profile?.profile_image_status} currentUrl={currentVerification?.profileImageUrl || profile?.profile_image_url || null} busy={busy === 'profile_image'} accept="image/*" onPick={(file) => void uploadVerification('profile_image', file)} icon={<Camera size={20} />} /><DocumentUploader title="National ID" required description="Required. Upload a clear photo or PDF of your Kenyan ID." status={currentVerification?.idDocumentStatus || profile?.id_document_status} currentUrl={currentVerification?.idDocumentUrl || profile?.id_document_url || null} busy={busy === 'id_document'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('id_document', file)} icon={<ShieldCheck size={20} />} /><DocumentUploader title="Qualification certificate" description="Optional trust badge shown to clients after approval." status={currentVerification?.certificateStatus || profile?.certificate_status} currentUrl={currentVerification?.certificateUrl || profile?.certificate_url || null} busy={busy === 'certificate'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('certificate', file)} icon={<FileCheck2 size={20} />} /><DocumentUploader title="Good conduct" description="Optional trust badge shown to clients after approval." status={currentVerification?.goodConductStatus || profile?.good_conduct_status} currentUrl={currentVerification?.goodConductUrl || profile?.good_conduct_url || null} busy={busy === 'good_conduct'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('good_conduct', file)} icon={<BadgeCheck size={20} />} /><p className={currentVerification?.verified ? 'verify-note ok' : 'verify-note danger'}>{currentVerification?.verified ? 'Account active for nearby jobs and quotes.' : 'Account not active for jobs until profile photo and National ID are approved.'}</p>{currentVerification?.fullyVerified ? <p className="verify-note ok">Fully verified: ID, profile, certificate and good conduct approved.</p> : null}</div></div><AccountControls authApi={authApi} setNotice={setNotice} logout={logout} /></section>;
+}
+
+function AccountControls({ authApi, setNotice, logout }: { authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; logout: () => void }) {
+  const requestDeletion = async (scope: 'partial' | 'all') => {
+    const area = scope === 'all' ? 'All personal data' : window.prompt('Which data should Ekazi review for deletion?', 'Profile, uploads, or optional activity data') || '';
+    if (!area) return;
+    try { const data = await authApi<{ message?: string }>('/api/user/data-deletion-request', { method: 'POST', body: { scope, area } }); setNotice(data.message || 'Deletion request received.'); }
+    catch (error) { setNotice(messageOf(error)); }
+  };
+  const deleteAccount = async () => {
+    if (!window.confirm('Delete your Ekazi account? Your account will be anonymized and you will be signed out.')) return;
+    try { await authApi('/api/user/account', { method: 'DELETE' }); logout(); }
+    catch (error) { setNotice(messageOf(error)); }
+  };
+  return <div className="account-controls"><span>Privacy and account controls</span><button onClick={() => void requestDeletion('partial')}>Request data deletion</button><button onClick={() => void requestDeletion('all')}>Request all data deletion</button><button className="danger-link" onClick={() => void deleteAccount()}>Delete account</button></div>;
 }
 
 function Messages({ conversations, authApi, setNotice, refresh }: { conversations: Conversation[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
@@ -308,9 +416,9 @@ function JobRow({ job, actionLabel, onAction }: { job: Job; actionLabel: string;
   return <article className="row-card"><div className="row-main"><p className="eyebrow">{job.categoryName || job.serviceName || 'Ekazi job'}</p><h4>{job.description}</h4><p className="muted"><MapPin size={14} /> {job.estate}, {job.city}{job.distanceKm != null ? ` - ${job.distanceKm.toFixed(1)} km` : ''}</p><p className="muted"><CalendarClock size={14} /> {job.scheduleType || 'soon'} {job.scheduledFor ? `- ${new Date(job.scheduledFor).toLocaleString()}` : ''}</p>{job.client?.phone ? <p className="contact-line"><Phone size={14} /> Client: {job.client.phone}</p> : null}{job.photoUrls?.length ? <div className="thumb-strip">{job.photoUrls.slice(0, 4).map((url) => <img key={url} src={url} alt="Job" />)}</div> : null}</div><button className="secondary" onClick={onAction}>{actionLabel}<ChevronRight size={16} /></button></article>;
 }
 
-function QuoteList({ quotes, onAccept }: { quotes: Quote[]; onAccept?: (id: string) => Promise<void> }) {
+function QuoteList({ quotes, onAccept, onDecline }: { quotes: Quote[]; onAccept?: (id: string) => Promise<void>; onDecline?: (id: string) => Promise<void> }) {
   if (!quotes.length) return <Empty text="No real quotes received yet." />;
-  return <div className="quote-list">{quotes.map((quote) => <article className="quote-card" key={quote.id}>{quote.pro?.profileImageUrl ? <img className="avatar" src={quote.pro.profileImageUrl} alt={quote.pro.name || 'Handyman'} /> : <div className="avatar fallback"><Hammer size={22} /></div>}<div className="quote-body"><p className="eyebrow">{quote.pro?.name || quote.job?.description || 'Handyman quote'}</p><h4>{money(quote.total)}</h4><p className="muted">Labour {money(quote.labor)} + materials {money(quote.materials)} + transport {money(quote.transport)}</p>{quote.discountAmount ? <p className="saving">FIRST10 saving: {money(quote.discountAmount)}</p> : null}{quote.message ? <p>{quote.message}</p> : null}<TrustBadges quote={quote} /></div><div className="quote-actions">{quote.pro?.phone ? <a className="secondary" href={`tel:${quote.pro.phone}`}><Phone size={16} /> Call</a> : null}{onAccept && quote.status === 'open' ? <button className="primary" onClick={() => void onAccept(quote.id)}>Accept</button> : <span className="status">{quote.status || 'open'}</span>}</div></article>)}</div>;
+  return <div className="quote-list">{quotes.map((quote) => <article className="quote-card" key={quote.id}>{quote.pro?.profileImageUrl ? <img className="avatar" src={quote.pro.profileImageUrl} alt={quote.pro.name || 'Provider'} /> : <div className="avatar fallback"><Hammer size={22} /></div>}<div className="quote-body"><p className="eyebrow">{quote.pro?.name || quote.job?.description || 'Provider quote'}</p><h4>{money(quote.total)}</h4><p className="muted">Labour {money(quote.labor)} + materials {money(quote.materials)} + transport {money(quote.transport)}</p>{quote.discountAmount ? <p className="saving">FIRST5 saving: {money(quote.discountAmount)}</p> : null}{quote.message ? <p>{quote.message}</p> : null}<TrustBadges quote={quote} /></div><div className="quote-actions">{quote.pro?.phone ? <a className="secondary" href={`tel:${quote.pro.phone}`}><Phone size={16} /> Call</a> : null}{onAccept && quote.status === 'open' ? <><button className="secondary" onClick={() => void onDecline?.(quote.id)}>Decline</button><button className="primary" onClick={() => void onAccept(quote.id)}>Accept</button></> : <span className="status">{quote.status || 'open'}</span>}</div></article>)}</div>;
 }
 
 function TrustBadges({ quote }: { quote: Quote }) {
@@ -323,9 +431,10 @@ function VerificationGate({ verification, message }: { verification: Verificatio
   return <section className={active ? 'verify-card active' : 'verify-card'}><div><p className="eyebrow">Verification</p><h3>{active ? 'Active for jobs' : 'Action required'}</h3><p>{message}</p></div><div className="verify-status"><StatusPill status={verification?.profileImageStatus} label="Photo" /><StatusPill status={verification?.idDocumentStatus} label="ID" /><StatusPill status={verification?.certificateStatus} label="Certificate" /><StatusPill status={verification?.goodConductStatus} label="Good conduct" /></div></section>;
 }
 
-function DocumentUploader({ title, status, required, busy, accept, onPick, icon }: { title: string; status?: string; required?: boolean; busy: boolean; accept: string; onPick: (file: File | null) => void; icon: React.ReactNode }) {
+function DocumentUploader({ title, status, required, busy, accept, onPick, icon, currentUrl, description }: { title: string; status?: string; required?: boolean; busy: boolean; accept: string; onPick: (file: File | null) => void; icon: React.ReactNode; currentUrl?: string | null; description?: string }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
-  return <div className="document-row"><div>{icon}<strong>{title}{required ? ' *' : ''}</strong><StatusPill status={status} /></div><input ref={inputRef} type="file" accept={accept} onChange={(e) => onPick(e.target.files?.[0] || null)} /><button className="secondary" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? <Loader2 className="spin" size={16} /> : <UploadCloud size={16} />} {status && status !== 'missing' ? 'Replace' : 'Upload'}</button></div>;
+  const isImage = Boolean(currentUrl && /\.(png|jpe?g|webp|gif)(\?|$)/i.test(currentUrl));
+  return <div className="document-row rich"><div className="document-main">{isImage ? <img className="document-thumb" src={currentUrl || ''} alt={title} /> : <span className="document-icon">{icon}</span>}<div><strong>{title}{required ? ' *' : ''}</strong>{description ? <p>{description}</p> : null}{currentUrl ? <a href={currentUrl} target="_blank" rel="noreferrer">Open submitted document</a> : null}</div></div><div className="document-actions"><StatusPill status={status} /><input ref={inputRef} type="file" accept={accept} onChange={(e) => onPick(e.target.files?.[0] || null)} /><button className="secondary" disabled={busy} onClick={() => inputRef.current?.click()}>{busy ? <Loader2 className="spin" size={16} /> : <UploadCloud size={16} />} {status && status !== 'missing' ? 'Replace' : 'Upload'}</button></div></div>;
 }
 
 function StatusPill({ status, label }: { status?: string; label?: string }) {
@@ -334,8 +443,16 @@ function StatusPill({ status, label }: { status?: string; label?: string }) {
   return <span className={`pill ${value}`}><Icon size={13} /> {label ? `${label}: ` : ''}{value.replace('_', ' ')}</span>;
 }
 
-function CategoryPicker({ categories, selected, setSelected, single = false }: { categories: Category[]; selected: string[]; setSelected: (next: string[]) => void; single?: boolean }) {
-  return <div className="category-grid">{categories.map((category) => <button key={category.id} className={selected.includes(category.id) ? 'chip active' : 'chip'} onClick={() => setSelected(single ? [category.id] : selected.includes(category.id) ? selected.filter((id) => id !== category.id) : [...selected, category.id])}>{category.name}</button>)}</div>;
+function CategoryPicker({ categories, selected, setSelected, single = false, maxSelection, canExceedLimit = false, onLimitReached }: { categories: Category[]; selected: string[]; setSelected: (next: string[]) => void; single?: boolean; maxSelection?: number; canExceedLimit?: boolean; onLimitReached?: () => void }) {
+  const choose = (categoryId: string) => {
+    const next = single ? [categoryId] : selected.includes(categoryId) ? selected.filter((id) => id !== categoryId) : [...selected, categoryId];
+    if (!single && maxSelection && next.length > maxSelection && !canExceedLimit) {
+      onLimitReached?.();
+      return;
+    }
+    setSelected(next);
+  };
+  return <div className="category-grid">{categories.map((category) => <button key={category.id} className={selected.includes(category.id) ? 'chip active' : 'chip'} onClick={() => choose(category.id)}>{category.name}</button>)}</div>;
 }
 
 function LocationPreview({ lat, lng, label }: { lat: number; lng: number; label: string }) {
@@ -348,6 +465,10 @@ function Field({ label, value, onChange, type = 'text', textarea = false, placeh
   return <label className={textarea ? 'field span' : 'field'}><span>{label}</span>{textarea ? <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={4} placeholder={placeholder} /> : <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />}</label>;
 }
 
+function PolicyFooter({ compact = false }: { compact?: boolean }) {
+  return <footer className={compact ? 'policy-footer compact' : 'policy-footer'}>{POLICY_LINKS.map(([label, url]) => <a key={url} href={url} target="_blank" rel="noreferrer">{label}</a>)}</footer>;
+}
+
 function Empty({ text }: { text: string }) { return <div className="empty">{text}</div>; }
 
 function dynamicPrompts(category: string) {
@@ -357,5 +478,5 @@ function dynamicPrompts(category: string) {
 
 function profileVerification(profile: HandymanProfileData | null): Verification | null {
   if (!profile) return null;
-  return { profileImageUrl: profile.profile_image_url, profileImageStatus: profile.profile_image_status || 'missing', idDocumentStatus: profile.id_document_status || 'missing', certificateStatus: profile.certificate_status || 'missing', goodConductStatus: profile.good_conduct_status || 'missing', verified: Boolean(profile.verified) };
+  return { profileImageUrl: profile.profile_image_url, idDocumentUrl: profile.id_document_url, certificateUrl: profile.certificate_url, goodConductUrl: profile.good_conduct_url, profileImageStatus: profile.profile_image_status || 'missing', idDocumentStatus: profile.id_document_status || 'missing', certificateStatus: profile.certificate_status || 'missing', goodConductStatus: profile.good_conduct_status || 'missing', verified: Boolean(profile.verified), fullyVerified: Boolean(profile.verified && profile.certificate_status === 'approved' && profile.good_conduct_status === 'approved') };
 }

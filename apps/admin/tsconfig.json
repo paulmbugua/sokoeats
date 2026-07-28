@@ -1,16 +1,42 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "target": "esnext",
-    "lib": ["esnext"],
-    "jsx": "react-native",
-  
+    "target": "ESNext",
+    "module": "ESNext",
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "jsx": "react-jsx",
+    "moduleResolution": "bundler",
+    "skipLibCheck": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@myhandymanapp/shared/*": ["../../packages/shared/*"],
-      "@myhandymanapp/shared/types": ["../../packages/shared/types/index.ts"]
+      "@/*": [
+        "src/*"
+      ],
+      "@myhandymanapp/shared/*": [
+        "../../packages/shared/*"
+      ],
+      "@myhandymanapp/shared/types": [
+        "../../packages/shared/types/index.ts"
+      ]
     }
   },
-  "include": ["src", "*.ts", "*.tsx", "../../packages/shared"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "vite.config.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

@@ -212,3 +212,46 @@ export const getMyWallet = async (
   const res = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
   return { tokens: (res.data?.tokens ?? 0) as number };
 };
+
+
+export type PaystackCreateBookingOrderResp = {
+  paymentId: number;
+  bookingId: string;
+  jobId: string;
+  quoteId: string;
+  reference: string;
+  authorization_url: string;
+  access_code?: string;
+  amountKes?: string;
+};
+
+export const paystackCreateBookingOrder = async (
+  backendUrl: string,
+  token: string,
+  payload: { bookingId: string | number }
+): Promise<PaystackCreateBookingOrderResp> => {
+  const url = new URL('/api/paystack/create-booking-order', backendUrl).toString();
+  const res = await axios.post(url, payload, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      ...clientPlatformHeader(),
+    },
+  });
+  return res.data;
+};
+
+export const paystackVerifyBooking = async (
+  backendUrl: string,
+  reference: string,
+  token?: string
+): Promise<PaystackVerifyResp & { bookingId?: string; jobId?: string; quoteId?: string }> => {
+  const url = new URL(
+    `/api/paystack/verify-booking/${encodeURIComponent(reference)}`,
+    backendUrl
+  ).toString();
+  const res = await axios.get(url, {
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  });
+  return res.data;
+};

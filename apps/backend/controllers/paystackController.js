@@ -2,6 +2,7 @@
 import fetch from 'node-fetch';
 import crypto from 'crypto';
 import pool from '../config/db.js';
+import { ensureMarketplaceSchema } from '../services/marketplaceStore.js';
 import { verifyAndFinalize as verifyAndFinalizeHandler } from './paystackVerifyController.js';
 import { verifyAndFinalizeOrg } from './orgPaystackVerifyController.js';
 
@@ -96,6 +97,22 @@ function buildCallbackUrl(req, base, params = {}) {
   }
 
   return u.toString();
+}
+
+async function verifyPaystackReference(reference) {
+  const paystackSecret = getPaystackSecret();
+  const r = await fetch(`${PAYSTACK_BASE}/transaction/verify/${encodeURIComponent(reference)}`, {
+    headers: { Authorization: `Bearer ${paystackSecret}` },
+  });
+  const j = await r.json().catch(() => null);
+  if (!r.ok || !j?.status) {
+    const err = new Error(j?.message || `Paystack verify failed: ${r.status}`);
+    err.statusCode = 502;
+    err.provider = 'paystack';
+    err.http = r.status;
+    throw err;
+  }
+  return j;
 }
 
 /* ----------------------- shared helpers ----------------------- */
@@ -319,6 +336,232 @@ export async function createOrder(req, res) {
   }
 }
 
+/* --------------------- create booking Paystack checkout --------------------- */
+// POST /api/paystack/create-booking-order
+export async function createBookingOrder(req, res) {
+  try {
+    const configError = getPaystackConfigError();
+    if (configError) return paystackUnavailable(res, configError);
+    const paystackSecret = getPaystackSecret();
+    await ensureMarketplaceSchema();
+    await pool.query('ALTER TABLE payments ALTER COLUMN package_id DROP NOT NULL').catch((error) => {
+      console.warn('[paystack][booking] package_id nullable migration skipped', error?.message || error);
+    });
+
+    const userId = req?.user?.id;
+    if (!userId) return res.status(401).json({ message: 'Unauthorized: User not authenticated' });
+
+    const bookingId = Number(req.body?.bookingId || req.body?.booking_id);
+    if (!Number.isSafeInteger(bookingId) || bookingId <= 0) {
+      return res.status(400).json({ message: 'A valid bookingId is required' });
+    }
+
+    const { rows } = await pool.query(
+      `SELECT b.*, j.id AS job_id, q.id AS quote_id, u.email AS client_email, u.name AS client_name
+         FROM ekazi_bookings b
+         JOIN ekazi_jobs j ON j.id = b.job_id
+         JOIN ekazi_quotes q ON q.id = b.quote_id
+         JOIN users u ON u.id = b.client_user_id
+        WHERE b.id = $1 AND b.client_user_id = $2
+        LIMIT 1`,
+      [bookingId, userId],
+    );
+    const booking = rows[0];
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
+    if (String(booking.payment_method || '').toLowerCase() !== 'card') {
+      return res.status(409).json({ message: 'This booking is not marked for card payment.' });
+    }
+    if (String(booking.payment_status || '').toLowerCase() === 'platform_collected') {
+      return res.status(409).json({ message: 'This booking has already been paid.' });
+    }
+    if (!booking.client_email) {
+      return res.status(400).json({ message: 'Add an email address before paying by card.' });
+    }
+
+    const total = Math.max(1, Number(booking.total || 0));
+    const amountMinor = Math.round(total * 100);
+
+    const paymentRow = await pool.query(
+      `INSERT INTO payments (user_id, package_id, payment_method, status, amount, currency, provider, meta)
+       VALUES ($1, NULL, 'PAYSTACK', 'Pending', $2, 'KES', 'PAYSTACK',
+               jsonb_build_object('kind','booking','bookingId',$3::int,'jobId',$4::int,'quoteId',$5::int,'chargeCurrency','KES','chargeAmountKes',$2::numeric,'chargeAmountMinor',$6::int))
+       RETURNING id`,
+      [userId, total.toFixed(2), booking.id, booking.job_id, booking.quote_id, amountMinor],
+    );
+    const paymentId = paymentRow.rows[0].id;
+    const reference = `ps_booking_${booking.id}_${paymentId}_${Date.now()}`;
+
+    await pool.query(
+      `UPDATE payments
+          SET transaction_id = $1,
+              meta = COALESCE(meta,'{}'::jsonb) || jsonb_build_object('reference',$1::text)
+        WHERE id = $2`,
+      [reference, paymentId],
+    );
+
+    await pool.query(
+      `UPDATE ekazi_bookings
+          SET payment_status = 'pending_card_payment'
+        WHERE id = $1 AND payment_status <> 'platform_collected'`,
+      [booking.id],
+    );
+
+    const psBody = {
+      email: booking.client_email,
+      amount: amountMinor,
+      currency: 'KES',
+      reference,
+      callback_url: buildCallbackUrl(req, resolvePaystackCallbackBase(req), {
+        kind: 'booking',
+        bookingId: booking.id,
+        jobId: booking.job_id,
+        quoteId: booking.quote_id,
+        paymentId,
+      }),
+      channels: ['card'],
+      metadata: {
+        kind: 'booking',
+        paymentId,
+        bookingId: booking.id,
+        jobId: booking.job_id,
+        quoteId: booking.quote_id,
+        userId,
+        expectedKesMinor: amountMinor,
+        expectedKesMajor: total.toFixed(2),
+      },
+    };
+
+    const r = await fetch(`${PAYSTACK_BASE}/transaction/initialize`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${paystackSecret}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(psBody),
+    });
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j?.status) {
+      console.error('[paystack][create-booking-order] init failed', { http: r.status, message: j?.message });
+      return res.status(500).json({ message: 'paystack-init-failed', providerMessage: j?.message });
+    }
+
+    return res.json({
+      paymentId,
+      bookingId: String(booking.id),
+      jobId: String(booking.job_id),
+      quoteId: String(booking.quote_id),
+      reference: j.data.reference,
+      authorization_url: j.data.authorization_url,
+      access_code: j.data.access_code,
+      amountKes: total.toFixed(2),
+    });
+  } catch (e) {
+    console.error('[paystack][create-booking-order] ERROR', { message: e?.message });
+    return res.status(500).json({ message: 'create-booking-order-failed', error: e?.message || 'unknown' });
+  }
+}
+
+export async function verifyBookingPaymentByReference(reference) {
+  const configError = getPaystackConfigError();
+  if (configError) {
+    const err = new Error(configError);
+    err.statusCode = 503;
+    throw err;
+  }
+  await ensureMarketplaceSchema();
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const lock = await client.query(
+      `SELECT p.id, p.user_id, p.status, p.amount, p.currency, p.meta, b.id AS booking_id, b.job_id, b.quote_id, b.client_user_id, b.payment_status
+         FROM payments p
+         JOIN ekazi_bookings b ON b.id = ((p.meta->>'bookingId')::bigint)
+        WHERE p.transaction_id = $1
+          AND (p.meta->>'kind') = 'booking'
+        ORDER BY p.id DESC
+        LIMIT 1
+        FOR UPDATE`,
+      [reference],
+    );
+    const row = lock.rows[0];
+    if (!row) {
+      await client.query('ROLLBACK');
+      return { ok: false, status: 'failed', message: 'booking-payment-not-found', reference };
+    }
+    if (String(row.status).toLowerCase() === 'completed' && row.payment_status === 'platform_collected') {
+      await client.query('COMMIT');
+      return { ok: true, status: 'success', alreadyCompleted: true, reference, bookingId: String(row.booking_id), jobId: String(row.job_id), quoteId: String(row.quote_id) };
+    }
+
+    const verified = await verifyPaystackReference(reference);
+    const data = verified?.data;
+    const payStatus = String(data?.status || 'pending').toLowerCase();
+    if (!data || payStatus !== 'success') {
+      await client.query('COMMIT');
+      return { ok: false, status: payStatus || 'pending', message: 'not-success-yet', reference };
+    }
+
+    const currency = String(data.currency || '').toUpperCase();
+    const expectedMinor = Number(row.meta?.chargeAmountMinor || row.meta?.expectedKesMinor || Math.round(Number(row.amount || 0) * 100));
+    const paidMinor = typeof data.amount === 'number' ? data.amount : null;
+    if (currency !== 'KES' || paidMinor !== expectedMinor) {
+      await client.query(
+        `UPDATE payments
+            SET status = 'Failed',
+                updated_at = NOW(),
+                meta = COALESCE(meta,'{}'::jsonb) || jsonb_build_object('failReason','booking_payment_mismatch','paidMinor',$1::int,'expectedMinor',$2::int,'currency',$3::text)
+          WHERE id = $4`,
+        [paidMinor, expectedMinor, currency, row.id],
+      );
+      await client.query('COMMIT');
+      return { ok: false, status: 'failed', message: 'amount-or-currency-mismatch', reference, expectedMinor, paidMinor, currency };
+    }
+
+    const providerId = data.id != null ? String(data.id) : null;
+    const payerEmail = data.customer?.email || null;
+    const feesMinor = typeof data.fees === 'number' ? data.fees : null;
+    await client.query(
+      `UPDATE payments
+          SET status = 'Completed',
+              capture_id = COALESCE($2::text, capture_id),
+              payer_email = COALESCE($3::text, payer_email),
+              fee_total = COALESCE($4::numeric, fee_total),
+              fee_currency = CASE WHEN $4 IS NOT NULL THEN 'KES' ELSE fee_currency END,
+              meta = COALESCE(meta,'{}'::jsonb) || jsonb_build_object('paystackStatus','success','capturedAmountMinor',$5::int,'capturedAmountKes',($5::numeric / 100), 'providerId',$2::text),
+              updated_at = NOW()
+        WHERE id = $1`,
+      [row.id, providerId, payerEmail, feesMinor == null ? null : Number((feesMinor / 100).toFixed(2)), paidMinor],
+    );
+    await client.query(
+      `UPDATE ekazi_bookings
+          SET payment_status = 'platform_collected',
+              provider_settlement_status = CASE WHEN status = 'completed' THEN 'payable' ELSE provider_settlement_status END
+        WHERE id = $1`,
+      [row.booking_id],
+    );
+    await client.query('COMMIT');
+    return { ok: true, status: 'success', reference, bookingId: String(row.booking_id), jobId: String(row.job_id), quoteId: String(row.quote_id) };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+export async function verifyBookingPayment(req, res) {
+  const reference = String(req.params.reference || '').trim();
+  if (!reference) return res.status(400).json({ ok: false, status: 'failed', message: 'missing-reference' });
+  try {
+    const result = await verifyBookingPaymentByReference(reference);
+    const status = result.message === 'booking-payment-not-found' ? 404 : 200;
+    return res.status(status).json(result);
+  } catch (e) {
+    console.error('[paystack][verify-booking] ERROR', { reference, message: e?.message });
+    return res.status(Number(e?.statusCode) || 500).json({ ok: false, status: 'failed', message: 'verify-booking-failed', reference, error: e?.message || 'unknown' });
+  }
+}
+
 /* ------------------------ INLINE CARD CHARGE (PCI-risk) ------------------------ */
 /**
  * Strong recommendation: disable/remove in production once you’re on hosted checkout.
@@ -369,7 +612,7 @@ export const handlePaystackWebhook = async (req, res) => {
 
     // metadata can be absent sometimes; guard hard
     const md = event?.data?.metadata || {};
-    const kind = String(md.kind || '').toLowerCase(); // 'org' | 'tokens'
+    const kind = String(md.kind || '').toLowerCase(); // 'org' | 'tokens' | 'booking'
 
     console.log('[paystack][webhook] charge.success', {
       reference,
@@ -394,6 +637,8 @@ export const handlePaystackWebhook = async (req, res) => {
       try {
         if (kind === 'org') {
           await verifyAndFinalizeOrg(fauxReq, fauxRes);
+        } else if (kind === 'booking') {
+          await verifyBookingPaymentByReference(reference);
         } else {
           // default to tokens finalizer
           await verifyAndFinalizeHandler(fauxReq, fauxRes);

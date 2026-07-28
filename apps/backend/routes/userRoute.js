@@ -11,7 +11,8 @@ import {
   requestPasswordReset,
   adminLogin,
   verifyOTPAndResetPassword,
-  deleteUser, // ← import the new handler
+  deleteUser,
+  requestDataDeletion,
 } from '../controllers/userController.js';
 
 const userRouter = express.Router();
@@ -26,6 +27,7 @@ userRouter.get('/me', authUser, getUser);
 userRouter.put('/update-role', authUser, updateUserRole);
 
 // ← New endpoint to delete both user & profile
+userRouter.post('/data-deletion-request', authUser, requestDataDeletion);
 userRouter.delete('/account', authUser, deleteUser);
 
 export default userRouter;

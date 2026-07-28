@@ -53,3 +53,29 @@ export interface UpdateProfilePayload {
 
 
 
+
+export * from './ShopContextTypes';
+
+export interface PaymentPackage {
+  id?: string | number;
+  packageId?: string | number;
+  name?: string;
+  label?: string;
+  currency?: string;
+  credits?: number;
+  amount?: number;
+  price?: number;
+  priceKes?: number;
+  priceUsd?: number;
+  [key: string]: unknown;
+}
+
+export interface Course {
+  id?: string | number;
+  title?: string;
+  name?: string;
+  subject?: string;
+  thumbnail?: string;
+  image?: string;
+  [key: string]: unknown;
+}

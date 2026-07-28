@@ -72,7 +72,7 @@ export default function ScheduleSelectScreen({ route, navigation }: any) {
   };
 
   const options: Array<[ScheduleType, string, string]> = [
-    ['ASAP', 'As Soon As Possible', 'Handymen who can start immediately'],
+    ['ASAP', 'As Soon As Possible', 'Providers who can start immediately'],
     ['TODAY', 'Today', 'Choose a specific time today'],
     ['LATER', 'Schedule for Later', 'Choose a future date and time'],
   ];

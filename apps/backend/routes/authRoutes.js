@@ -8,6 +8,8 @@ import {
   googleAuth,
   requestOtp,
   verifyOtp,
+  requestPasswordOtp,
+  resetPasswordWithOtp,
   me,
   confirmEmail,
   resendEmailConfirmation,
@@ -24,7 +26,10 @@ router.get('/email/confirm', confirmEmail);
 router.post('/email/confirm', confirmEmail);
 router.post('/email/resend', authUser, resendEmailConfirmation);
 router.post('/otp/verify', verifyOtp);
+router.post('/password/otp/request', requestPasswordOtp);
+router.post('/password/otp/reset', resetPasswordWithOtp);
 router.get('/me', authUser, me);
 router.patch('/profile/complete', authUser, completeProfile);
 
 export default router;
+

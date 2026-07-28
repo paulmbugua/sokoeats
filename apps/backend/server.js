@@ -26,7 +26,9 @@ import catalogRoutes from './routes/catalogRoutes.js';
 import jobsRoutes from './routes/jobsRoutes.js';
 import quotesRoutes from './routes/quotesRoutes.js';
 import messagesRoutes from './routes/messagesRoutes.js';
+import providerCommissionRoutes from './routes/providerCommissionRoutes.js';
 import './cronJobs/scheduler.js';
+import './cronJobs/marketplaceSettlementCron.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 
 import profileRoutes from './routes/profileRoutes.js';
@@ -107,6 +109,22 @@ async function ensureSeedSuperadmin() {
   const password = String(process.env.SEED_SUPERADMIN_PASSWORD || '').trim();
   if (!email || !password) return;
 
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS password TEXT');
+  await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ');
+  await pool.query(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'users_role_check'
+              AND conrelid = 'public.users'::regclass
+          ) THEN
+            ALTER TABLE users DROP CONSTRAINT users_role_check;
+          END IF;
+          ALTER TABLE users
+            ADD CONSTRAINT users_role_check CHECK (role IS NULL OR btrim(role) <> '');
+        END $$;
+      `);
   const bcrypt = await import('bcryptjs');
   const hashed = await bcrypt.default.hash(password, 10);
   await pool.query(
@@ -119,7 +137,7 @@ async function ensureSeedSuperadmin() {
 }
 
 app.use((req, res, next) => {
-  res.setHeader('x-daybreak-build', BUILD);
+  res.setHeader('x-ekazi-build', BUILD);
   next();
 });
 
@@ -158,12 +176,6 @@ const productionOrigins = [
   'https://ekazi.co.ke',
   'https://www.ekazi.co.ke',
   'https://server.ekazi.co.ke',
-  'https://daybreaklearner.com',
-  'https://www.daybreaklearner.com',
-  'https://app.daybreaklearner.com',
-  'https://daybreaklearner.netlify.app',
-  'https://server.daybreaklearner.com',
-  'https://admin.daybreaklearner.com',
   WEB_BASE_URL,
   APP_BASE_URL,
 ];
@@ -315,7 +327,7 @@ function redirectToDeepLink(req, res) {
   const loc = deep.toString();
   console.log('[PAYSTACK][RETURN] redirecting →', loc);
 
-  res.setHeader('x-daybreak-paystack-return', '1');
+  res.setHeader('x-ekazi-paystack-return', '1');
   return res.redirect(302, loc);
 }
 
@@ -387,6 +399,7 @@ app.use('/api', catalogRoutes);
 app.use('/api', jobsRoutes);
 app.use('/api', quotesRoutes);
 app.use('/api', messagesRoutes);
+app.use('/api/provider/commission', providerCommissionRoutes);
 
 // Payments & webhooks
 app.use('/api/payment', paymentRoutes);
@@ -790,3 +803,4 @@ server.listen(port, '0.0.0.0', () => {
   • Prod URL     : ${PROD_BACKEND_URL}
 `);
 });
+

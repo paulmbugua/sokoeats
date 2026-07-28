@@ -67,7 +67,7 @@ export default function HandymanVerifications() {
       });
       setReviews(data?.reviews || []);
     } catch (e) {
-      toast.error(getAxiosMessage(e, 'Could not load handyman verification reviews'));
+      toast.error(getAxiosMessage(e, 'Could not load provider verification reviews'));
     } finally {
       setLoading(false);
     }
@@ -79,7 +79,7 @@ export default function HandymanVerifications() {
 
   const review = (item: Review, nextStatus: 'approved' | 'rejected') => async () => {
     const promptFn = (globalThis as any).prompt as undefined | ((message?: string, defaultValue?: string) => string | null);
-    const notes = nextStatus === 'rejected' ? promptFn?.('Rejection note for handyman:', item.notes || '') : item.notes || '';
+    const notes = nextStatus === 'rejected' ? promptFn?.('Rejection note for provider:', item.notes || '') : item.notes || '';
     if (nextStatus === 'rejected' && notes == null) return;
     setBusyId(item.id);
     try {
@@ -101,7 +101,7 @@ export default function HandymanVerifications() {
     <div className="space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h3 className="app-heading">Handyman Verification</h3>
+          <h3 className="app-heading">Provider Verification</h3>
           <p className="text-sm text-mutedGray dark:text-darkTextSecondary mt-1">
             Approve profile photos, national IDs, optional certificates and good conduct documents.
           </p>
@@ -134,7 +134,7 @@ export default function HandymanVerifications() {
                     <span className="text-xs px-2 py-1 rounded-full ring-1 bg-slate-50 text-slate-600 ring-slate-200">Optional trust badge</span>
                   )}
                 </div>
-                <p className="text-sm mt-2">{item.business_name || item.name || 'Ekazi handyman'}</p>
+                <p className="text-sm mt-2">{item.business_name || item.name || 'Ekazi provider'}</p>
                 <p className="text-xs text-mutedGray mt-1">{item.email} {item.phone ? '- ' + item.phone : ''}</p>
                 <p className="text-xs text-mutedGray mt-2">
                   Account: {item.verification_status || 'incomplete'} | Photo: {item.profile_image_status || 'missing'} | ID: {item.id_document_status || 'missing'} | Cert: {item.certificate_status || 'missing'} | Good conduct: {item.good_conduct_status || 'missing'}
@@ -159,7 +159,7 @@ export default function HandymanVerifications() {
           </div>
         ))}
         {!reviews.length ? (
-          <div className="panel p-6 text-sm text-mutedGray">No {status === 'all' ? '' : status} handyman verification documents found.</div>
+          <div className="panel p-6 text-sm text-mutedGray">No {status === 'all' ? '' : status} provider verification documents found.</div>
         ) : null}
       </div>
     </div>

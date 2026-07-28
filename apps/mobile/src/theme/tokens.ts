@@ -41,13 +41,13 @@ export const radius = {
 };
 
 export const typography = {
-  hero: 38,
-  h1: 32,
-  h2: 24,
-  h3: 20,
-  body: 17,
-  small: 14,
-  tiny: 12,
+  hero: 40,
+  h1: 34,
+  h2: 26,
+  h3: 21,
+  body: 18,
+  small: 15,
+  tiny: 13,
 };
 
 export const shadow = {

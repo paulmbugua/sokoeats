@@ -20,6 +20,32 @@ export default function QuoteDetailScreen({ route, navigation }: any) {
       .catch(() => undefined);
   }, [http, quoteId]);
 
+  const decline = async () => {
+    Alert.alert(
+      'Decline this quote?',
+      'Ekazi will forward your request to the next available nearby provider.',
+      [
+        { text: 'Keep Quote', style: 'cancel' },
+        {
+          text: 'Decline',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await http.post(`/api/quotes/${quoteId}/decline`, {
+                reason: 'Price or fit did not work for me',
+                reasonCode: 'price_or_fit',
+              });
+              Alert.alert('Quote declined', 'We are alerting the next nearby provider.');
+              navigation.goBack();
+            } catch (error: any) {
+              Alert.alert('Could not decline quote', error?.response?.data?.message || 'Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const accept = async () => {
     try {
       const { data } = await http.post(`/api/quotes/${quoteId}/accept`);
@@ -35,9 +61,6 @@ export default function QuoteDetailScreen({ route, navigation }: any) {
       );
     }
   };
-
-  const commissionAmount = Math.round(Number(quote?.total || 0) * 0.15);
-  const handymanPayout = Math.max(0, Number(quote?.total || 0) - commissionAmount);
 
   if (!quote) {
     return (
@@ -86,23 +109,13 @@ export default function QuoteDetailScreen({ route, navigation }: any) {
           </Text>
           {quote.discountAmount > 0 ? (
             <Text style={{ color: colors.green, fontWeight: '900', marginTop: 7 }}>
-              FIRST10: -KES {quote.discountAmount.toLocaleString()}
+              FIRST5: -KES {quote.discountAmount.toLocaleString()}
             </Text>
           ) : null}
         </Card>
 
         <Card style={{ marginTop: 14 }}>
-          <Text style={{ fontWeight: '900' }}>Ekazi commission</Text>
-          <Text style={{ color: colors.danger, marginTop: 8 }}>
-            15% organization commission: KES {commissionAmount.toLocaleString()}
-          </Text>
-          <Text style={{ color: colors.primary, fontWeight: '900', marginTop: 6 }}>
-            Handyman take-home after commission: KES {handymanPayout.toLocaleString()}
-          </Text>
-        </Card>
-
-        <Card style={{ marginTop: 14 }}>
-          <Text style={{ fontWeight: '900' }}>Message from handyman</Text>
+          <Text style={{ fontWeight: '900' }}>Message from provider</Text>
           <Text style={{ color: colors.muted, marginTop: 8 }}>{quote.message}</Text>
           <Text style={{ color: colors.muted, marginTop: 8 }}>
             Arrival: about {quote.etaMinutes || '?'} minutes - duration:{' '}
@@ -111,7 +124,7 @@ export default function QuoteDetailScreen({ route, navigation }: any) {
         </Card>
 
         <View style={{ flexDirection: 'row', gap: 10, marginTop: 16 }}>
-          <SecondaryButton title="Back" onPress={() => navigation.goBack()} style={{ flex: 1 }} />
+          <SecondaryButton title="Decline" onPress={() => void decline()} style={{ flex: 1 }} />
           <PrimaryButton
             title="Accept Quote"
             onPress={() => void accept()}

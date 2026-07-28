@@ -361,7 +361,7 @@ const iosContentInset = useMemo(
 
   const openPaystackAuth = useCallback(
     async (redirectUrl: string) => {
-      const returnUrl = Linking.createURL('paystack/callback', { scheme: 'daybreak' });
+      const returnUrl = Linking.createURL('paystack/callback', { scheme: 'ekazi' });
       console.log('[PAYSTACK][returnUrl]', returnUrl);
 
       const res = await WebBrowser.openAuthSessionAsync(String(redirectUrl), String(returnUrl));

@@ -1,5 +1,7 @@
 import pool from '../config/db.js';
 import { ensureMarketplaceSchema, jobJson } from '../services/marketplaceStore.js';
+import { normalizeProviderServices, providerServiceLimitError, validateProviderServiceSelection } from '../services/providerServiceLimit.js';
+import { dispatchJobToNearestProviders } from '../services/marketplaceDispatchService.js';
 
 const validStatuses = new Set([
   'active',
@@ -16,6 +18,63 @@ function userId(req) {
 }
 
 const verificationTypes = new Set(['profile_image', 'id_document', 'certificate', 'good_conduct']);
+
+const PROVIDER_DECLINE_REASONS = {
+  schedule_conflict: { label: 'I am unavailable at that time', impact: 2 },
+  too_far: { label: 'The job is too far from my service area', impact: 1 },
+  not_my_skill: { label: 'This job is outside my skill set', impact: 0 },
+  scope_unclear: { label: 'The job details are not clear enough', impact: 0 },
+  budget_too_low: { label: 'The client budget is too low', impact: 1 },
+  materials_issue: { label: 'Required materials are unavailable', impact: 1 },
+  unsafe_or_uncomfortable: { label: 'The location or request feels unsafe', impact: 0 },
+  emergency: { label: 'Emergency or illness', impact: 0 },
+  not_interested: { label: 'I do not want this job', impact: 3 },
+};
+
+function normalizeProviderDecline(input) {
+  const code = String(input?.reasonCode || input?.code || '').trim();
+  const option = PROVIDER_DECLINE_REASONS[code];
+  if (!option) return null;
+  return {
+    code,
+    reason: option.label,
+    impact: Number(option.impact || 0),
+    notes: String(input?.notes || '').trim().slice(0, 500) || null,
+  };
+}
+
+async function applyProviderDeclinePenalty(db, providerId, decline) {
+  const { rows } = await db.query(
+    `UPDATE ekazi_handyman_profiles
+        SET provider_decline_count = COALESCE(provider_decline_count, 0) + 1,
+            provider_decline_score = GREATEST(0, COALESCE(provider_decline_score, 100) - $2),
+            cancellation_score = GREATEST(0, cancellation_score - $2),
+            suspended_until = CASE
+              WHEN GREATEST(0, COALESCE(provider_decline_score, 100) - $2) < 75 THEN NOW() + INTERVAL '1 day'
+              ELSE suspended_until
+            END,
+            updated_at = NOW()
+      WHERE user_id = $1
+      RETURNING provider_decline_count, provider_decline_score, cancellation_score, suspended_until`,
+    [providerId, decline.impact],
+  );
+  const profile = rows[0] || null;
+  if (profile?.suspended_until && new Date(profile.suspended_until).getTime() > Date.now()) {
+    await db.query(
+      `UPDATE users
+          SET account_status = 'suspended',
+              suspended_until = $2,
+              suspension_reason = $3
+        WHERE id = $1`,
+      [providerId, profile.suspended_until, 'Repeated provider quote-share declines: ' + decline.reason],
+    );
+  }
+  return profile;
+}
+
+function isLocalUploadUrl(url) {
+  return typeof url === 'string' && /\/uploads\//i.test(url);
+}
 
 function verificationPatch(documentType, url) {
   if (documentType === 'profile_image') return { column: 'profile_image_url', statusColumn: 'profile_image_status', url };
@@ -104,11 +163,11 @@ export const getFirstJobPromotion = async (req, res) => {
     if (!id) return res.status(401).json({ message: 'Unauthorized' });
     const eligible = await firstJobEligibility(pool, id);
     return res.json({
-      code: 'FIRST10',
-      percent: 10,
+      code: 'FIRST5',
+      percent: 5,
       eligible,
       description: eligible
-        ? '10% is deducted when you accept a quote for your first job.'
+        ? '5% of labour is deducted when you accept a quote for your first job. Ekazi funds the discount.'
         : 'This offer has already been used.',
     });
   } catch (error) {
@@ -132,11 +191,25 @@ export const listJobs = async (req, res) => {
       where += ' AND j.status = $2';
     }
     const { rows } = await pool.query(
-      `SELECT j.*, COUNT(q.id) FILTER (WHERE q.status = 'open') AS quote_count
+      `SELECT j.*,
+              COUNT(q.id) FILTER (WHERE q.status = 'open') AS quote_count,
+              b.id AS booking_id,
+              b.quote_id AS booking_quote_id,
+              b.status AS booking_status,
+              b.client_rating AS booking_client_rating,
+              b.client_review AS booking_client_review,
+              b.client_reviewed_at AS booking_client_reviewed_at,
+              b.completed_at AS booking_completed_at,
+              b.cancelled_at AS booking_cancelled_at,
+              hp.business_name AS booking_provider_business_name,
+              hu.name AS booking_provider_name
          FROM ekazi_jobs j
          LEFT JOIN ekazi_quotes q ON q.job_id = j.id
+         LEFT JOIN ekazi_bookings b ON b.job_id = j.id
+         LEFT JOIN users hu ON hu.id = b.handyman_user_id
+         LEFT JOIN ekazi_handyman_profiles hp ON hp.user_id = b.handyman_user_id
         WHERE ${where}
-        GROUP BY j.id
+        GROUP BY j.id, b.id, hp.business_name, hu.name
         ORDER BY j.created_at DESC`,
       params,
     );
@@ -185,8 +258,8 @@ export const createJob = async (req, res) => {
     await client.query('BEGIN');
     const eligible = await firstJobEligibility(client, id);
     const requestedCode = String(body.discountCode || '').trim().toUpperCase();
-    const discountCode = requestedCode === 'FIRST10' && eligible ? 'FIRST10' : null;
-    const discountPercent = discountCode ? 10 : 0;
+    const discountCode = ['FIRST5', 'FIRST10'].includes(requestedCode) && eligible ? 'FIRST5' : null;
+    const discountPercent = discountCode ? 5 : 0;
     const { rows } = await client.query(
       `INSERT INTO ekazi_jobs (
         client_user_id, category_id, category_name, service_id, service_name,
@@ -221,9 +294,16 @@ export const createJob = async (req, res) => {
       ],
     );
     await client.query('COMMIT');
+    let dispatch = { offered: [] };
+    try {
+      dispatch = await dispatchJobToNearestProviders(pool, rows[0].id, { reason: 'created', fanout: 3 });
+    } catch (notifyError) {
+      console.warn('[ekazi-dispatch] job_create_dispatch_failed', { jobId: rows[0].id, message: notifyError?.message });
+    }
     return res.status(201).json({
       job: jobJson(rows[0]),
       promotionApplied: Boolean(discountCode),
+      providersAlerted: dispatch.offered?.length || 0,
     });
   } catch (error) {
     await client.query('ROLLBACK').catch(() => undefined);
@@ -329,11 +409,14 @@ export const listOpenJobsForHandyman = async (req, res) => {
                   ELSE NULL
                 END AS distance_km,
                 CASE WHEN hm.latitude IS NOT NULL AND hm.longitude IS NOT NULL AND j.latitude IS NOT NULL AND j.longitude IS NOT NULL THEN 0 ELSE 1 END AS nearest_rank,
-                hm.service_radius_km
+                hm.service_radius_km,
+                d.offer_rank AS dispatch_rank,
+                d.notified_at AS dispatch_notified_at
            FROM ekazi_jobs j
            JOIN users u ON u.id = j.client_user_id
            CROSS JOIN hm
            LEFT JOIN ekazi_quotes q ON q.job_id = j.id
+           LEFT JOIN ekazi_job_dispatches d ON d.job_id = j.id AND d.handyman_user_id = $1 AND d.status = 'offered'
           WHERE j.status IN ('active','quoted')
             AND u.phone IS NOT NULL
             AND j.client_user_id <> $1
@@ -342,11 +425,17 @@ export const listOpenJobsForHandyman = async (req, res) => {
               SELECT 1 FROM ekazi_quotes own
                WHERE own.job_id = j.id AND own.handyman_user_id = $1
             )
-          GROUP BY j.id, u.name, u.phone, hm.latitude, hm.longitude, hm.service_radius_km
+            AND NOT EXISTS (
+              SELECT 1 FROM ekazi_job_dispatches declined
+               WHERE declined.job_id = j.id
+                 AND declined.handyman_user_id = $1
+                 AND declined.status = 'declined'
+            )
+          GROUP BY j.id, u.name, u.phone, hm.latitude, hm.longitude, hm.service_radius_km, d.offer_rank, d.notified_at
        )
        SELECT * FROM candidates
         WHERE distance_km IS NULL OR distance_km <= service_radius_km
-        ORDER BY nearest_rank ASC, distance_km ASC NULLS LAST, created_at DESC
+        ORDER BY CASE WHEN dispatch_rank IS NULL THEN 1 ELSE 0 END ASC, dispatch_rank ASC NULLS LAST, nearest_rank ASC, distance_km ASC NULLS LAST, created_at DESC
         LIMIT 100`,
       [id],
     );
@@ -366,6 +455,70 @@ export const listOpenJobsForHandyman = async (req, res) => {
   }
 };
 
+export const declineHandymanJobOffer = async (req, res) => {
+  const client = await pool.connect();
+  try {
+    await ensureMarketplaceSchema();
+    const id = userId(req);
+    if (!id) return res.status(401).json({ message: 'Unauthorized' });
+    const decline = normalizeProviderDecline(req.body);
+    if (!decline) {
+      return res.status(400).json({
+        message: 'Choose a valid reason before declining this job.',
+        reasons: Object.entries(PROVIDER_DECLINE_REASONS).map(([code, item]) => ({ code, label: item.label, impact: item.impact })),
+      });
+    }
+
+    await client.query('BEGIN');
+    const jobResult = await client.query(
+      `SELECT id, client_user_id, status
+         FROM ekazi_jobs
+        WHERE id = $1
+          AND status IN ('active','quoted')
+          AND client_user_id <> $2
+        FOR UPDATE`,
+      [req.params.id, id],
+    );
+    const job = jobResult.rows[0];
+    if (!job) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Open job not found.' });
+    }
+    const alreadyQuoted = await client.query(
+      `SELECT 1 FROM ekazi_quotes WHERE job_id = $1 AND handyman_user_id = $2 LIMIT 1`,
+      [job.id, id],
+    );
+    if (alreadyQuoted.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'You already sent a quote for this job.' });
+    }
+    await client.query(
+      `INSERT INTO ekazi_job_dispatches (job_id, handyman_user_id, status, offer_rank, reason, responded_at, updated_at)
+       VALUES ($1, $2, 'declined', 999, $3, NOW(), NOW())
+       ON CONFLICT (job_id, handyman_user_id) DO UPDATE SET
+         status = 'declined',
+         reason = EXCLUDED.reason,
+         responded_at = NOW(),
+         updated_at = NOW()`,
+      [job.id, id, decline.code],
+    );
+    const trust = await applyProviderDeclinePenalty(client, id, decline);
+    await client.query('COMMIT');
+
+    const dispatch = await dispatchJobToNearestProviders(pool, job.id, { reason: 'provider_declined', fanout: 1 }).catch((error) => {
+      console.warn('[ekazi-dispatch] provider_decline_forward_failed', { jobId: job.id, message: error?.message });
+      return { offered: [] };
+    });
+    return res.json({ ok: true, forwardedTo: dispatch.offered?.length || 0, trust });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    console.error('declineHandymanJobOffer error:', error);
+    return res.status(500).json({ message: 'Could not decline this job offer' });
+  } finally {
+    client.release();
+  }
+};
+
 export const updateHandymanLocation = async (req, res) => {
   try {
     await ensureMarketplaceSchema();
@@ -378,8 +531,13 @@ export const updateHandymanLocation = async (req, res) => {
       longitude,
       categories = [],
     } = req.body || {};
+    const selectedServices = normalizeProviderServices(categories);
     if (!address || !Number.isFinite(Number(latitude)) || !Number.isFinite(Number(longitude))) {
       return res.status(400).json({ message: 'Address and map coordinates are required' });
+    }
+    const serviceLimit = await validateProviderServiceSelection(pool, id, selectedServices);
+    if (!serviceLimit.ok) {
+      return res.status(serviceLimit.status || 409).json(providerServiceLimitError(serviceLimit));
     }
     const { rows } = await pool.query(
       `INSERT INTO ekazi_handyman_profiles
@@ -394,7 +552,7 @@ export const updateHandymanLocation = async (req, res) => {
        RETURNING *`,
       [
         id,
-        categories.map(String),
+        selectedServices,
         String(address),
         estate || null,
         String(city),
@@ -402,11 +560,90 @@ export const updateHandymanLocation = async (req, res) => {
         Number(longitude),
       ],
     );
-    if (!rows.length) return res.status(403).json({ message: 'Handyman account required' });
+    if (!rows.length) return res.status(403).json({ message: 'Provider account required' });
     return res.json({ profile: rows[0] });
   } catch (error) {
     console.error('updateHandymanLocation error:', error);
     return res.status(500).json({ message: 'Could not save service location' });
+  }
+};
+
+
+export const getHandymanEarnings = async (req, res) => {
+  try {
+    await ensureMarketplaceSchema();
+    const id = userId(req);
+    if (!id) return res.status(401).json({ message: 'Unauthorized' });
+    const summaryResult = await pool.query(
+      `SELECT
+          COALESCE(SUM(handyman_payout_amount), 0)::numeric AS net_total,
+          COALESCE(SUM(organization_commission_amount), 0)::numeric AS platform_total,
+          COALESCE(SUM(total), 0)::numeric AS gross_total,
+          COUNT(*)::int AS completed_count,
+          MAX(COALESCE(completed_at, created_at)) AS latest_at
+         FROM ekazi_bookings
+        WHERE handyman_user_id = $1 AND status = 'completed'`,
+      [id],
+    );
+    const latestResult = await pool.query(
+      `SELECT b.id, b.total, b.organization_commission_amount, b.handyman_payout_amount,
+              COALESCE(b.completed_at, b.created_at) AS earned_at,
+              j.service_name, j.category_name, j.estate, j.city
+         FROM ekazi_bookings b
+         JOIN ekazi_jobs j ON j.id = b.job_id
+        WHERE b.handyman_user_id = $1 AND b.status = 'completed'
+        ORDER BY COALESCE(b.completed_at, b.created_at) DESC
+        LIMIT 5`,
+      [id],
+    );
+    const periodQuery = async (bucket, interval, limit) => {
+      const { rows } = await pool.query(
+        `SELECT to_char(date_trunc($2::text, COALESCE(completed_at, created_at)), $3::text) AS label,
+                COALESCE(SUM(handyman_payout_amount), 0)::numeric AS amount,
+                COUNT(*)::int AS jobs
+           FROM ekazi_bookings
+          WHERE handyman_user_id = $1
+            AND status = 'completed'
+            AND COALESCE(completed_at, created_at) >= NOW() - ${interval}
+          GROUP BY date_trunc($2::text, COALESCE(completed_at, created_at))
+          ORDER BY date_trunc($2::text, COALESCE(completed_at, created_at)) ASC
+          LIMIT $4::int`,
+        [id, bucket, bucket === 'month' ? 'Mon YYYY' : bucket === 'week' ? '"W"IW' : 'DD Mon', limit],
+      );
+      return rows.map((row) => ({
+        label: row.label,
+        amount: Number(row.amount || 0),
+        jobs: Number(row.jobs || 0),
+      }));
+    };
+    const [daily, weekly, monthly] = await Promise.all([
+      periodQuery('day', "INTERVAL '30 days'", 30),
+      periodQuery('week', "INTERVAL '12 weeks'", 12),
+      periodQuery('month', "INTERVAL '12 months'", 12),
+    ]);
+    const summary = summaryResult.rows[0] || {};
+    return res.json({
+      summary: {
+        netTotal: Number(summary.net_total || 0),
+        platformTotal: Number(summary.platform_total || 0),
+        grossTotal: Number(summary.gross_total || 0),
+        completedCount: Number(summary.completed_count || 0),
+        latestAt: summary.latest_at || null,
+      },
+      latest: latestResult.rows.map((row) => ({
+        bookingId: String(row.id),
+        serviceName: row.service_name || row.category_name || 'Ekazi job',
+        location: [row.estate, row.city].filter(Boolean).join(', '),
+        gross: Number(row.total || 0),
+        platformFee: Number(row.organization_commission_amount || 0),
+        payout: Number(row.handyman_payout_amount || 0),
+        earnedAt: row.earned_at,
+      })),
+      history: { daily, weekly, monthly },
+    });
+  } catch (error) {
+    console.error('getHandymanEarnings error:', error);
+    return res.status(500).json({ message: 'Could not load provider earnings' });
   }
 };
 
@@ -421,7 +658,7 @@ export const getHandymanProfile = async (req, res) => {
     return res.json({ profile, verification: handymanVerificationJson(profile) });
   } catch (error) {
     console.error('getHandymanProfile error:', error);
-    return res.status(500).json({ message: 'Could not load handyman profile' });
+    return res.status(500).json({ message: 'Could not load provider profile' });
   }
 };
 
@@ -439,15 +676,20 @@ export const updateHandymanVerificationDocuments = async (req, res) => {
     if (!/^https?:\/\//i.test(documentUrl)) {
       return res.status(400).json({ message: 'A valid uploaded document URL is required' });
     }
+    if (isLocalUploadUrl(documentUrl)) {
+      return res.status(400).json({
+        message: 'This document was saved to local /uploads instead of Ekazi public storage. Please upload it again.',
+      });
+    }
     const patch = verificationPatch(documentType, documentUrl);
     const roleResult = await pool.query('SELECT id, name, role FROM users WHERE id = $1', [id]);
     const user = roleResult.rows[0];
-    if (user?.role !== 'tutor') return res.status(403).json({ message: 'Handyman account required' });
+    if (user?.role !== 'tutor') return res.status(403).json({ message: 'Provider account required' });
     await pool.query(
       `INSERT INTO ekazi_handyman_profiles (user_id, business_name, updated_at)
        VALUES ($1, $2, NOW())
        ON CONFLICT (user_id) DO NOTHING`,
-      [id, user.name || 'Ekazi Handyman'],
+      [id, user.name || 'Ekazi Provider'],
     );
     await pool.query(
       `UPDATE ekazi_handyman_profiles
@@ -478,3 +720,4 @@ export const updateHandymanVerificationDocuments = async (req, res) => {
     return res.status(500).json({ message: 'Could not save verification document' });
   }
 };
+

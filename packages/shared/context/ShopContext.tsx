@@ -163,7 +163,21 @@ function attachAuthGuards(
       const ignoreUserHydrate401 =
         session === 'admin' && (path === '/api/user/me' || path === '/api/profile/me');
 
-      if ((status === 401 || status === 403) && !ignoreUserHydrate401) {
+      const isDeletedOrStaleUserSession =
+        status === 404 && session === 'user' && path === '/api/user/me';
+
+      if (path === '/api/user/me' || path === '/api/profile/me' || isDeletedOrStaleUserSession) {
+        console.log('[auth][http_error]', {
+          path,
+          status,
+          session,
+          autoLogout: Boolean(((status === 401 || status === 403) && !ignoreUserHydrate401) || isDeletedOrStaleUserSession),
+          staleUserSession: isDeletedOrStaleUserSession,
+          message: error?.message,
+        });
+      }
+
+      if (((status === 401 || status === 403) && !ignoreUserHydrate401) || isDeletedOrStaleUserSession) {
         if (session === 'admin') await onAdminAuthFail();
         else if (session === 'org') await onOrgAuthFail();
         else await onUserAuthFail();
@@ -241,6 +255,7 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
   const hasAutoClearedRef = useRef(false);
 
   const clearAuthState = useCallback(async () => {
+    console.log('[auth][clear_state]', { mode: authMode, hasToken: Boolean(accessToken), userId, role });
     setAuthMode(null);
     setAccessToken(null);
     setUserEmail(null);
@@ -253,10 +268,10 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
     setTokens(0);
     delete httpRef.current.defaults.headers.common.Authorization;
     await clearAuthSession();
-  }, []);
+  }, [accessToken, authMode, role, userId]);
 
   const doAutoUserLogout = useCallback(async () => {
-    if (authMode !== 'consumer') return;
+    console.log('[auth][auto_user_logout:start]', { authMode, userId, role });
     if (hasAutoClearedRef.current) return;
     hasAutoClearedRef.current = true;
     try {
@@ -267,8 +282,9 @@ const ShopContextProvider: React.FC<ShopContextProviderProps> = ({
     try {
       await storage?.removeItem('role');
     } catch {}
+    console.log('[auth][auto_user_logout:done]', { destination: '/login' });
     if (navigateFn) navigateFn('/login');
-  }, [authMode, clearAuthState, navigateFn, qc, storage]);
+  }, [authMode, clearAuthState, navigateFn, qc, role, storage, userId]);
 
   const doAutoOrgLogout = useCallback(async () => {
     if (authMode !== 'org') return;
@@ -431,7 +447,9 @@ if (isDev) {
   } = useAppQuery<Profile | null, Error>(
     ['profile', token, adminToken, orgToken], // optional add orgToken to key
     async () => {
+      console.log('[auth][profile_me:start]', { hasToken: Boolean(token), authMode, admin: Boolean(adminToken), org: isOrgMode });
       const res = await httpRef.current.get<ApiProfileMeResponse>('/api/profile/me');
+      console.log('[auth][profile_me:ok]', { profileExists: Boolean(res.data.profileExists), hasProfile: Boolean(res.data.profile) });
       return res.data.profileExists ? res.data.profile : null;
     },
     {
@@ -449,7 +467,15 @@ if (isDev) {
 
   // ── Fetch /api/user/me (user details) ─────────────────────────────────────
   const fetchUserDetails = useCallback(async (): Promise<void> => {
+    console.log('[auth][user_me:start]', { hasToken: Boolean(token), authMode, userId });
     const { data } = await httpRef.current.get<ApiUserMeResponse>('/api/user/me');
+    console.log('[auth][user_me:ok]', {
+      userId: data.userId != null ? String(data.userId) : null,
+      role: data.role ?? null,
+      hasPhone: Boolean(data.phone),
+      profileComplete: data.profileComplete ?? null,
+      requiredActions: Array.isArray(data.profileRequiredActions) ? data.profileRequiredActions : [],
+    });
 
     const incomingEmail = data.email ?? null;
     if (incomingEmail !== userEmail) setUserEmail(incomingEmail);
@@ -488,8 +514,15 @@ if (isDev) {
   }, [userEmail, userName, userPhone, tokens, userId, role, profileComplete, profileRequiredActions, storage]);
 
   useEffect(() => {
-    if (!hydrated || !token || adminToken || isOrgMode) return; // ✅ skip when org logged in
-    void fetchUserDetails().catch((e) => console.error(e));
+    if (!hydrated || !token || adminToken || isOrgMode) return; // skip when org logged in
+    void fetchUserDetails().catch((e) => {
+      const status = axios.isAxiosError(e) ? e.response?.status : undefined;
+      if (status === 404) {
+        console.log('[auth][user_me:stale_404_suppressed]');
+        return;
+      }
+      console.error('[auth][user_me:error]', e);
+    });
   }, [hydrated, token, adminToken, isOrgMode, fetchUserDetails]);
 
 

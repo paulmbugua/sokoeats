@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, Text, ViewStyle } from 'react-native';
-import { colors, radius } from '../theme/tokens';
+import { colors, radius, typography } from '../theme/tokens';
 
 export default function Chip({
   label,
@@ -18,8 +18,8 @@ export default function Chip({
       onPress={onPress}
       style={({ pressed }) => [
         {
-          paddingHorizontal: 12,
-          paddingVertical: 8,
+          paddingHorizontal: 14,
+          paddingVertical: 9,
           borderRadius: 999,
           backgroundColor: active ? colors.primary : colors.chip,
           opacity: pressed ? 0.9 : 1,
@@ -27,7 +27,7 @@ export default function Chip({
         style,
       ]}
     >
-      <Text style={{ color: active ? 'white' : colors.text, fontWeight: '600', fontSize: 13 }}>{label}</Text>
+      <Text style={{ color: active ? 'white' : colors.text, fontWeight: '800', fontSize: typography.small, lineHeight: 19 }}>{label}</Text>
     </Pressable>
   );
 }

@@ -183,6 +183,23 @@ function reviewStatusPatch(documentType, status) {
   return null;
 }
 
+function normalizeAdminDocumentUrl(url) {
+  if (!url || typeof url !== 'string') return url || null;
+  if (!/\/uploads\//i.test(url)) return url;
+  const base = String(process.env.R2_PUBLIC_BASE_URL_IMAGES || 'https://images.ekazi.co.ke').replace(/\/+$/, '');
+  const rawName = url.split('/uploads/').pop()?.split(/[?#]/)[0];
+  if (!rawName) return url;
+  const decoded = decodeURIComponent(rawName);
+  return base + '/uploads/' + encodeURIComponent(decoded);
+}
+
+function normalizeAdminDocumentRows(rows) {
+  return (rows || []).map((row) => ({
+    ...row,
+    document_url: normalizeAdminDocumentUrl(row.document_url),
+  }));
+}
+
 async function recalculateAdminHandymanVerification(db, handymanUserId) {
   const { rows } = await db.query(
     `UPDATE ekazi_handyman_profiles
@@ -211,7 +228,16 @@ export async function listHandymanVerificationReviews(req, res) {
       where = 'WHERE r.status = $1';
     }
     const { rows } = await pool.query(
-      `SELECT r.*, u.name, u.email, u.phone,
+      `SELECT r.id, r.handyman_user_id, r.document_type, r.status, r.notes,
+              r.reviewed_by, r.reviewed_at, r.created_at, r.updated_at,
+              CASE r.document_type
+                WHEN 'profile_image' THEN COALESCE(hp.profile_image_url, r.document_url)
+                WHEN 'id_document' THEN COALESCE(hp.id_document_url, r.document_url)
+                WHEN 'certificate' THEN COALESCE(hp.certificate_url, r.document_url)
+                WHEN 'good_conduct' THEN COALESCE(hp.good_conduct_url, r.document_url)
+                ELSE r.document_url
+              END AS document_url,
+              u.name, u.email, u.phone,
               hp.business_name, hp.verified, hp.verification_status,
               hp.profile_image_status, hp.id_document_status, hp.certificate_status, hp.good_conduct_status,
               hp.profile_image_url, hp.id_document_url, hp.certificate_url, hp.good_conduct_url
@@ -223,7 +249,7 @@ export async function listHandymanVerificationReviews(req, res) {
         LIMIT 300`,
       params,
     );
-    return res.json({ success: true, reviews: rows });
+    return res.json({ success: true, reviews: normalizeAdminDocumentRows(rows) });
   } catch (error) {
     console.error('listHandymanVerificationReviews error:', error);
     return res.status(500).json({ success: false, message: 'Could not load verification reviews' });
@@ -322,7 +348,15 @@ export async function getAdminApprovalsOverview(_req, res) {
           FROM users
       `),
       pool.query(`
-        SELECT r.id, r.document_type, r.document_url, r.status, r.updated_at,
+        SELECT r.id, r.document_type,
+               CASE r.document_type
+                WHEN 'profile_image' THEN COALESCE(hp.profile_image_url, r.document_url)
+                WHEN 'id_document' THEN COALESCE(hp.id_document_url, r.document_url)
+                WHEN 'certificate' THEN COALESCE(hp.certificate_url, r.document_url)
+                WHEN 'good_conduct' THEN COALESCE(hp.good_conduct_url, r.document_url)
+                ELSE r.document_url
+              END AS document_url,
+               r.status, r.updated_at,
                u.name, u.email, u.phone, hp.business_name
           FROM ekazi_handyman_verification_reviews r
           JOIN users u ON u.id = r.handyman_user_id
@@ -356,7 +390,7 @@ export async function getAdminApprovalsOverview(_req, res) {
         users: users.rows[0] || {},
       },
       queues: {
-        pendingVerifications: recentDocs.rows,
+        pendingVerifications: normalizeAdminDocumentRows(recentDocs.rows),
         recentCancellations: recentCancellations.rows,
       },
     });

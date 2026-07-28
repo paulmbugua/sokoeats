@@ -92,7 +92,7 @@ export default function LocationSelectScreen({ route, navigation }: any) {
         ) : null}
 
         <Text style={{ textAlign: 'center', marginTop: 12, color: colors.muted, fontSize: 12 }}>
-          The exact address is shared only with the handyman whose quote you accept.
+          The exact address is shared only with the provider whose quote you accept.
         </Text>
         <View style={{ marginTop: 16 }}>
           <PrimaryButton title="Continue" onPress={continueFlow} />

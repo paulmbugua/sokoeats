@@ -24,7 +24,7 @@ function conversationJson(row, currentUserId) {
   const otherIsHandyman = current === Number(row.client_user_id);
   const otherId = otherIsHandyman ? row.handyman_user_id : row.client_user_id;
   const otherName = otherIsHandyman
-    ? row.handyman_business_name || row.handyman_name || 'Ekazi Handyman'
+    ? row.handyman_business_name || row.handyman_name || 'Ekazi Provider'
     : row.client_name || 'Client';
   return {
     id: String(row.id),

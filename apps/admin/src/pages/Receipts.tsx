@@ -240,7 +240,7 @@ export default function Receipts() {
         if (mode === 'download') {
           const a = document.createElement('a');
           a.href = url;
-          a.download = `DayBreak_Receipt_${refName}.pdf`;
+          a.download = `Ekazi_Receipt_${refName}.pdf`;
           document.body.appendChild(a);
           a.click();
           a.remove();

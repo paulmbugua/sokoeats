@@ -86,7 +86,7 @@ export default function HomeScreen({ navigation }: any) {
                 Hello, {firstName}
               </Text>
               <Text style={{ color: 'rgba(255,255,255,0.9)', marginTop: 8, fontSize: typography.body, lineHeight: 24 }}>
-                Compare quotes from reliable local handymen.
+                Compare quotes from reliable local providers.
               </Text>
             </View>
             <View
@@ -141,10 +141,10 @@ export default function HomeScreen({ navigation }: any) {
             >
               <View style={{ flex: 1 }}>
                 <Text style={{ color: colors.ink, fontWeight: '900', fontSize: typography.h3 }}>
-                  10% off first job
+                  5% off first job
                 </Text>
                 <Text style={{ color: 'rgba(15,23,42,0.78)', marginTop: 5, fontSize: typography.small, lineHeight: 20 }}>
-                  FIRST10 is applied to the quote you accept before booking.
+                  FIRST5 applies 5% off labour on the quote you accept. The discount is funded by Ekazi.
                 </Text>
               </View>
               <QuoteIllustration width={96} height={78} />
@@ -248,7 +248,7 @@ export default function HomeScreen({ navigation }: any) {
                   No requests yet
                 </Text>
                 <Text style={{ color: colors.muted, textAlign: 'center', marginTop: 4, lineHeight: 20 }}>
-                  Your submitted job requests and handyman quotes will appear here.
+                  Your submitted job requests and provider quotes will appear here.
                 </Text>
               </Card>
             )}

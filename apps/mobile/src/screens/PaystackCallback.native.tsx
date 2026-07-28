@@ -1,5 +1,5 @@
 /* eslint-disable prettier/prettier */
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, Pressable, ActivityIndicator, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useRoute } from '@react-navigation/native';
@@ -9,8 +9,7 @@ import * as Linking from 'expo-linking';
 
 import tw from '../../tailwind';
 import { useShopContext } from '@myhandymanapp/shared/context';
-import { paystackVerify } from '@myhandymanapp/shared/api';
-import { confirmOrgSubscription } from '@myhandymanapp/shared/api/orgApi';
+import { paystackVerify, paystackVerifyBooking } from '@myhandymanapp/shared/api/paymentApi';
 import type { MainStackParamList } from '../navigation/types';
 
 type Status = 'verifying' | 'success' | 'failed';
@@ -18,21 +17,9 @@ type R = RouteProp<MainStackParamList, 'PaystackCallback'>;
 
 /* ----------------------- AsyncStorage helpers ----------------------- */
 
-async function safeGet(key: string): Promise<string> {
-  try {
-    return (await AsyncStorage.getItem(key)) || '';
-  } catch {
-    return '';
-  }
-}
 async function safeSet(key: string, val: string) {
   try {
     await AsyncStorage.setItem(key, val);
-  } catch {}
-}
-async function safeRemove(keys: string[]) {
-  try {
-    await Promise.all(keys.map((k) => AsyncStorage.removeItem(k)));
   } catch {}
 }
 
@@ -64,24 +51,14 @@ function emitWalletUpdated(balance: number) {
   } catch {}
 }
 
-/**
- * ORG flow is ONLY when we have a paymentId (route or storage) OR kind=org.
- * Token flow is everything else.
- */
-async function resolveFlowNative(params: any) {
+function resolveFlowNative(params: any) {
   const kind = String(params?.kind || '').toLowerCase();
-  const qPaymentId = String(params?.paymentId || '').trim();
-
-  const sPaymentId = (await safeGet('org:lastPaystackPaymentId')).trim();
-  const effectivePaymentId = (qPaymentId || sPaymentId).trim();
-
-  const isOrg = Boolean(effectivePaymentId) || kind === 'org';
-
   return {
-    isOrg,
     kind,
-    qPaymentId,
-    effectivePaymentId,
+    isBooking: kind === 'booking',
+    bookingId: String(params?.bookingId || '').trim(),
+    jobId: String(params?.jobId || '').trim(),
+    quoteId: String(params?.quoteId || '').trim(),
   };
 }
 
@@ -97,17 +74,15 @@ export default function PaystackCallbackNative() {
   const route = useRoute<R>();
   const insets = useSafeAreaInsets();
 
-  const { backendUrl, token, orgToken } = (useShopContext() as any) ?? {};
+  const { backendUrl, token } = (useShopContext() as any) ?? {};
   const pkgToken = String(token || '').trim();
-  const orgAuthToken = String(orgToken || '').trim();
 
   const [status, setStatus] = useState<Status>('verifying');
   const [message, setMessage] = useState('Finishing payment…');
 
   const [reference, setReference] = useState<string>('');
-  const [isOrg, setIsOrg] = useState<boolean>(false);
-  const [effectivePaymentId, setEffectivePaymentId] = useState<string>('');
   const [kind, setKind] = useState<string>('');
+  const [bookingParams, setBookingParams] = useState<{ bookingId?: string; jobId?: string; quoteId?: string }>({});
 
   const [retryTick, setRetryTick] = useState(0);
 
@@ -145,14 +120,13 @@ export default function PaystackCallbackNative() {
       const merged = { ...(deepParams || {}), ...(p as any) };
 
       const ref = pickReference(merged);
-      const flow = await resolveFlowNative(merged);
+      const flow = resolveFlowNative(merged);
 
       if (!alive) return;
 
       setReference(ref);
-      setIsOrg(flow.isOrg);
-      setEffectivePaymentId(flow.effectivePaymentId);
       setKind(flow.kind || '');
+      setBookingParams({ bookingId: flow.bookingId, jobId: flow.jobId, quoteId: flow.quoteId });
     })();
 
     return () => {
@@ -167,12 +141,10 @@ export default function PaystackCallbackNative() {
         const merged = { ...(route.params ?? {}), ...(qp as any) };
 
         const ref = pickReference(merged);
-        resolveFlowNative(merged).then((flow) => {
-          setReference(ref);
-          setIsOrg(flow.isOrg);
-          setEffectivePaymentId(flow.effectivePaymentId);
-          setKind(flow.kind || '');
-        });
+        const flow = resolveFlowNative(merged);
+        setReference(ref);
+        setKind(flow.kind || '');
+        setBookingParams({ bookingId: flow.bookingId, jobId: flow.jobId, quoteId: flow.quoteId });
       } catch {}
     });
 
@@ -185,10 +157,7 @@ export default function PaystackCallbackNative() {
     setRetryTick((x) => x + 1);
   };
 
-  const goHome = () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] });
-  const goAccount = () =>
-    navigation.reset({ index: 0, routes: [{ name: 'Account', params: { tab: 'transactions' } }] });
-  const goOrgPortal = () => navigation.reset({ index: 0, routes: [{ name: 'OrgElearnPortal' }] });
+  const goHome = () => navigation.reset({ index: 0, routes: [{ name: 'Tabs' }] });
 
   // Main verify effect (matches web logic; never mixes tokens)
   useEffect(() => {
@@ -206,40 +175,30 @@ export default function PaystackCallbackNative() {
         }
 
         // ==============================
-        // ORG FLOW (uses orgToken ONLY)
+        // BOOKING FLOW (uses client token)
         // ==============================
-        if (isOrg) {
-          if (!effectivePaymentId) {
+        if (kind === 'booking') {
+          if (!pkgToken) {
             setStatus('failed');
-            setMessage('Missing institution paymentId.');
+            setMessage('You must be logged in to confirm this booking payment.');
             return;
           }
-          if (!orgAuthToken) {
+          const result = await paystackVerifyBooking(backendUrl, reference, pkgToken);
+          if (!result?.ok || result.status !== 'success') {
             setStatus('failed');
-            setMessage('You must be logged in (institution) to activate your subscription.');
+            setMessage(result?.message || 'Booking payment was not completed.');
             return;
           }
-
-          await confirmOrgSubscription(backendUrl, orgAuthToken, effectivePaymentId, reference);
-
-          // cleanup (native AsyncStorage equivalent)
-          await safeRemove([
-            'org:lastPaystackPaymentId',
-            'org:lastPaystackOrgId',
-            'org:lastPaystackTier',
-            'org:lastPaystackCycle',
-            'org:lastPaystackAt',
-          ]);
-
           if (!alive) return;
+          const bookingId = result.bookingId || bookingParams.bookingId || '';
+          const jobId = result.jobId || bookingParams.jobId || '';
+          const quoteId = result.quoteId || bookingParams.quoteId || '';
           setStatus('success');
-          setMessage('Payment verified. Subscription activated ✅');
-
+          setMessage('Payment verified. Booking confirmed.');
           setTimeout(() => {
             if (!alive) return;
-            goOrgPortal();
-          }, 800);
-
+            navigation.reset({ index: 0, routes: [{ name: 'BookingConfirmed', params: { bookingId, jobId, quoteId } }] });
+          }, 650);
           return;
         }
 
@@ -265,19 +224,17 @@ export default function PaystackCallbackNative() {
 
         // optional breadcrumb for your Account screen to react to
         await safeSet('paystack:after', JSON.stringify({ at: Date.now(), focus: 'tokens' }));
-        await safeRemove(['paystack:returnTo', 'paystack:returnToAt']);
-
         setTimeout(() => {
           if (!alive) return;
-          goAccount();
+          goHome();
         }, 650);
       } catch (e: any) {
         if (!alive) return;
         setStatus('failed');
 
-        if (isOrg) {
+        if (kind === 'booking') {
           setMessage(
-            e?.response?.data?.message || e?.message || 'Failed to confirm subscription payment'
+            e?.response?.data?.message || e?.message || 'Booking payment verification failed.'
           );
         } else {
           setMessage(
@@ -290,9 +247,9 @@ export default function PaystackCallbackNative() {
     return () => {
       alive = false;
     };
-  }, [backendUrl, reference, isOrg, effectivePaymentId, orgAuthToken, pkgToken, retryTick]);
+  }, [backendUrl, reference, pkgToken, retryTick, kind, bookingParams, navigation]);
 
-  const flowLabel = useMemo(() => (isOrg ? 'Institution plan' : 'Token top-up'), [isOrg]);
+  const flowLabel = useMemo(() => (kind === 'booking' ? 'Booking payment' : 'Token top-up'), [kind]);
 
   const cardBorder = 'border border-[#e2edf5] dark:border-white/10';
   const cardBg = 'bg-white dark:bg-[#0f1821]';
@@ -342,21 +299,12 @@ export default function PaystackCallbackNative() {
 
           {/* Buttons (never mix links) */}
           <View style={tw`mt-4 flex-row flex-wrap gap-2`}>
-            {isOrg ? (
-              <Pressable
-                onPress={goOrgPortal}
-                style={tw`px-3 py-2 rounded-xl bg-slate-900 dark:bg-white/10`}
-              >
-                <Text style={tw`text-sm font-bold text-white`}>Go to Institution Portal</Text>
-              </Pressable>
-            ) : (
-              <Pressable
-                onPress={goAccount}
-                style={tw`px-3 py-2 rounded-xl bg-slate-900 dark:bg-white/10`}
-              >
-                <Text style={tw`text-sm font-bold text-white`}>Go to Account</Text>
-              </Pressable>
-            )}
+            <Pressable
+              onPress={goHome}
+              style={tw`px-3 py-2 rounded-xl bg-slate-900 dark:bg-white/10`}
+            >
+              <Text style={tw`text-sm font-bold text-white`}>Go to Home</Text>
+            </Pressable>
 
             {status === 'failed' ? (
               <Pressable
@@ -377,31 +325,6 @@ export default function PaystackCallbackNative() {
             </Pressable>
           </View>
 
-          {/* Debug footer */}
-          {reference ? (
-            <View style={tw`mt-4`}>
-              <Text style={tw`text-[11px] text-[#49739c] dark:text-white/60`}>
-                Ref:{' '}
-                <Text style={tw`font-mono text-[#0d141c] dark:text-white/80`}>{reference}</Text>
-                {isOrg && effectivePaymentId ? (
-                  <>
-                    {' '}
-                    • PaymentId:{' '}
-                    <Text style={tw`font-mono text-[#0d141c] dark:text-white/80`}>
-                      {effectivePaymentId}
-                    </Text>
-                    {kind ? (
-                      <>
-                        {' '}
-                        • Kind:{' '}
-                        <Text style={tw`font-mono text-[#0d141c] dark:text-white/80`}>{kind}</Text>
-                      </>
-                    ) : null}
-                  </>
-                ) : null}
-              </Text>
-            </View>
-          ) : null}
         </View>
       </View>
     </SafeAreaView>

@@ -6,26 +6,16 @@ import {
   Navigate,
   Outlet,
   useLocation,
-  useNavigate, // ✅ import useNavigate
+  useNavigate,
 } from 'react-router-dom';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
-import PackagesCreate from './pages/PackagesCreate';
-import PackagesManage from './pages/PackagesManage';
-import Transactions from './pages/Transactions';
-import Receipts from './pages/Receipts';
-import Users from './pages/Users';
 import AdminLogin from './pages/AdminLogin';
-import OpenStaxIngest from './pages/OpenStaxIngest';
-import Certifications from './pages/Certifications';
-import OrgPricingManage from './pages/OrgPricingManage';
-import OrgSubscriptionsManage from './pages/OrgSubscriptionsManage';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import AdminThemeProvider from './components/AdminThemeProvider';
 import { useShopContext } from '@myhandymanapp/shared/context/ShopContext';
 import { Loader2 } from 'lucide-react';
-import YouTubeIngest from './pages/YouTubeIngest';
 import HandymanVerifications from './pages/HandymanVerifications';
 import ApprovalsDashboard from './pages/ApprovalsDashboard';
 import MarketplaceJobs from './pages/MarketplaceJobs';
@@ -36,7 +26,7 @@ function AuthSplash() {
   return (
     <div className="min-h-[60vh] flex items-center justify-center text-sm text-mutedGray dark:text-darkTextSecondary">
       <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-      Checking admin access…
+      Checking admin access...
     </div>
   );
 }
@@ -97,12 +87,12 @@ function RequireRole({
   const effectiveRole: Role =
     (role as Role) || (adminToken ? 'admin' : null) || ((lsRole || null) as Role);
 
-  // While provider is hydrating AND we have no token yet → splash
+  // While provider is hydrating and we have no token yet, show splash
   if (initializing && !effectiveToken) {
     return <AuthSplash />;
   }
 
-  // No token at all → login
+  // No token at all, send to login
   if (!effectiveToken) {
     return <Navigate to="/login" replace state={{ from: loc }} />;
   }
@@ -112,7 +102,7 @@ function RequireRole({
     return <>{children}</>;
   }
 
-  // Role known but insufficient → login
+  // Role known but insufficient, send to login
   if (!hasRoleAtLeast(effectiveRole, minRole)) {
     return <Navigate to="/login" replace state={{ from: loc }} />;
   }
@@ -176,17 +166,7 @@ const App: React.FC = () => {
           <Route path="/approvals" element={<ApprovalsDashboard />} />
           <Route path="/marketplace-jobs" element={<MarketplaceJobs />} />
           <Route path="/marketplace-bookings" element={<MarketplaceBookings />} />
-          <Route path="/oer/openstax-ingest" element={<OpenStaxIngest />} />
-          <Route path="/packages/create" element={<PackagesCreate />} />
-          <Route path="/packages" element={<PackagesManage />} />
-          <Route path="/transactions" element={<Transactions />} />
-          <Route path="/receipts" element={<Receipts />} />
-          <Route path="/orgs" element={<OrgSubscriptionsManage />} />
-          <Route path="/org-pricing" element={<OrgPricingManage />} />
-          <Route path="/users" element={<Users />} />
           <Route path="/handyman-verifications" element={<HandymanVerifications />} />
-          <Route path="/certifications" element={<Certifications />} />
-          <Route path="/oer/youtube-ingest" element={<YouTubeIngest />} />
         </Route>
 
         {/* Fallback */}

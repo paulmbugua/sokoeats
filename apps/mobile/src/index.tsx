@@ -4,7 +4,7 @@ import * as Linking from 'expo-linking';
 
 import axios, { isAxiosError } from 'axios';
 import React, { useEffect } from 'react';
-import { AppState, LogBox, StatusBar, Platform } from 'react-native';
+import { AppState, LogBox, StatusBar, Platform, Vibration } from 'react-native';
 import * as Notifications from 'expo-notifications';
 
 import { registerRootComponent } from 'expo';
@@ -272,7 +272,13 @@ const RootInner: React.FC = () => {
   })();
 
   const cleanup = initNotificationListeners({
-    onReceive: () => {},
+    onReceive: (notification) => {
+      const data = notification.request.content.data as { kind?: unknown; type?: unknown };
+      const kind = String(data?.kind || data?.type || '');
+      if (kind.startsWith('EKAZI_')) {
+        Vibration.vibrate([0, 450, 120, 450, 120, 700]);
+      }
+    },
     onRespond: handleResp,
   });
 

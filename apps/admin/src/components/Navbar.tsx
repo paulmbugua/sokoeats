@@ -11,7 +11,7 @@ const Navbar: React.FC<Props> = ({ onLogout }) => {
       <div className="flex items-center gap-3">
         <div className="h-8 w-8 rounded-xl bg-gradient-to-br from-softPink to-secondary" />
         <div className="leading-tight">
-          <p className="font-semibold app-heading m-0">DayBreak Learner</p>
+          <p className="font-semibold app-heading m-0">Ekazi Admin</p>
           <p className="text-xs text-mutedGray dark:text-darkTextSecondary -mt-0.5">Admin Panel</p>
         </div>
       </div>

@@ -174,7 +174,7 @@ export default function OpenStaxIngest() {
   async function handleDelete(book: ExistingBook) {
     if (!backendUrl) return;
     const confirmed = window.confirm(
-      `Delete "${book.title}" from your DayBreak OpenStax uploads?\n\n` +
+      `Delete "${book.title}" from your Ekazi uploads?\n\n` +
         'This does NOT touch the original OpenStax site, only your course + collection.'
     );
     if (!confirmed) return;

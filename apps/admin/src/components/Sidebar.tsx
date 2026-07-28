@@ -1,21 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import {
-  PackagePlus,
-  Layers,
-  CreditCard,
-  FileText,
-  Users,
-  BookOpenCheck,
-  Video,
-  BadgeCheck,
-  Building2,
-  BadgePercent,
-  ShieldCheck,
-  LayoutDashboard,
-  ClipboardList,
-  CalendarCheck2,
-} from 'lucide-react';
+import { CalendarCheck2, ClipboardList, LayoutDashboard } from 'lucide-react';
 
 const navItem =
   'flex items-center gap-3 border border-gray-200 dark:border-darkCard border-r-0 px-3 py-2 rounded-l hover:bg-gray-50 dark:hover:bg-white/5 transition';
@@ -49,92 +34,6 @@ export default function Sidebar() {
         >
           <CalendarCheck2 className="w-5 h-5" />
           <p className="hidden md:block">Bookings</p>
-        </NavLink>
-        <NavLink
-          to="/oer/openstax-ingest"
-          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
-        >
-          <BookOpenCheck className="w-5 h-5" />
-          <p className="hidden md:block">OpenStax Ingest</p>
-        </NavLink>
-
-        <NavLink
-          to="/oer/youtube-ingest"
-          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
-        >
-          <Video className="w-5 h-5" />
-          <p className="hidden md:block">YouTube Ingest</p>
-        </NavLink>
-
-        <NavLink
-          to="/packages/create"
-          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
-        >
-          <PackagePlus className="w-5 h-5" />
-          <p className="hidden md:block">Create Package</p>
-        </NavLink>
-
-        <NavLink
-          to="/packages"
-          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
-        >
-          <Layers className="w-5 h-5" />
-          <p className="hidden md:block">Manage Packages</p>
-        </NavLink>
-
-        <NavLink
-          to="/transactions"
-          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
-        >
-          <CreditCard className="w-5 h-5" />
-          <p className="hidden md:block">Transactions</p>
-        </NavLink>
-
-        <NavLink
-          to="/receipts"
-          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
-        >
-          <FileText className="w-5 h-5" />
-          <p className="hidden md:block">Receipts</p>
-        </NavLink>
-
-        <NavLink
-          to="/orgs"
-          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
-        >
-          <Building2 className="w-5 h-5" />
-          <p className="hidden md:block">Institutions</p>
-        </NavLink>
-
-        <NavLink
-          to="/org-pricing"
-          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
-        >
-          <BadgePercent className="w-5 h-5" />
-          <p className="hidden md:block">Org Pricing</p>
-        </NavLink>
-
-        <NavLink
-          to="/handyman-verifications"
-          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
-        >
-          <ShieldCheck className="w-5 h-5" />
-          <p className="hidden md:block">Verifications</p>
-        </NavLink>
-
-
-
-        <NavLink to="/users" className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}>
-          <Users className="w-5 h-5" />
-          <p className="hidden md:block">Users</p>
-        </NavLink>
-
-        <NavLink
-          to="/certifications"
-          className={({ isActive }) => `${navItem} ${isActive ? active : ''}`}
-        >
-          <BadgeCheck className="w-5 h-5" />
-          <p className="hidden md:block">Certifications</p>
         </NavLink>
       </nav>
     </aside>

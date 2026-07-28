@@ -218,6 +218,23 @@ const buildMessagePayload = (eventType, payload) => {
         },
       };
     }
+    case 'EKAZI_COMMISSION_DUE': {
+      const amount = Number(payload.amountDue || 0).toLocaleString('en-KE');
+      const threshold = Number(payload.threshold || 200).toLocaleString('en-KE');
+      return {
+        title: 'Ekazi commission due',
+        body: `Your cash-job commission has reached KES ${amount}. Cash bookings pause at KES ${threshold}; card bookings remain available.`,
+        data: { screen: 'ProviderCommissionPayment' },
+      };
+    }
+    case 'EKAZI_COMMISSION_PAID': {
+      const amount = Number(payload.amountPaid || 0).toLocaleString('en-KE');
+      return {
+        title: 'Commission payment received',
+        body: `KES ${amount} has been applied to your Ekazi commission balance.`,
+        data: { screen: 'ProviderCommissionPayment' },
+      };
+    }
     case 'TOKENS_PURCHASED': {
       const credits = payload.credits ? Number(payload.credits) : null;
       const body = credits
@@ -291,3 +308,4 @@ export async function notifyEvent(eventType, recipients, payload = {}, meta = {}
   }
   return { ok: true };
 }
+

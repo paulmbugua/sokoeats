@@ -115,7 +115,7 @@ export default function YouTubeIngest() {
     if (!backendUrl) return;
 
     const confirmed = window.confirm(
-      `Delete "${coll.title}" YouTube collection from your DayBreak catalog?\n\n` +
+      `Delete "${coll.title}" YouTube collection from your Ekazi catalog?\n\n` +
         'This does NOT delete the actual YouTube videos; only your local collection + links.'
     );
     if (!confirmed) return;

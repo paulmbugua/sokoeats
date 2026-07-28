@@ -8,7 +8,7 @@ import SecondaryButton from '../../components/SecondaryButton';
 import { Screen } from '../../components/Screen';
 import { colors, radius, spacing } from '../../theme/tokens';
 
-const COMMISSION_RATE = 0.15;
+const COMMISSION_RATE = 0.10;
 
 function amount(value: string) {
   const number = Number(value.replace(/,/g, ''));
@@ -25,30 +25,29 @@ function openMap(job: any) {
 export default function SubmitQuoteScreen({ route, navigation }: any) {
   const { http, backendUrl } = useShopContext();
   const job = route.params.job;
-  const [labor, setLabor] = useState('');
-  const [materials, setMaterials] = useState('');
-  const [transport, setTransport] = useState('');
-  const [etaMinutes, setEtaMinutes] = useState('60');
-  const [durationHours, setDurationHours] = useState('2');
-  const [message, setMessage] = useState('');
+  const quote = route.params.quote;
+  const isEditing = Boolean(quote?.id);
+  const [labor, setLabor] = useState(quote?.labor != null ? String(quote.labor) : '');
+  const [materials, setMaterials] = useState(quote?.materials != null ? String(quote.materials) : '');
+  const [transport, setTransport] = useState(quote?.transport != null ? String(quote.transport) : '');
+  const [etaMinutes, setEtaMinutes] = useState(quote?.etaMinutes != null ? String(quote.etaMinutes) : '60');
+  const [durationHours, setDurationHours] = useState(quote?.durationHours != null ? String(quote.durationHours) : '2');
+  const [message, setMessage] = useState(quote?.message || '');
   const [submitting, setSubmitting] = useState(false);
   const subtotal = useMemo(() => amount(labor) + amount(materials) + amount(transport), [labor, materials, transport]);
-  const discount = Math.round((subtotal * Number(job.discountPercent || 0)) / 100);
+  const discount = Math.round((amount(labor) * Number(job.discountPercent || 0)) / 100);
   const clientPays = Math.max(0, subtotal - discount);
-  const commission = Math.round(clientPays * COMMISSION_RATE);
+  const grossCommission = Math.round(amount(labor) * COMMISSION_RATE);
+  const commission = Math.max(0, grossCommission - discount);
   const takeHome = Math.max(0, clientPays - commission);
 
   const submit = async () => {
-    if (!job.client?.phone) {
+    if (job.client && !job.client?.phone) {
       Alert.alert('Client contact missing', 'The client must add a phone number before you can submit a quote.');
       return;
     }
     if (subtotal <= 0) {
       Alert.alert('Add quote amounts', 'Your quote total must be greater than zero.');
-      return;
-    }
-    if (!message.trim()) {
-      Alert.alert('Add a short message', 'Tell the client what your quote covers.');
       return;
     }
     setSubmitting(true);
@@ -61,7 +60,7 @@ export default function SubmitQuoteScreen({ route, navigation }: any) {
         durationHours: amount(durationHours),
         message: message.trim(),
       });
-      Alert.alert('Quote sent', 'The client can now review your real quote.', [
+      Alert.alert(isEditing ? 'Quote updated' : 'Quote sent', isEditing ? 'Your corrected quote is now visible to the client.' : 'The client can now review your real quote.', [
         { text: 'Done', onPress: () => navigation.goBack() },
       ]);
     } catch (error: any) {
@@ -77,7 +76,7 @@ export default function SubmitQuoteScreen({ route, navigation }: any) {
     <Screen backgroundColor={colors.bg}>
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, paddingBottom: 110 }}>
         <Card>
-          <Text style={{ fontWeight: '900', fontSize: 18 }}>{job.serviceName || job.categoryName}</Text>
+          <Text style={{ fontWeight: '900', fontSize: 18 }}>{isEditing ? 'Edit submitted quote' : (job.serviceName || job.categoryName)}</Text>
           <Text style={{ color: colors.muted, marginTop: 7 }}>{job.description}</Text>
           <Text style={{ fontWeight: '800', marginTop: 9 }}>{job.address || job.estate + ', ' + job.city}</Text>
           <Text style={{ color: colors.muted, marginTop: 4 }}>
@@ -99,32 +98,65 @@ export default function SubmitQuoteScreen({ route, navigation }: any) {
           </ScrollView>
         ) : null}
 
-        <Text style={{ fontWeight: '900', fontSize: 17, marginTop: 18 }}>Price breakdown</Text>
-        <Input label="Labour (KES)" value={labor} onChangeText={setLabor} placeholder="2500" />
-        <Input label="Materials (KES)" value={materials} onChangeText={setMaterials} placeholder="0" />
-        <Input label="Transport (KES)" value={transport} onChangeText={setTransport} placeholder="300" />
-        <Input label="Arrival time (minutes)" value={etaMinutes} onChangeText={setEtaMinutes} placeholder="60" />
-        <Input label="Estimated duration (hours)" value={durationHours} onChangeText={setDurationHours} placeholder="2" />
-        <Text style={{ fontWeight: '800', marginBottom: 7 }}>Message to client</Text>
-        <TextInput
-          value={message}
-          onChangeText={setMessage}
-          multiline
-          placeholder="Explain what is included and when you can start."
-          placeholderTextColor={colors.muted}
-          style={{ minHeight: 100, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: 12, textAlignVertical: 'top' }}
-        />
+        <Card style={{ marginTop: 18, borderWidth: 1.5, borderColor: '#BBF7D0', backgroundColor: '#FFFFFF' }}>
+          <View
+            style={{
+              backgroundColor: colors.primarySoft,
+              borderRadius: radius.lg,
+              paddingVertical: 12,
+              paddingHorizontal: 14,
+              marginBottom: 14,
+              borderWidth: 1,
+              borderColor: '#BBF7D0',
+            }}
+          >
+            <Text style={{ color: colors.primaryDark, fontWeight: '900', fontSize: 18 }}>Price breakdown</Text>
+            <Text style={{ color: colors.mutedDark, marginTop: 4, lineHeight: 20 }}>
+              Enter what you will charge the client. Ekazi takes 10% from labour only. On FIRST5 jobs, Ekazi funds the 5% labour discount from its commission.
+            </Text>
+          </View>
+
+          <Input label="Labour (KES)" value={labor} onChangeText={setLabor} placeholder="2500" />
+          <Input label="Materials (KES)" value={materials} onChangeText={setMaterials} placeholder="0" />
+          <Input label="Transport (KES)" value={transport} onChangeText={setTransport} placeholder="300" />
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Input label="Arrival time (minutes)" value={etaMinutes} onChangeText={setEtaMinutes} placeholder="60" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Input label="Duration (hours)" value={durationHours} onChangeText={setDurationHours} placeholder="2" />
+            </View>
+          </View>
+          <Text style={{ fontWeight: '900', marginBottom: 7, marginTop: 2 }}>Message to client <Text style={{ color: colors.muted }}>(optional)</Text></Text>
+          <TextInput
+            value={message}
+            onChangeText={setMessage}
+            multiline
+            placeholder="Optional: explain what is included and when you can start."
+            placeholderTextColor={colors.muted}
+            style={{
+              minHeight: 110,
+              borderWidth: 1,
+              borderColor: '#CBD5E1',
+              borderRadius: radius.md,
+              padding: 12,
+              textAlignVertical: 'top',
+              backgroundColor: '#F8FAFC',
+              color: colors.ink,
+            }}
+          />
+        </Card>
 
         <Card style={{ marginTop: 14, backgroundColor: '#F9FAFB' }}>
           <Text style={{ fontWeight: '900' }}>Subtotal: KES {subtotal.toLocaleString()}</Text>
-          {discount > 0 ? <Text style={{ color: colors.green, marginTop: 5 }}>Client FIRST10 saving: -KES {discount.toLocaleString()}</Text> : null}
+          {discount > 0 ? <Text style={{ color: colors.green, marginTop: 5 }}>Client FIRST5 saving: -KES {discount.toLocaleString()}</Text> : null}
           <Text style={{ fontSize: 19, fontWeight: '900', marginTop: 7 }}>Client pays: KES {clientPays.toLocaleString()}</Text>
-          <Text style={{ color: colors.danger, marginTop: 6, fontWeight: '900' }}>Ekazi organization commission 15%: KES {commission.toLocaleString()}</Text>
+          <Text style={{ color: colors.danger, marginTop: 6, fontWeight: '900' }}>Ekazi net commission: KES {commission.toLocaleString()}</Text>
           <Text style={{ color: colors.primary, marginTop: 4, fontWeight: '900' }}>Estimated take-home: KES {takeHome.toLocaleString()}</Text>
         </Card>
 
         <View style={{ marginTop: 18 }}>
-          <PrimaryButton title={submitting ? 'Sending Quote...' : 'Send Quote'} onPress={() => void submit()} disabled={submitting} />
+          <PrimaryButton title={submitting ? (isEditing ? 'Updating Quote...' : 'Sending Quote...') : (isEditing ? 'Update Quote' : 'Send Quote')} onPress={() => void submit()} disabled={submitting} />
         </View>
       </ScrollView>
     </Screen>

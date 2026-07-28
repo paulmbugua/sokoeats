@@ -118,8 +118,8 @@ export default function SignUpScreen({ navigation }: any) {
       <Text style={{ fontSize: typography.h1, fontWeight: '900', color: colors.ink, lineHeight: 38 }}>How will you use Ekazi?</Text>
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 14, marginBottom: 18 }}>
         {([
-          ['client', 'I need a handyman', 'Search, request and compare quotes', 'person-outline'],
-          ['handyman', 'I am a handyman', 'Find jobs and send quotes', 'hammer-outline'],
+          ['client', 'I need a provider', 'Search, request and compare quotes', 'person-outline'],
+          ['handyman', 'I am a provider', 'Find jobs and send quotes', 'hammer-outline'],
         ] as const).map(([value, title, subtitle, icon]) => {
           const selected = role === value;
           return (

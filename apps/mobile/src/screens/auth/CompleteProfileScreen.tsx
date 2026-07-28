@@ -19,7 +19,26 @@ function toggle(list: string[], value: string) {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
 }
 
-export default function CompleteProfileScreen() {
+const PROVIDER_FREE_SERVICE_LIMIT = 2;
+
+function showQualificationPrompt() {
+  Alert.alert(
+    'Qualification needed',
+    'You can start with up to 2 services. To add a third service, first upload a qualification certificate from your Profile after setup.',
+    [{ text: 'Choose 2 for now' }],
+  );
+}
+
+function toggleProviderService(list: string[], value: string) {
+  if (list.includes(value)) return toggle(list, value);
+  if (list.length >= PROVIDER_FREE_SERVICE_LIMIT) {
+    showQualificationPrompt();
+    return list;
+  }
+  return [...list, value];
+}
+
+export default function CompleteProfileScreen({ navigation }: any) {
   const {
     http,
     role,
@@ -47,7 +66,7 @@ export default function CompleteProfileScreen() {
     () =>
       isHandyman
         ? ['Contact clients safely', 'Receive quote decisions', 'Show your service categories', 'Build reliability history']
-        : ['Receive quote updates', 'Let handymen contact you', 'Reuse job location details', 'Keep bookings traceable'],
+        : ['Receive quote updates', 'Let providers contact you', 'Reuse job location details', 'Keep bookings traceable'],
     [isHandyman],
   );
 
@@ -66,7 +85,7 @@ export default function CompleteProfileScreen() {
     }
     setSaving(true);
     try {
-      await http.patch('/api/auth/profile/complete', {
+      const { data } = await http.patch('/api/auth/profile/complete', {
         name: name.trim(),
         phone: phone.trim(),
         city: city.trim() || 'Nairobi',
@@ -79,6 +98,7 @@ export default function CompleteProfileScreen() {
         categories: selectedCategories,
       });
       await Promise.all([refreshUserDetails(), refreshProfile().catch(() => undefined)]);
+      Alert.alert('Profile completed', 'Your Ekazi account is ready.');
     } catch (error: any) {
       Alert.alert('Could not save profile', error?.response?.data?.message || 'Check your details and try again.');
     } finally {
@@ -95,7 +115,7 @@ export default function CompleteProfileScreen() {
         <Text style={{ color: 'rgba(255,255,255,0.88)', marginTop: 8, lineHeight: 22 }}>
           {isHandyman
             ? 'Clients need your contact, service focus and business basics before they can trust your quotes.'
-            : 'Handymen need a reliable contact and area context before they can quote or arrive.'}
+            : 'Providers need a reliable contact and area context before they can quote or arrive.'}
         </Text>
       </Card>
 
@@ -133,17 +153,20 @@ export default function CompleteProfileScreen() {
 
       {isHandyman ? (
         <Card style={{ marginTop: 14 }}>
-          <Text style={{ fontWeight: '900', fontSize: 16, marginBottom: 12 }}>Handyman profile</Text>
+          <Text style={{ fontWeight: '900', fontSize: 16, marginBottom: 12 }}>Provider profile</Text>
           <Input label="Business or trade name" value={businessName} onChangeText={setBusinessName} placeholder="e.g. Mwangi Plumbing Works" />
           <Input label="Service radius in km" value={serviceRadiusKm} onChangeText={setServiceRadiusKm} placeholder="20" keyboardType="numeric" />
           <Text style={{ fontWeight: '800', marginBottom: 8 }}>Services you handle</Text>
+          <Text style={{ color: colors.muted, marginBottom: 10, lineHeight: 20 }}>
+            Start with 1 or 2 core services. Adding a third service requires a qualification certificate review.
+          </Text>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
             {categories.map((category) => (
               <Chip
                 key={category.id}
                 label={category.name}
                 active={selectedCategories.includes(category.id)}
-                onPress={() => setSelectedCategories((current) => toggle(current, category.id))}
+                onPress={() => setSelectedCategories((current) => toggleProviderService(current, category.id))}
               />
             ))}
           </View>

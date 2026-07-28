@@ -1020,8 +1020,14 @@ export const uploadSingleFile = async (req, res) => {
     const paramType = (req.params?.type || '').toLowerCase(); // 'image' | 'video' | 'doc'
     const mime = req.file.mimetype || '';
     const inferred = mime.startsWith('video/') ? 'video' : mime.startsWith('image/') ? 'image' : 'doc';
-    const resourceType =
-      ['video', 'image', 'doc'].includes(paramType) ? paramType : inferred;
+    // National ID and other verification uploads can hit /upload/doc even when
+    // the selected file is a photo. Store image/* files in the public images
+    // bucket so admin/client previews use https://images.ekazi.co.ke, not /uploads.
+    const resourceType = mime.startsWith('image/')
+      ? 'image'
+      : ['video', 'image', 'doc'].includes(paramType)
+        ? paramType
+        : inferred;
 
     // Optional: add a quick log while testing
     console.log(

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert, Linking, Text, View } from 'react-native';
 import { useShopContext } from '@myhandymanapp/shared/context';
 import { ScreenScroll } from '../../components/Screen';
 import Input from '../../components/Input';
@@ -7,6 +7,16 @@ import PrimaryButton from '../../components/PrimaryButton';
 import CustomGoogleLoginButton from '../CustomGoogleLoginButton.native';
 import { logGoogleAuthFlow, summarizeGoogleIdToken } from '../../utils/googleAuthDebug';
 import { colors, typography } from '../../theme/tokens';
+
+const POLICY_LINKS: Array<[string, string]> = [
+  ['Privacy Policy', 'https://ekazi.co.ke/privacy-policy'],
+  ['Terms', 'https://ekazi.co.ke/terms'],
+  ['Anti-Spam', 'https://ekazi.co.ke/anti-spam-policy'],
+  ['Feedback', 'https://ekazi.co.ke/complaints-feedback'],
+  ['Refunds', 'https://ekazi.co.ke/refunds'],
+  ['Fulfillment', 'https://ekazi.co.ke/fulfillment'],
+  ['Payments', 'https://ekazi.co.ke/payment-flow'],
+];
 
 export default function LoginScreen({ navigation }: any) {
   const { http, loginConsumer } = useShopContext();
@@ -30,6 +40,10 @@ export default function LoginScreen({ navigation }: any) {
     setLoading(true);
     try {
       const { data } = await http.post('/api/auth/login', { phone: phone.trim(), password });
+      if (data?.requiresTwoFactor) {
+        Alert.alert('OTP paused', 'SMS and Email OTP are temporarily disabled. Please restart the backend and sign in again.');
+        return;
+      }
       await finishAuth(data);
     } catch (e: any) {
       Alert.alert(
@@ -57,6 +71,10 @@ export default function LoginScreen({ navigation }: any) {
         role: data?.user?.role,
         hasSessionToken: Boolean(data?.token),
       });
+      if (data?.requiresTwoFactor) {
+        Alert.alert('OTP paused', 'SMS and Email OTP are temporarily disabled. Please restart the backend and sign in again.');
+        return;
+      }
       await finishAuth(data);
     } catch (e: any) {
       logGoogleAuthFlow('login:backend_request:error', {
@@ -78,7 +96,9 @@ export default function LoginScreen({ navigation }: any) {
 
   return (
     <ScreenScroll backgroundColor={colors.bg} contentContainerStyle={{ justifyContent: 'center' }}>
-      <Text style={{ fontSize: typography.h1, fontWeight: '900', marginBottom: 8, color: colors.ink }}>Welcome back</Text>
+      <Text style={{ fontSize: typography.h1, fontWeight: '900', marginBottom: 8, color: colors.ink }}>
+        Welcome back
+      </Text>
       <Text style={{ color: colors.mutedDark, marginBottom: 22, fontSize: typography.body, lineHeight: 24 }}>
         Sign in to manage Ekazi jobs, quotes and bookings.
       </Text>
@@ -93,6 +113,8 @@ export default function LoginScreen({ navigation }: any) {
       />
 
       <PrimaryButton title={loading ? 'Signing in...' : 'Sign In'} onPress={signIn} disabled={loading} />
+
+      <Text style={{ textAlign: 'right', marginTop: 10, marginBottom: 4, color: colors.primary, fontWeight: '900' }} onPress={() => Alert.alert('Password reset paused', 'SMS and Email OTP password reset is temporarily disabled. Contact Ekazi support for password help.')}>Forgot password?</Text>
 
       <View style={{ height: 14 }} />
       <CustomGoogleLoginButton
@@ -114,15 +136,19 @@ export default function LoginScreen({ navigation }: any) {
           Create Account
         </Text>
       </Text>
-      <Text style={{ textAlign: 'center', marginTop: 10, color: colors.muted }}>
-        Or verify by OTP{' '}
-        <Text
-          style={{ color: colors.primary, fontWeight: '800' }}
-          onPress={() => navigation.navigate('OtpVerify', { phone })}
-        >
-          Send OTP
-        </Text>
-      </Text>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, marginTop: 22 }}>
+        {POLICY_LINKS.map(([label, url]) => (
+          <Text
+            key={url}
+            onPress={() => void Linking.openURL(url)}
+            style={{ color: colors.muted, fontSize: 12, fontWeight: '800', textDecorationLine: 'underline' }}
+          >
+            {label}
+          </Text>
+        ))}
+      </View>
     </ScreenScroll>
   );
 }
+
+

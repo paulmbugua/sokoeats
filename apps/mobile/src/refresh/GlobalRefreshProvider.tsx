@@ -1,7 +1,8 @@
 import React, { createContext, useCallback, useContext,  useEffect, useMemo, useRef, useState } from 'react';
 import type { PropsWithChildren } from 'react';
-import { RefreshControl, ScrollView, FlatList } from 'react-native';
+import { RefreshControl } from 'react-native';
 import { queryClient } from '@myhandymanapp/shared/utils/queryClient';
+import { colors } from '../theme/tokens';
 
 type RefreshFn = () => Promise<void> | void;
 
@@ -65,7 +66,15 @@ export const useGlobalRefresh = () => {
 export function withRefreshControlScrollProps() {
   const { refreshing, refresh } = useGlobalRefresh();
   return {
-    refreshControl: <RefreshControl refreshing={refreshing} onRefresh={refresh} />,
+    refreshControl: (
+      <RefreshControl
+        refreshing={refreshing}
+        onRefresh={refresh}
+        tintColor={colors.primary}
+        colors={[colors.primary]}
+        progressBackgroundColor="#FFFFFF"
+      />
+    ),
   };
 }
 
@@ -75,10 +84,24 @@ export function useListRefreshProps() {
   return { refreshing, onRefresh: refresh };
 }
 
+export function useRefreshControl(enabled = true) {
+  const { refreshing, refresh } = useGlobalRefresh();
+  return (
+    <RefreshControl
+      refreshing={enabled ? refreshing : false}
+      onRefresh={enabled ? refresh : undefined}
+      enabled={enabled}
+      tintColor={colors.primary}
+      colors={[colors.primary]}
+      progressBackgroundColor="#FFFFFF"
+    />
+  );
+}
+
 /** Allow a screen to add extra refresh work (e.g., refetch local state) */
 export function useRegisterScreenRefresh(fn: RefreshFn | null | undefined) {
   const { register } = useGlobalRefresh();
-  useEffect(() => {          // ✅ use named import
+  useEffect(() => {
     if (!fn) return;
     return register(fn);
   }, [fn, register]);

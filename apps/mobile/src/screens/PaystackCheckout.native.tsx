@@ -23,7 +23,7 @@ export default function PaystackCheckoutNative() {
   const shouldCloseUrls = useMemo(
     () => ({
       close3ds: 'https://standard.paystack.co/close',
-      deepPrefix: 'daybreak://paystack/callback',
+      deepPrefix: 'ekazi://paystack/callback',
     }),
     []
   );
@@ -34,9 +34,12 @@ export default function PaystackCheckoutNative() {
         reference,
         kind,
         paymentId,
+        bookingId: route.params?.bookingId,
+        jobId: route.params?.jobId,
+        quoteId: route.params?.quoteId,
       });
     },
-    [navigation, reference, kind, paymentId]
+    [navigation, reference, kind, paymentId, route.params?.bookingId, route.params?.jobId, route.params?.quoteId]
   );
 
   if (!authorizationUrl || !reference) {

@@ -62,17 +62,128 @@ export function ensureMarketplaceSchema() {
         handyman_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         subtotal NUMERIC(12,2) NOT NULL, discount_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
         total NUMERIC(12,2) NOT NULL,
-        organization_commission_percent NUMERIC(5,2) NOT NULL DEFAULT 15,
+        organization_commission_percent NUMERIC(5,2) NOT NULL DEFAULT 10,
         organization_commission_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
         handyman_payout_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'confirmed',
+        payment_method TEXT NOT NULL DEFAULT 'cash',
+        payment_status TEXT NOT NULL DEFAULT 'unpaid',
+        provider_settlement_status TEXT NOT NULL DEFAULT 'pending',
         cancelled_by TEXT,
         cancellation_reason TEXT,
         cancellation_reason_code TEXT,
         cancellation_notes TEXT,
         cancelled_at TIMESTAMPTZ,
+        arrived_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        client_rating INTEGER,
+        client_review TEXT,
+        client_reviewed_at TIMESTAMPTZ,
+        handyman_latitude DOUBLE PRECISION,
+        handyman_longitude DOUBLE PRECISION,
+        handyman_location_accuracy DOUBLE PRECISION,
+        handyman_location_updated_at TIMESTAMPTZ,
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      CREATE TABLE IF NOT EXISTS ekazi_job_dispatches (
+        id BIGSERIAL PRIMARY KEY,
+        job_id BIGINT NOT NULL REFERENCES ekazi_jobs(id) ON DELETE CASCADE,
+        handyman_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        status TEXT NOT NULL DEFAULT 'offered',
+        offer_rank INTEGER NOT NULL DEFAULT 0,
+        distance_km NUMERIC(10,2),
+        reason TEXT NOT NULL DEFAULT 'created',
+        notified_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        responded_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(job_id, handyman_user_id)
+      );
+      CREATE TABLE IF NOT EXISTS ekazi_notification_events (
+        id BIGSERIAL PRIMARY KEY,
+        user_id BIGINT REFERENCES users(id) ON DELETE CASCADE,
+        profile_id TEXT,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        body TEXT NOT NULL,
+        data JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS ekazi_job_dispatches_job_idx ON ekazi_job_dispatches(job_id,status,offer_rank);
+      CREATE INDEX IF NOT EXISTS ekazi_job_dispatches_provider_idx ON ekazi_job_dispatches(handyman_user_id,status,created_at DESC);
+      CREATE TABLE IF NOT EXISTS ekazi_client_issue_reports (
+        id BIGSERIAL PRIMARY KEY,
+        booking_id BIGINT REFERENCES ekazi_bookings(id) ON DELETE CASCADE,
+        job_id BIGINT REFERENCES ekazi_jobs(id) ON DELETE CASCADE,
+        client_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reason_code TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        impact_points INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        status TEXT NOT NULL DEFAULT 'pending_review',
+        reviewed_by BIGINT REFERENCES users(id) ON DELETE SET NULL,
+        reviewed_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        UNIQUE(booking_id, provider_user_id, reason_code)
+      );
+      CREATE INDEX IF NOT EXISTS ekazi_notification_events_user_idx ON ekazi_notification_events(user_id,created_at DESC);
+      CREATE INDEX IF NOT EXISTS ekazi_client_issue_reports_client_idx ON ekazi_client_issue_reports(client_user_id,status,created_at DESC);
+      CREATE INDEX IF NOT EXISTS ekazi_client_issue_reports_provider_idx ON ekazi_client_issue_reports(provider_user_id,created_at DESC);
+      CREATE TABLE IF NOT EXISTS ekazi_provider_commission_debts (
+        id BIGSERIAL PRIMARY KEY,
+        provider_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        booking_id BIGINT NOT NULL UNIQUE REFERENCES ekazi_bookings(id) ON DELETE CASCADE,
+        amount NUMERIC(12,2) NOT NULL,
+        amount_paid NUMERIC(12,2) NOT NULL DEFAULT 0,
+        status TEXT NOT NULL DEFAULT 'due',
+        notified_at TIMESTAMPTZ,
+        settled_by_payout_id BIGINT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        settled_at TIMESTAMPTZ
+      );
+      CREATE TABLE IF NOT EXISTS ekazi_provider_commission_payments (
+        id BIGSERIAL PRIMARY KEY,
+        provider_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        amount NUMERIC(12,2) NOT NULL,
+        currency TEXT NOT NULL DEFAULT 'KES',
+        phone TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        checkout_request_id TEXT UNIQUE,
+        merchant_request_id TEXT,
+        mpesa_receipt TEXT,
+        mpesa_result_code INTEGER,
+        mpesa_result_desc TEXT,
+        raw_request JSONB,
+        raw_callback JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        completed_at TIMESTAMPTZ
+      );
+      CREATE INDEX IF NOT EXISTS ekazi_provider_commission_payments_provider_idx ON ekazi_provider_commission_payments(provider_user_id,status,created_at DESC);
+      CREATE TABLE IF NOT EXISTS ekazi_provider_payouts (
+        id BIGSERIAL PRIMARY KEY,
+        provider_user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        gross_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        commission_offset_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        net_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+        currency TEXT NOT NULL DEFAULT 'KES',
+        method TEXT NOT NULL DEFAULT 'mpesa',
+        mpesa_phone TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        provider_reference TEXT,
+        originator_conversation_id TEXT,
+        conversation_id TEXT,
+        result_code INTEGER,
+        result_desc TEXT,
+        raw_response JSONB,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        processed_at TIMESTAMPTZ,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      ALTER TABLE ekazi_provider_commission_debts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+      CREATE INDEX IF NOT EXISTS ekazi_provider_commission_debts_provider_idx ON ekazi_provider_commission_debts(provider_user_id,status,created_at DESC);
+      CREATE INDEX IF NOT EXISTS ekazi_provider_payouts_provider_idx ON ekazi_provider_payouts(provider_user_id,status,created_at DESC);
       CREATE TABLE IF NOT EXISTS ekazi_conversations (
         id BIGSERIAL PRIMARY KEY,
         booking_id BIGINT NOT NULL UNIQUE REFERENCES ekazi_bookings(id) ON DELETE CASCADE,
@@ -100,6 +211,8 @@ export function ensureMarketplaceSchema() {
       CREATE INDEX IF NOT EXISTS ekazi_conversations_client_idx ON ekazi_conversations(client_user_id,last_message_at DESC,created_at DESC);
       CREATE INDEX IF NOT EXISTS ekazi_conversations_handyman_idx ON ekazi_conversations(handyman_user_id,last_message_at DESC,created_at DESC);
       CREATE INDEX IF NOT EXISTS ekazi_messages_conversation_idx ON ekazi_messages(conversation_id,created_at ASC);
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS provider_decline_count INTEGER NOT NULL DEFAULT 0;
+      ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS provider_decline_score NUMERIC(5,2) NOT NULL DEFAULT 100;
       ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS cancellation_count INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS cancellation_score NUMERIC(5,2) NOT NULL DEFAULT 100;
       ALTER TABLE ekazi_handyman_profiles ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ;
@@ -126,7 +239,12 @@ export function ensureMarketplaceSchema() {
         UNIQUE(handyman_user_id, document_type)
       );
       CREATE INDEX IF NOT EXISTS ekazi_handyman_verification_reviews_status_idx ON ekazi_handyman_verification_reviews(status, created_at DESC);
-      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS organization_commission_percent NUMERIC(5,2) NOT NULL DEFAULT 15;
+            ALTER TABLE ekazi_provider_commission_debts ADD COLUMN IF NOT EXISTS amount_paid NUMERIC(12,2) NOT NULL DEFAULT 0;
+ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS payment_method TEXT NOT NULL DEFAULT 'cash';
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid';
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS provider_settlement_status TEXT NOT NULL DEFAULT 'pending';
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS organization_commission_percent NUMERIC(5,2) NOT NULL DEFAULT 10;
+      ALTER TABLE ekazi_bookings ALTER COLUMN organization_commission_percent SET DEFAULT 10;
       ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS organization_commission_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
       ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS handyman_payout_amount NUMERIC(12,2) NOT NULL DEFAULT 0;
       ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS cancelled_by TEXT;
@@ -134,6 +252,30 @@ export function ensureMarketplaceSchema() {
       ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS cancellation_reason_code TEXT;
       ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS cancellation_notes TEXT;
       ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS cancelled_at TIMESTAMPTZ;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS arrived_at TIMESTAMPTZ;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+      ALTER TABLE ekazi_quotes ADD COLUMN IF NOT EXISTS declined_at TIMESTAMPTZ;
+      ALTER TABLE ekazi_quotes ADD COLUMN IF NOT EXISTS decline_reason TEXT;
+      ALTER TABLE ekazi_quotes ADD COLUMN IF NOT EXISTS decline_reason_code TEXT;
+      ALTER TABLE ekazi_quotes ADD COLUMN IF NOT EXISTS decline_notes TEXT;
+      ALTER TABLE ekazi_job_dispatches ADD COLUMN IF NOT EXISTS reason TEXT NOT NULL DEFAULT 'created';
+      ALTER TABLE ekazi_job_dispatches ADD COLUMN IF NOT EXISTS responded_at TIMESTAMPTZ;
+      ALTER TABLE ekazi_job_dispatches ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+      ALTER TABLE ekazi_notification_events ADD COLUMN IF NOT EXISTS profile_id TEXT;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS client_rating INTEGER;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS client_review TEXT;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS client_reviewed_at TIMESTAMPTZ;
+      DO $$ BEGIN
+        ALTER TABLE ekazi_bookings ADD CONSTRAINT ekazi_bookings_client_rating_range CHECK (client_rating IS NULL OR (client_rating BETWEEN 1 AND 5)) NOT VALID;
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS handyman_latitude DOUBLE PRECISION;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS handyman_longitude DOUBLE PRECISION;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS handyman_location_accuracy DOUBLE PRECISION;
+      ALTER TABLE ekazi_bookings ADD COLUMN IF NOT EXISTS handyman_location_updated_at TIMESTAMPTZ;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS client_rating_score NUMERIC(5,2) NOT NULL DEFAULT 100;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS client_issue_count INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_warning_count INTEGER NOT NULL DEFAULT 0;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS account_status TEXT NOT NULL DEFAULT 'active';
       ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ;
@@ -172,10 +314,38 @@ export function jobJson(row) {
     discountCode: row.discount_code,
     discountPercent: Number(row.discount_percent || 0),
     quoteCount: Number(row.quote_count || 0),
+    booking: row.booking_id
+      ? {
+          id: String(row.booking_id),
+          quoteId: row.booking_quote_id ? String(row.booking_quote_id) : row.accepted_quote_id ? String(row.accepted_quote_id) : null,
+          status: row.booking_status || null,
+          completedAt: row.booking_completed_at || null,
+          cancelledAt: row.booking_cancelled_at || null,
+          providerName: row.booking_provider_business_name || row.booking_provider_name || 'Ekazi Provider',
+          review: row.booking_client_rating == null
+            ? null
+            : {
+                rating: Number(row.booking_client_rating),
+                comment: row.booking_client_review || '',
+                reviewedAt: row.booking_client_reviewed_at || null,
+              },
+        }
+      : null,
     createdAt: row.created_at,
     distanceKm: row.distance_km == null ? null : Number(row.distance_km),
     nearestRank: row.nearest_rank == null ? null : Number(row.nearest_rank),
   };
+}
+
+function quoteCommissionJson(row) {
+  const percent = Number(row.organization_commission_percent || 10);
+  const amount = row.organization_commission_amount == null
+    ? Math.max(0, Math.round(Number(row.labor || 0) * percent) / 100 - Number(row.discount_amount || 0))
+    : Number(row.organization_commission_amount || 0);
+  const payout = row.handyman_payout_amount == null
+    ? Math.max(0, Number(row.total || 0) - amount)
+    : Number(row.handyman_payout_amount || 0);
+  return { percent, amount, handymanPayout: payout };
 }
 
 export function quoteJson(row) {
@@ -195,7 +365,7 @@ export function quoteJson(row) {
     createdAt: row.created_at,
     pro: {
       id: String(row.handyman_user_id),
-      name: row.business_name || row.handyman_name || 'Ekazi Handyman',
+      name: row.business_name || row.handyman_name || 'Ekazi Provider',
       ratingAvg: Number(row.rating_avg || 0),
       ratingCount: Number(row.rating_count || 0),
       verifiedId: Boolean(row.verified),
@@ -211,10 +381,9 @@ export function quoteJson(row) {
       suspendedUntil: row.suspended_until || null,
       phone: row.handyman_phone || row.phone || null,
     },
-    commission: {
-      percent: Number(row.organization_commission_percent || 15),
-      amount: Number(row.organization_commission_amount || 0),
-      handymanPayout: Number(row.handyman_payout_amount || 0),
-    },
+    commission: quoteCommissionJson(row),
   };
 }
+
+
+

@@ -13,13 +13,13 @@ export default function RequestSubmittedScreen({ route, navigation }: any) {
       <Card style={{ backgroundColor: colors.primarySoft, borderColor: '#BBF7D0' }}>
         <Text style={{ fontWeight: '900', fontSize: 18, color: colors.ink }}>Request submitted</Text>
         <Text style={{ color: colors.mutedDark, marginTop: 8, lineHeight: 21 }}>
-          Providers in your area are reviewing your request. Real quotes will appear as handymen send them.
+          Providers in your area are reviewing your request. Real quotes will appear as providers send them.
         </Text>
       </Card>
 
       <Card style={{ marginTop: 14 }}>
         <Text style={{ fontWeight: '900', color: colors.ink }}>Add more photos</Text>
-        <Text style={{ color: colors.muted, marginTop: 6 }}>Photos help handymen price the job accurately.</Text>
+        <Text style={{ color: colors.muted, marginTop: 6 }}>Photos help providers price the job accurately.</Text>
       </Card>
 
       <Card style={{ marginTop: 10 }}>

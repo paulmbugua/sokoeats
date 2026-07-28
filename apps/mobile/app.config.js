@@ -172,6 +172,7 @@ export default function expoConfig({ config }) {
       permissions: [
         'INTERNET',
         'POST_NOTIFICATIONS',
+        'VIBRATE',
         'ACCESS_COARSE_LOCATION',
         'ACCESS_FINE_LOCATION',
       ],
@@ -187,7 +188,7 @@ export default function expoConfig({ config }) {
       notification: {
         icon: './assets/notification-icon.png',
         color: '#16A34A',
-        defaultChannel: 'default',
+        defaultChannel: 'ekazi-actions-v2',
       },
 
       adaptiveIcon: {
@@ -248,7 +249,12 @@ export default function expoConfig({ config }) {
         },
       ],
 
-      'expo-notifications',
+      [
+        'expo-notifications',
+        {
+          sounds: ['./assets/sounds/ekazi_alert.wav'],
+        },
+      ],
       [
         'expo-location',
         {
@@ -281,8 +287,8 @@ export default function expoConfig({ config }) {
             usesCleartextTraffic,
             enableProguardInReleaseBuilds: true,
             enableShrinkResourcesInReleaseBuilds: true,
-            compileSdkVersion: 35,
-            targetSdkVersion: 35,
+            compileSdkVersion: 36,
+            targetSdkVersion: 36,
             javaVersion: 17,
           },
           ios: {

@@ -144,7 +144,7 @@ export default function ApprovalsDashboard() {
         <div>
           <h3 className="app-heading">Ekazi Approvals</h3>
           <p className="text-sm text-mutedGray dark:text-darkTextSecondary mt-1">
-            Live operational queue for client requests, handyman trust documents, bookings, and account risk.
+            Live operational queue for client requests, provider trust documents, bookings, and account risk.
           </p>
         </div>
         <button className="btn-outline" onClick={() => void load()} disabled={loading}>
@@ -162,7 +162,7 @@ export default function ApprovalsDashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
         <StatCard icon={<Users className="w-7 h-7" />} label="Total users" value={users.total_users || 0} tone="slate" />
-        <StatCard icon={<Users className="w-7 h-7" />} label="Clients / Handymen" value={(users.clients || 0) + ' / ' + (users.handymen || 0)} tone="blue" />
+        <StatCard icon={<Users className="w-7 h-7" />} label="Clients / Providers" value={(users.clients || 0) + ' / ' + (users.handymen || 0)} tone="blue" />
         <StatCard icon={<AlertTriangle className="w-7 h-7" />} label="Suspended / banned" value={(users.suspended || 0) + ' / ' + (users.banned || 0)} tone="red" />
       </div>
 
@@ -170,7 +170,7 @@ export default function ApprovalsDashboard() {
         <section className="panel p-4">
           <div className="flex items-center justify-between gap-3 mb-3">
             <div>
-              <h4 className="font-semibold text-darkText dark:text-darkTextPrimary">Pending handyman documents</h4>
+              <h4 className="font-semibold text-darkText dark:text-darkTextPrimary">Pending provider documents</h4>
               <p className="text-xs text-mutedGray dark:text-darkTextSecondary">Submitted from apps/mobile or apps/web.</p>
             </div>
             <Link className="btn-outline" to="/handyman-verifications">Review all</Link>
@@ -207,7 +207,7 @@ export default function ApprovalsDashboard() {
               <div key={item.id} className="rounded border border-gray-200 dark:border-white/10 p-3">
                 <p className="font-semibold">{item.description || 'Booking #' + item.id}</p>
                 <p className="text-xs text-mutedGray mt-1">
-                  {item.client_name || 'Client'} / {item.handyman_name || 'Handyman'} | cancelled by {item.cancelled_by || 'unknown'}
+                  {item.client_name || 'Client'} / {item.handyman_name || 'Provider'} | cancelled by {item.cancelled_by || 'unknown'}
                 </p>
                 <p className="text-sm mt-2">{item.cancellation_reason || item.cancellation_reason_code || 'No reason captured'}</p>
                 {item.cancellation_notes ? <p className="text-xs text-mutedGray mt-1">{item.cancellation_notes}</p> : null}

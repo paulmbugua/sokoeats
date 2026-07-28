@@ -12,7 +12,7 @@ type Listener = Notifications.Subscription | undefined;
 Notifications.setNotificationHandler({
   handleNotification: async (): Promise<Notifications.NotificationBehavior> => ({
     shouldShowAlert: true,
-    shouldPlaySound: false,
+    shouldPlaySound: true,
     shouldSetBadge: false,
     // iOS-specific newer fields (ignored on Android)
     shouldShowBanner: true,
@@ -25,10 +25,30 @@ export async function ensureAndroidChannel(): Promise<void> {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync('default', {
     name: 'General',
-    importance: Notifications.AndroidImportance.MAX,
-    vibrationPattern: [0, 250, 250, 250],
-    lightColor: '#FF6B00',
+    importance: Notifications.AndroidImportance.HIGH,
+    vibrationPattern: [0, 250, 180, 250],
+    lightColor: '#16A34A',
     sound: 'default',
+  });
+  await Notifications.setNotificationChannelAsync('ekazi-actions', {
+    name: 'Ekazi job alerts',
+    description: 'Legacy Ekazi action alerts.',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 450, 120, 450, 120, 700],
+    lightColor: '#16A34A',
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    bypassDnd: false,
+    sound: 'ekazi_alert.wav',
+  });
+  await Notifications.setNotificationChannelAsync('ekazi-actions-v2', {
+    name: 'Ekazi job offers',
+    description: 'Urgent job offers, quotes, arrivals, completions and booking updates.',
+    importance: Notifications.AndroidImportance.MAX,
+    vibrationPattern: [0, 450, 120, 450, 120, 700],
+    lightColor: '#16A34A',
+    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+    bypassDnd: false,
+    sound: 'ekazi_alert.wav',
   });
 }
 
@@ -61,7 +81,7 @@ export async function registerForPushToken(): Promise<string | null> {
 /** Fire a local notification immediately (or pass trigger to schedule). */
 export async function notifyNow(title: string, body: string, data?: Record<string, any>) {
   return Notifications.scheduleNotificationAsync({
-    content: { title, body, data },
+    content: { title, body, data, sound: 'ekazi_alert.wav' },
     trigger: null, // change to { seconds: 5 } to delay
   });
 }

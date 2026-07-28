@@ -20,7 +20,7 @@ import type {
   Conversation,
   ChatMessage,
   ChatContextValue as SharedChatContextValue,
-} from '@myhandymanapp/shared/types';
+} from '@myhandymanapp/shared/types/ShopContextTypes';
 
 /**
  * ✅ FIX:
@@ -138,11 +138,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
 
     const same =
       formatted.length === lastChatsRef.current.length &&
-      formatted.every(
-        (c, i) =>
-          c.conversationId === lastChatsRef.current[i].conversationId &&
-          c.unreadCount === lastChatsRef.current[i].unreadCount
-      );
+      formatted.every((c, i) => {
+        const previous = lastChatsRef.current[i];
+        return Boolean(
+          previous &&
+            c.conversationId === previous.conversationId &&
+            c.unreadCount === previous.unreadCount
+        );
+      });
 
     if (!same) {
       lastChatsRef.current = formatted;
@@ -219,12 +222,14 @@ export const ChatProvider: React.FC<ChatProviderProps> = ({ children }) => {
       setChats((prev) => {
         const idx = prev.findIndex((c) => c.conversationId === inc.conversationId);
         if (idx > -1) {
+          const current = prev[idx];
+          if (!current) return prev;
           const updated = [...prev];
           updated[idx] = {
-            ...updated[idx],
+            ...current,
             lastMessage: inc.lastMessage,
-            unreadCount: updated[idx].unreadCount + inc.unreadCount,
-            messages: [...updated[idx].messages, ...inc.messages],
+            unreadCount: current.unreadCount + inc.unreadCount,
+            messages: [...current.messages, ...inc.messages],
           };
           return updated;
         }

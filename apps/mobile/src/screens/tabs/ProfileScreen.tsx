@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Image, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { useShopContext } from '@myhandymanapp/shared/context';
@@ -12,9 +12,21 @@ import { colors, radius, spacing } from '../../theme/tokens';
 import PrimaryButton from '../../components/PrimaryButton';
 import SecondaryButton from '../../components/SecondaryButton';
 import { Screen } from '../../components/Screen';
+import { useGlobalRefresh, useRegisterScreenRefresh } from '../../refresh/GlobalRefreshProvider';
 
 function toggle(list: string[], value: string) {
   return list.includes(value) ? list.filter((item) => item !== value) : [...list, value];
+}
+
+const PROVIDER_FREE_SERVICE_LIMIT = 2;
+const EXTRA_SERVICE_CERTIFICATE_STATUSES = new Set(['pending', 'approved']);
+
+function showQualificationPrompt() {
+  Alert.alert(
+    'Qualification needed for extra services',
+    'Ekazi lets providers offer up to 2 services immediately. Upload a qualification certificate below to add a third service or more.',
+    [{ text: 'Upload certificate below' }],
+  );
 }
 
 export default function ProfileScreen() {
@@ -33,6 +45,7 @@ export default function ProfileScreen() {
     refreshProfile,
   } = useShopContext();
   const isHandyman = role === 'tutor';
+  const { refreshing, refresh } = useGlobalRefresh();
   const [loggingOut, setLoggingOut] = useState(false);
   const [saving, setSaving] = useState(false);
   const [stats, setStats] = useState({
@@ -57,6 +70,8 @@ export default function ProfileScreen() {
   const [uploadingVerification, setUploadingVerification] = useState<string | null>(null);
 
   const displayName = profile?.name?.trim() || userName?.trim() || 'Ekazi customer';
+  const certificateStatus = String(handymanProfile?.certificate_status || handymanProfile?.verification?.certificateStatus || '').toLowerCase();
+  const canAddExtraServices = Boolean(handymanProfile?.certificate_url || handymanProfile?.verification?.certificateUrl || EXTRA_SERVICE_CERTIFICATE_STATUSES.has(certificateStatus));
   const verification = handymanProfile?.verification || {
     profileImageUrl: handymanProfile?.profile_image_url,
     profileImageStatus: handymanProfile?.profile_image_status || 'missing',
@@ -121,6 +136,23 @@ export default function ProfileScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const refreshAccountScreen = useCallback(async () => {
+    await Promise.allSettled([refreshUserDetails(), refreshProfile(), load()]);
+  }, [load, refreshProfile, refreshUserDetails]);
+
+  useRegisterScreenRefresh(refreshAccountScreen);
+
+  const toggleProviderCategory = useCallback((categoryId: string) => {
+    setSelectedCategories((current) => {
+      if (current.includes(categoryId)) return toggle(current, categoryId);
+      if (current.length >= PROVIDER_FREE_SERVICE_LIMIT && !canAddExtraServices) {
+        showQualificationPrompt();
+        return current;
+      }
+      return [...current, categoryId];
+    });
+  }, [canAddExtraServices]);
 
   const selectedCategoryNames = useMemo(
     () =>
@@ -231,13 +263,17 @@ export default function ProfileScreen() {
 
   return (
     <Screen backgroundColor="white">
-      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: spacing.xl, paddingBottom: 120 }}>
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.primary} colors={[colors.primary]} />}
+        contentContainerStyle={{ padding: spacing.xl, paddingBottom: 120 }}
+      >
         <Card style={{ backgroundColor: colors.primary, borderColor: colors.primary }}>
           <Text style={{ color: 'white', fontWeight: '900', fontSize: 22 }}>{displayName}</Text>
           <Text style={{ color: 'rgba(255,255,255,0.9)', marginTop: 6 }}>{userEmail || 'Email not provided'}</Text>
           <Text style={{ color: 'rgba(255,255,255,0.9)', marginTop: 2 }}>{userPhone || 'Phone not provided'}</Text>
           <Text style={{ color: 'rgba(255,255,255,0.86)', marginTop: 10, fontWeight: '800' }}>
-            {isHandyman ? 'Handyman account' : 'Client account'}
+            {isHandyman ? 'Provider account' : 'Client account'}
           </Text>
         </Card>
 
@@ -289,9 +325,12 @@ export default function ProfileScreen() {
               <Input label="Business or trade name" value={businessName} onChangeText={setBusinessName} placeholder="e.g. Ekazi Plumbing Works" />
               <Input label="Service radius in km" value={serviceRadiusKm} onChangeText={setServiceRadiusKm} placeholder="20" keyboardType="numeric" />
               <Text style={{ color: colors.muted, marginBottom: 8 }}>Current services: {selectedCategoryNames}</Text>
+              <Text style={{ color: colors.muted, marginBottom: 10, lineHeight: 20 }}>
+                Pick up to 2 core services. A submitted or approved qualification certificate unlocks extra service categories.
+              </Text>
               <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
                 {categories.map((category) => (
-                  <Chip key={category.id} label={category.name} active={selectedCategories.includes(category.id)} onPress={() => setSelectedCategories((current) => toggle(current, category.id))} />
+                  <Chip key={category.id} label={category.name} active={selectedCategories.includes(category.id)} onPress={() => toggleProviderCategory(category.id)} />
                 ))}
               </View>
               <Text style={{ fontWeight: '800', marginBottom: 8 }}>Work bio</Text>
@@ -334,7 +373,7 @@ export default function ProfileScreen() {
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, alignItems: 'center' }}>
                       <View style={{ flex: 1 }}>
                         <Text style={{ fontWeight: '900' }}>{label}{required ? ' *' : ''}</Text>
-                        <Text style={{ color: colors.muted, marginTop: 3 }}>{required ? 'Required for active handyman status' : 'Optional, improves client trust'}</Text>
+                        <Text style={{ color: colors.muted, marginTop: 3 }}>{required ? 'Required for active provider status' : 'Optional, improves client trust'}</Text>
                       </View>
                       <View style={{ backgroundColor: tone.bg, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 }}>
                         <Text style={{ color: tone.fg, fontWeight: '900', fontSize: 12 }}>{tone.label}</Text>

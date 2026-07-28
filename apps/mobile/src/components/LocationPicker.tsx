@@ -263,7 +263,7 @@ export default function LocationPicker({ value, onChange }: Props) {
             mapLog('loaded');
           }}
           onRegionChangeComplete={(region) => {
-            mapLog('region_change_complete', summarizeRegion(region));
+            mapLog('region_change_complete', summarizeRegion(region) || undefined);
           }}
           initialRegion={initialRegion}
           onPress={pinLocation}

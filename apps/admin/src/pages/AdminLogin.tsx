@@ -227,7 +227,7 @@ export default function AdminLogin() {
       }
 
       toast.success(`Welcome back (${role})!`);
-      nav('/transactions', { replace: true });
+      nav('/approvals', { replace: true });
     } catch (err: any) {
       const msg = err?.response?.data?.message || err?.message || 'Login failed';
       toast.error(msg);
@@ -239,7 +239,7 @@ export default function AdminLogin() {
 
   return (
     <div className="relative min-h-[100vh] flex items-center justify-center px-4 py-10 bg-gradient-to-br from-slate-50 to-white dark:from-[#0B0E14] dark:to-[#0B0E14]">
-      {/* Theme toggle — top-right */}
+      {/* Theme toggle - top-right */}
       <div className="absolute top-4 right-4">
         <ThemeToggle />
       </div>
@@ -258,8 +258,7 @@ export default function AdminLogin() {
               <h2 className="app-heading">Admin Console</h2>
             </div>
             <p className="text-sm text-mutedGray dark:text-darkTextSecondary mt-1">
-              Sign in with your administrator credentials to access packages, users, transactions,
-              and receipts.
+              Sign in with your Ekazi administrator credentials to approve providers, review requests, bookings, payments, and support cases.
             </p>
           </div>
 
@@ -269,7 +268,7 @@ export default function AdminLogin() {
               ref={emailRef}
               className="input mt-1"
               type="email"
-              placeholder="admin@company.com"
+              placeholder="admin@ekazi.co.ke"
               autoComplete="username"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -284,7 +283,7 @@ export default function AdminLogin() {
               <input
                 className="input pr-10"
                 type={showPw ? 'text' : 'password'}
-                placeholder="••••••••"
+                placeholder="********"
                 autoComplete="current-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -311,7 +310,7 @@ export default function AdminLogin() {
               </span>
             </label>
             <span className="text-xs text-mutedGray dark:text-darkTextSecondary opacity-70">
-              SSO available on enterprise plans
+              Restricted to Ekazi staff
             </span>
           </div>
 
@@ -324,7 +323,7 @@ export default function AdminLogin() {
             {busy ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Signing in…
+                Signing in...
               </>
             ) : (
               <>
@@ -341,7 +340,7 @@ export default function AdminLogin() {
                 Secure
               </div>
               <p className="mt-1 text-mutedGray dark:text-darkTextSecondary">
-                TLS, hashed credentials, and IP throttling protect access.
+                TLS, hashed credentials, and rate limits protect Ekazi admin access.
               </p>
             </div>
             <div className="rounded-lg border border-gray-100 dark:border-darkCard p-3">
@@ -350,7 +349,7 @@ export default function AdminLogin() {
                 Audited
               </div>
               <p className="mt-1 text-mutedGray dark:text-darkTextSecondary">
-                Every admin action is logged with time, IP, and user.
+                Approvals, suspensions, and payment actions are logged by admin user.
               </p>
             </div>
             <div className="rounded-lg border border-gray-100 dark:border-darkCard p-3">
@@ -359,7 +358,7 @@ export default function AdminLogin() {
                 Resilient
               </div>
               <p className="mt-1 text-mutedGray dark:text-darkTextSecondary">
-                Redundant replicas and daily encrypted backups.
+                Operational dashboards track marketplace health and review queues.
               </p>
             </div>
           </div>
@@ -369,35 +368,33 @@ export default function AdminLogin() {
         <aside className="hidden md:flex panel p-8 rounded-2xl shadow-lg border border-gray-100/70 dark:border-darkCard bg-white/60 dark:bg-darkCard/60 backdrop-blur flex-col justify-between">
           <div>
             <h3 className="text-xl font-semibold text-gray-800 dark:text-white">
-              DayBreak Learner • Admin
+              Ekazi Admin
             </h3>
             <p className="mt-2 text-sm text-mutedGray dark:text-darkTextSecondary">
-              Manage prices and packages, review transactions, generate receipts, and keep your
-              platform humming. Only authorized staff are permitted.
+              Manage Kenyan provider approvals, client requests, bookings, cancellations, commissions, and marketplace trust. Only authorized Ekazi staff are permitted.
             </p>
             <ul className="mt-6 space-y-3 text-sm text-gray-700 dark:text-darkTextPrimary">
               <li className="flex items-center gap-2">
-                <span className="chip chip-active">Packages</span>
-                Create, edit, and run offers across USD &amp; KES.
+                <span className="chip chip-active">Approvals</span>
+                Verify provider IDs, profile photos, certificates, and good conduct documents.
               </li>
               <li className="flex items-center gap-2">
-                <span className="chip">Transactions</span>
-                Unified feed for purchases &amp; tutor withdrawals.
+                <span className="chip">Requests</span>
+                Monitor client jobs, quote activity, locations, and service categories.
               </li>
               <li className="flex items-center gap-2">
-                <span className="chip">Receipts</span>
-                Generate PDF proof of fulfillment instantly.
+                <span className="chip">Bookings</span>
+                Review accepted jobs, cancellations, contacts, and service progress.
               </li>
               <li className="flex items-center gap-2">
-                <span className="chip">Users</span>
-                Audit user states, tokens, and roles.
+                <span className="chip">Trust</span>
+                Audit user status, ratings, suspensions, and support escalations.
               </li>
             </ul>
           </div>
 
           <div className="mt-8 text-xs text-mutedGray dark:text-darkTextSecondary">
-            By continuing, you agree to the acceptable use and administrative access policy. All
-            access attempts are monitored.
+            By continuing, you agree to Ekazi administrative access policy. All access attempts and sensitive actions are monitored.
           </div>
         </aside>
       </div>

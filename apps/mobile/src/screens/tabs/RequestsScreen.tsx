@@ -15,6 +15,13 @@ type Job = {
   status: string;
   quoteCount?: number;
   createdAt?: string;
+  booking?: {
+    id: string;
+    quoteId?: string | null;
+    status?: string | null;
+    providerName?: string | null;
+    review?: { rating: number; comment?: string; reviewedAt?: string | null } | null;
+  } | null;
 };
 
 function quoteLabel(count: number) {
@@ -61,6 +68,19 @@ export default function RequestsScreen({ navigation }: any) {
         {jobs.length ? (
           jobs.map((job) => {
             const count = Number(job.quoteCount || 0);
+            const bookingStatus = String(job.booking?.status || job.status || '').toLowerCase();
+            const completed = ['completed', 'complete', 'done'].includes(bookingStatus);
+            const openBooking = () => {
+              if (job.booking?.id) {
+                navigation.navigate('BookingConfirmed', {
+                  bookingId: String(job.booking.id),
+                  jobId: String(job.id),
+                  quoteId: String(job.booking.quoteId || ''),
+                });
+                return;
+              }
+              navigation.navigate('QuotesInbox', { jobId: job.id });
+            };
             return (
               <Card key={job.id} style={{ marginBottom: 12 }}>
                 <Text style={{ fontWeight: '900', fontSize: typography.body, color: colors.ink }}>
@@ -69,15 +89,26 @@ export default function RequestsScreen({ navigation }: any) {
                 <Text style={{ color: colors.muted, marginTop: 6 }}>
                   {job.estate}, {job.city} - {job.scheduleType}
                 </Text>
-                <Pressable onPress={() => navigation.navigate('QuotesInbox', { jobId: job.id })}>
+                {job.booking?.providerName ? (
+                  <Text style={{ color: colors.ink, fontWeight: '800', marginTop: 8 }}>
+                    Provider: {job.booking.providerName}
+                  </Text>
+                ) : null}
+                <Pressable onPress={openBooking}>
                   <Text
                     style={{
-                      color: count > 0 ? colors.green : colors.muted,
+                      color: completed && !job.booking?.review?.rating ? colors.primary : count > 0 ? colors.green : colors.muted,
                       fontWeight: '900',
                       marginTop: 10,
                     }}
                   >
-                    {quoteLabel(count)}
+                    {completed
+                      ? job.booking?.review?.rating
+                        ? 'Rated ' + job.booking.review.rating + '/5'
+                        : 'Rate completed service'
+                      : job.booking?.id
+                        ? 'View booking'
+                        : quoteLabel(count)}
                   </Text>
                 </Pressable>
               </Card>

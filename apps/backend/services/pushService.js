@@ -148,8 +148,9 @@ export async function sendPushToProfiles(profileIds, payload) {
     title: payload.title,
     body: payload.body,
     data: payload.data,
-    sound: 'default',
-    priority: 'high',
+    sound: payload.sound || 'ekazi_alert.wav',
+    priority: payload.priority || 'high',
+    channelId: payload.channelId || 'ekazi-actions-v2',
     ...(payload.tag ? { tag: payload.tag } : {}),
     ...(payload.collapseKey ? { collapseKey: payload.collapseKey } : {}),
   }));

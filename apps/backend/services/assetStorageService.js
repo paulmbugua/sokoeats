@@ -18,7 +18,12 @@ export async function uploadAssetFromFile({
         contentType: contentType || file.mimetype,
       });
     } catch (error) {
-      if (process.env.NODE_ENV === 'production') throw error;
+      const publicImageConfigured = Boolean(process.env.R2_PUBLIC_BASE_URL_IMAGES);
+      const isPublicImageKind = ['image', 'avatar', 'banner', 'preview', 'thumbnail'].includes(String(kind || '').toLowerCase());
+      if (process.env.NODE_ENV === 'production' || (publicImageConfigured && isPublicImageKind)) {
+        console.error('[uploads] R2 upload failed; refusing local /uploads fallback for public asset:', error?.Code || error?.message);
+        throw error;
+      }
       console.warn('[uploads] R2 unavailable; using local development storage:', error?.Code || error?.message);
       const [local] = await uploadToLocal({
         buffer: file.buffer,

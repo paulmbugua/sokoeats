@@ -10,6 +10,7 @@ import {
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, spacing } from '../theme/tokens';
+import { useRefreshControl } from '../refresh/GlobalRefreshProvider';
 
 const FOOTER_CLEARANCE = 36;
 const KEYBOARD_OFFSET_IOS = 88;
@@ -28,6 +29,7 @@ type ScreenScrollProps = ScreenProps &
       ScrollViewProps,
       'children' | 'contentContainerStyle' | 'keyboardShouldPersistTaps' | 'refreshControl'
     >;
+    refreshEnabled?: boolean;
   };
 
 export function Screen({
@@ -70,9 +72,11 @@ export function ScreenScroll({
   contentStyle,
   keyboard = true,
   refreshControl,
+  refreshEnabled = true,
   scrollProps,
 }: ScreenScrollProps) {
   const insets = useSafeAreaInsets();
+  const defaultRefreshControl = useRefreshControl(refreshEnabled);
   const bottomSpace = Math.max(insets.bottom, FOOTER_CLEARANCE) + spacing.xl;
 
   return (
@@ -82,7 +86,7 @@ export function ScreenScroll({
         keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
         showsVerticalScrollIndicator={false}
         contentInsetAdjustmentBehavior="automatic"
-        refreshControl={refreshControl}
+        refreshControl={refreshControl ?? defaultRefreshControl}
         {...scrollProps}
         contentContainerStyle={[
           {

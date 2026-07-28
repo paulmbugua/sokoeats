@@ -90,7 +90,7 @@ export default function MarketplaceBookings() {
                 </div>
                 <p className="text-sm text-mutedGray mt-2">{booking.estate || 'Estate not set'}, {booking.city || 'Nairobi'}</p>
                 <p className="text-xs text-mutedGray mt-2">Client: {booking.client_name || 'Unknown'} {booking.client_phone ? '| ' + booking.client_phone : ''}</p>
-                <p className="text-xs text-mutedGray mt-1">Handyman: {booking.business_name || booking.handyman_name || 'Unknown'} {booking.handyman_phone ? '| ' + booking.handyman_phone : ''}</p>
+                <p className="text-xs text-mutedGray mt-1">Provider: {booking.business_name || booking.handyman_name || 'Unknown'} {booking.handyman_phone ? '| ' + booking.handyman_phone : ''}</p>
                 {booking.status === 'cancelled' ? (
                   <div className="mt-3 rounded bg-red-50 text-red-700 p-3 text-sm">
                     <p className="font-semibold">Cancelled by {booking.cancelled_by || 'unknown'}</p>
@@ -102,7 +102,7 @@ export default function MarketplaceBookings() {
               <div className="rounded bg-slate-50 p-3 text-sm min-w-[220px]">
                 <p>Total: <strong>{money(booking.total)}</strong></p>
                 <p>Ekazi commission: <strong>{money(booking.organization_commission_amount)}</strong></p>
-                <p>Handyman payout: <strong>{money(booking.handyman_payout_amount)}</strong></p>
+                <p>Provider payout: <strong>{money(booking.handyman_payout_amount)}</strong></p>
                 <p>Cancel score: <strong>{Number(booking.cancellation_score || 100).toFixed(0)}%</strong></p>
               </div>
             </div>

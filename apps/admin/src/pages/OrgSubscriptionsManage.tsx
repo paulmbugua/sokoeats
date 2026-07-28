@@ -188,7 +188,7 @@ export default function OrgSubscriptionsManage() {
       if (!BACKEND || !authToken) return;
       setHistoryLoading(true);
       try {
-        const res = await axios.get<{ success: boolean; subscriptions: OrgSubscription[] }>(
+        const res = await axios.get<{ success: boolean; subscriptions: OrgSubscription[]; message?: string }>(
           `${BACKEND}/api/admin/orgs/${org.orgId}/subscriptions`,
           { headers, validateStatus: () => true }
         );

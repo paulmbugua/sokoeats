@@ -11,20 +11,33 @@
     "forceConsistentCasingInFileNames": true,
     "module": "esnext",
     "target": "esnext",
-    "lib": ["esnext"],
+    "lib": [
+      "esnext",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "resolveJsonModule": true,
     "isolatedModules": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["src/*"],
-      "@myhandymanapp/shared": ["../../packages/shared/index.ts", "../../packages/shared/index.d.ts"],
-      "@myhandymanapp/shared/*": ["../../packages/shared/*"],
+      "@/*": [
+        "src/*"
+      ],
+      "@myhandymanapp/shared": [
+        "../../packages/shared/index.ts",
+        "../../packages/shared/index.d.ts"
+      ],
+      "@myhandymanapp/shared/*": [
+        "../../packages/shared/*"
+      ],
       "@myhandymanapp/shared/types": [
         "../../packages/shared/types/index.ts",
         "../../packages/shared/types/index.d.ts"
       ]
     },
-    "typeRoots": ["../../node_modules/@types"]
+    "typeRoots": [
+      "../../node_modules/@types"
+    ]
   },
   "include": [
     "src/**/*",
@@ -46,6 +59,11 @@
     "ios",
     "web-build",
     "**/__mocks__/**",
-    "**/__fixtures__/**"
+    "**/__fixtures__/**",
+    "src/screens/LoginScreen.native.tsx",
+    "src/screens/Messages.native.tsx",
+    "src/screens/PaymentWidget.native.tsx",
+    "src/screens/DeleteAccount.native.tsx",
+    "utils/subjectImages.ts"
   ]
 }

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, RefreshControl, ScrollView, Text, View } from 'react-native';
 import { useShopContext } from '@myhandymanapp/shared/context';
+import { paystackCreateBookingOrder } from '@myhandymanapp/shared/api/paymentApi';
 import { Screen } from '../../components/Screen';
 import Chip from '../../components/Chip';
 import Card from '../../components/Card';
@@ -23,10 +24,11 @@ type Quote = {
 };
 
 export default function QuotesInboxScreen({ route, navigation }: any) {
-  const { http } = useShopContext();
+  const { http, backendUrl, token } = useShopContext() as any;
   const jobId = route.params?.jobId;
   const [filter, setFilter] = useState<'Price' | 'Rating' | 'Soonest'>('Price');
   const [quotes, setQuotes] = useState<Quote[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card'>('cash');
   const [loading, setLoading] = useState(false);
 
   const load = useCallback(async () => {
@@ -55,18 +57,69 @@ export default function QuotesInboxScreen({ route, navigation }: any) {
     [filter, quotes],
   );
 
+  const decline = async (quoteId: string) => {
+    Alert.alert(
+      'Decline this quote?',
+      'Ekazi will immediately alert the next available nearby provider.',
+      [
+        { text: 'Keep Quote', style: 'cancel' },
+        {
+          text: 'Decline',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const { data } = await http.post(`/api/quotes/${quoteId}/decline`, {
+                reason: 'Price or fit did not work for me',
+                reasonCode: 'price_or_fit',
+              });
+              Alert.alert('Quote declined', data?.forwardedTo ? 'We have alerted the next nearby provider.' : 'We will keep looking for another verified provider.');
+              await load();
+            } catch (error: any) {
+              Alert.alert('Could not decline quote', error?.response?.data?.message || 'Please try again.');
+            }
+          },
+        },
+      ],
+    );
+  };
+
   const accept = async (quoteId: string) => {
     try {
-      const { data } = await http.post(`/api/quotes/${quoteId}/accept`);
+      const { data } = await http.post(`/api/quotes/${quoteId}/accept`, { paymentMethod });
+      if (paymentMethod === 'card') {
+        const order = await paystackCreateBookingOrder(backendUrl, token, { bookingId: data.booking.id });
+        navigation.navigate('PaystackCheckout', {
+          authorizationUrl: order.authorization_url,
+          reference: order.reference,
+          kind: 'booking',
+          paymentId: order.paymentId,
+          bookingId: order.bookingId,
+          jobId: order.jobId,
+          quoteId: order.quoteId,
+        });
+        return;
+      }
       navigation.navigate('BookingConfirmed', {
         bookingId: data.booking.id,
         jobId: data.jobId,
         quoteId,
       });
     } catch (error: any) {
+      const backend = error?.response?.data;
+      if (backend?.code === 'PROVIDER_CASH_BLOCKED') {
+        Alert.alert(
+          'Cash booking paused',
+          'This provider is currently unavailable for cash bookings. You can still accept this quote using card payment.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Use Card', onPress: () => setPaymentMethod('card') },
+          ],
+        );
+        return;
+      }
       Alert.alert(
         'Could not accept quote',
-        error?.response?.data?.message || 'Please try again.',
+        backend?.message || 'Please try again.',
       );
     }
   };
@@ -76,9 +129,9 @@ export default function QuotesInboxScreen({ route, navigation }: any) {
       <View style={{ padding: spacing.xl, paddingBottom: 10 }}>
         <Text style={{ fontWeight: '900', fontSize: 18 }}>Quotes Received</Text>
         <Text style={{ color: colors.muted, marginTop: 4 }}>
-          {quotes.length} real handyman response{quotes.length === 1 ? '' : 's'}
+          {quotes.length} real provider response{quotes.length === 1 ? '' : 's'}
         </Text>
-        <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
           {(['Price', 'Rating', 'Soonest'] as const).map((value) => (
             <Chip
               key={value}
@@ -88,6 +141,16 @@ export default function QuotesInboxScreen({ route, navigation }: any) {
             />
           ))}
         </View>
+        <Card style={{ marginTop: 12, backgroundColor: '#F8FAFC' }}>
+          <Text style={{ fontWeight: '900' }}>How will you pay?</Text>
+          <Text style={{ color: colors.muted, marginTop: 4 }}>
+            Cash is paid directly to the provider. Card lets you pay securely in the app before the booking is confirmed.
+          </Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
+            <Chip label="Cash" active={paymentMethod === 'cash'} onPress={() => setPaymentMethod('cash')} />
+            <Chip label="Card" active={paymentMethod === 'card'} onPress={() => setPaymentMethod('card')} />
+          </View>
+        </Card>
       </View>
 
       <ScrollView
@@ -120,7 +183,7 @@ export default function QuotesInboxScreen({ route, navigation }: any) {
               </Text>
               {quote.discountAmount > 0 ? (
                 <Text style={{ color: colors.green, fontWeight: '900', marginTop: 6 }}>
-                  FIRST10 saving: KES {quote.discountAmount.toLocaleString()}
+                  FIRST5 saving: KES {quote.discountAmount.toLocaleString()}
                 </Text>
               ) : null}
               {quote.message ? (
@@ -130,16 +193,21 @@ export default function QuotesInboxScreen({ route, navigation }: any) {
               ) : null}
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
               <SecondaryButton
                 title="Details"
                 onPress={() => navigation.navigate('QuoteDetail', { quoteId: quote.id })}
-                style={{ flex: 1 }}
+                style={{ flex: 0.95 }}
+              />
+              <SecondaryButton
+                title="Decline"
+                onPress={() => void decline(quote.id)}
+                style={{ flex: 1.05 }}
               />
               <PrimaryButton
-                title="Accept"
+                title={paymentMethod === 'card' ? 'Accept - Card' : 'Accept - Cash'}
                 onPress={() => void accept(quote.id)}
-                style={{ flex: 1 }}
+                style={{ flex: 1.25 }}
               />
             </View>
           </Card>
@@ -147,7 +215,7 @@ export default function QuotesInboxScreen({ route, navigation }: any) {
         {!sorted.length ? (
           <Card>
             <Text style={{ color: colors.muted }}>
-              No handyman has quoted yet. Pull down to refresh.
+              No provider has quoted yet. Pull down to refresh.
             </Text>
           </Card>
         ) : null}

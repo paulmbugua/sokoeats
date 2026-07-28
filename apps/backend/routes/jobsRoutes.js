@@ -11,6 +11,8 @@ import {
   cancelJob,
   getFirstJobPromotion,
   listOpenJobsForHandyman,
+  declineHandymanJobOffer,
+  getHandymanEarnings,
   getHandymanProfile,
   updateHandymanLocation,
   updateHandymanVerificationDocuments,
@@ -20,6 +22,8 @@ const router = express.Router();
 
 router.get('/promotions/first-job', authUser, getFirstJobPromotion);
 router.get('/handyman/jobs', authUser, listOpenJobsForHandyman);
+router.post('/handyman/jobs/:id/decline', authUser, declineHandymanJobOffer);
+router.get('/handyman/earnings', authUser, getHandymanEarnings);
 router.get('/handyman/profile', authUser, getHandymanProfile);
 router.put('/handyman/profile/location', authUser, updateHandymanLocation);
 router.put('/handyman/profile/verification', authUser, express.json(), updateHandymanVerificationDocuments);

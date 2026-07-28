@@ -61,6 +61,9 @@ import SubmitQuoteScreen from './screens/quotes/SubmitQuoteScreen';
 import HandymanLocationScreen from './screens/request/HandymanLocationScreen';
 
 import BookingConfirmedScreen from './screens/booking/BookingConfirmedScreen';
+import PaystackCheckoutScreen from './screens/PaystackCheckout.native';
+import PaystackCallbackScreen from './screens/PaystackCallback.native';
+import ProviderCommissionPaymentScreen from './screens/payments/ProviderCommissionPaymentScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -105,9 +108,37 @@ function Tabs() {
 
 export default function App() {
 
-  const { token, initializing, profileComplete } = useShopContext();
+  const { token, initializing, profileComplete, role, userId, userEmail } = useShopContext();
 
-  if (initializing || (token && profileComplete === null)) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'white' }}><ActivityIndicator color={primary} /></View>;
+  React.useEffect(() => {
+    const routeGate = initializing
+      ? 'loading-auth'
+      : !token
+        ? 'welcome-stack'
+        : profileComplete === null
+          ? 'loading-profile-completion'
+          : profileComplete === false
+            ? 'complete-profile-stack'
+            : 'authenticated-tabs';
+    console.log('[startup][route_gate]', {
+      routeGate,
+      initializing,
+      hasToken: Boolean(token),
+      profileComplete,
+      role,
+      userId,
+      emailDomain: userEmail ? String(userEmail).split('@')[1] || null : null,
+    });
+  }, [initializing, token, profileComplete, role, userId, userEmail]);
+
+  if (initializing || (token && profileComplete === null)) {
+    console.log('[startup][blocking_render]', {
+      reason: initializing ? 'auth_hydrating' : 'waiting_profile_completion',
+      hasToken: Boolean(token),
+      profileComplete,
+    });
+    return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: 'white' }}><ActivityIndicator color={primary} /></View>;
+  }
 
   return (
 
@@ -128,6 +159,8 @@ export default function App() {
       </> : profileComplete === false ? <>
 
         <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} options={{ headerShown: false }} />
+
+        <Stack.Screen name="OtpVerify" component={OtpVerifyScreen} options={{ title: 'Verify Phone Number' }} />
 
       </> : <>
 
@@ -161,7 +194,15 @@ export default function App() {
 
         <Stack.Screen name="Conversation" component={ConversationScreen} options={{ title: 'Messages' }} />
 
+        <Stack.Screen name="OtpVerify" component={OtpVerifyScreen} options={{ title: 'Verify Phone Number' }} />
+
         <Stack.Screen name="BookingConfirmed" component={BookingConfirmedScreen} options={{ title: 'Booking Confirmed' }} />
+
+        <Stack.Screen name="ProviderCommissionPayment" component={ProviderCommissionPaymentScreen} options={{ title: 'Commission Payment' }} />
+
+        <Stack.Screen name="PaystackCheckout" component={PaystackCheckoutScreen} options={{ title: 'Card Payment' }} />
+
+        <Stack.Screen name="PaystackCallback" component={PaystackCallbackScreen} options={{ title: 'Payment Status' }} />
 
       </>}
 

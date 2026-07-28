@@ -22,8 +22,25 @@ let userProfileSchemaReady;
 async function ensureUserProfileSchema() {
   if (!userProfileSchemaReady) {
     userProfileSchemaReady = (async () => {
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS password TEXT');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ');
+      await pool.query(`
+        DO $$
+        BEGIN
+          IF EXISTS (
+            SELECT 1 FROM pg_constraint
+            WHERE conname = 'users_role_check'
+              AND conrelid = 'public.users'::regclass
+          ) THEN
+            ALTER TABLE users DROP CONSTRAINT users_role_check;
+          END IF;
+          ALTER TABLE users
+            ADD CONSTRAINT users_role_check CHECK (role IS NULL OR btrim(role) <> '');
+        END $$;
+      `);
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(32)');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completed_at TIMESTAMPTZ');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_city TEXT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_estate TEXT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(32)');
@@ -32,8 +49,10 @@ async function ensureUserProfileSchema() {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS suspended_until TIMESTAMPTZ');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS suspension_reason TEXT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS trust_warning_count INTEGER NOT NULL DEFAULT 0');
+      await pool.query('ALTER TABLE users DROP CONSTRAINT IF EXISTS users_phone_key');
+      await pool.query('DROP INDEX IF EXISTS users_phone_unique_idx');
       await pool.query(
-        'CREATE UNIQUE INDEX IF NOT EXISTS users_phone_unique_idx ON users (phone) WHERE phone IS NOT NULL',
+        'CREATE INDEX IF NOT EXISTS users_phone_lookup_idx ON users (phone) WHERE phone IS NOT NULL AND deleted_at IS NULL',
       );
       await pool.query(`
         CREATE TABLE IF NOT EXISTS org_learner_profiles (
@@ -141,7 +160,7 @@ export const registerUser = async (req, res) => {
       return res.status(400).json({ success: false, message: 'Invalid role' });
     }
 
-    // 🔁 Backward & forward compatible (now fully optional for students):
+    // Backward & forward compatible (now fully optional for students):
     // - Old clients may send ageGroup (string or array)
     // - New clients may send age / gradeBands (optional)
     let ageGroupArr = [];
@@ -178,7 +197,7 @@ export const registerUser = async (req, res) => {
     const userId = insertUser.rows[0].id;
 
     if (role === 'student') {
-      // DB requires age >= 5 → clamp to 5 when missing/too small
+      // DB requires age >= 5; clamp to 5 when missing/too small
       const ageRaw = req.body.age;
       const safeAgeStudent =
         Number.isFinite(Number(ageRaw)) && Number(ageRaw) >= 5
@@ -224,7 +243,7 @@ export const registerUser = async (req, res) => {
           userId,
           role,
           name,
-          safeAgeStudent, // ← 5 instead of 0/NULL
+          safeAgeStudent, // 5 instead of 0/NULL
           safeLanguages.length ? safeLanguages : null,
           ageGroupArr && ageGroupArr.length ? ageGroupArr : null,
           description,
@@ -244,7 +263,7 @@ export const registerUser = async (req, res) => {
 };
 
 /** --------------------
- *  Get Logged‐In User
+ *  Get Logged-In User
  -------------------- */
 export const getUser = async (req, res) => {
   try {
@@ -310,7 +329,7 @@ export const getUser = async (req, res) => {
 
     const u = rows[0];
 
-    // 2) 🟢 NEW: pull latest org_learner_profiles row for this user (photo_url, class_label, etc.)
+    // 2) Pull latest org_learner_profiles row for this user (photo_url, class_label, etc.)
     const lpRes = await pool.query(
       `
         SELECT *
@@ -587,7 +606,7 @@ export const googleLogin = async (req, res) => {
         .json({ success: false, message: 'Invalid token claims' });
     }
 
-    // ⚡ Single UPSERT (fill empty name; set google_id if missing)
+    // Single UPSERT (fill empty name; set google_id if missing)
     const { rows } = await pool.query(
       `
       INSERT INTO users (name, email, google_id)
@@ -848,6 +867,22 @@ export async function deleteUser(req, res) {
   }
 }
 
+export async function requestDataDeletion(req, res) {
+  const userId = req.user?.id;
+  if (!userId) return res.status(401).json({ message: 'Unauthorized' });
+  const scope = String(req.body?.scope || 'partial').toLowerCase() === 'all' ? 'all' : 'partial';
+  const area = String(req.body?.area || '').trim().slice(0, 120) || (scope === 'all' ? 'All personal data' : 'Selected personal data');
+  const notes = String(req.body?.notes || '').trim().slice(0, 800) || null;
+  try {
+    await pool.query("CREATE TABLE IF NOT EXISTS user_data_deletion_requests (id BIGSERIAL PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, scope TEXT NOT NULL, area TEXT NOT NULL, notes TEXT, status TEXT NOT NULL DEFAULT 'pending', created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+    await pool.query('INSERT INTO user_data_deletion_requests (user_id, scope, area, notes) VALUES ($1, $2, $3, $4)', [userId, scope, area, notes]);
+    return res.status(202).json({ success: true, message: scope === 'all' ? 'Your full data deletion request has been received. Ekazi support will review legally required retention before removal.' : 'Your selected data deletion request has been received. Ekazi support will review and process it.' });
+  } catch (err) {
+    console.error('requestDataDeletion error:', err);
+    return res.status(500).json({ message: 'Failed to request data deletion' });
+  }
+}
+
 /** --------------------
  *  Admin Login
  -------------------- */
@@ -892,3 +927,4 @@ export const adminLogin = async (req, res) => {
     return res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+

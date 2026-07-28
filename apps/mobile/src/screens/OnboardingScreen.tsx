@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { View, Text, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { colors, spacing, radius } from '../theme/tokens';
+import { colors, spacing, radius, typography } from '../theme/tokens';
 import PrimaryButton from '../components/PrimaryButton';
 
 import { Screen } from '../components/Screen';
@@ -25,7 +25,7 @@ export default function OnboardingScreen({ navigation }: any) {
             <View key={i} style={{ height: 4, width: i === idx ? 28 : 18, borderRadius: 999, backgroundColor: i === idx ? colors.primary : '#E5E7EB' }} />
           ))}
         </View>
-        <Text style={{ color: colors.muted, fontWeight: '700' }} onPress={() => navigation.navigate('Login')}>
+        <Text style={{ color: colors.muted, fontWeight: '800', fontSize: typography.small }} onPress={() => navigation.navigate('Login')}>
           Skip
         </Text>
       </View>
@@ -34,8 +34,8 @@ export default function OnboardingScreen({ navigation }: any) {
         <View style={{ width: 110, height: 110, borderRadius: radius.xl, backgroundColor: slide.color, justifyContent: 'center', alignItems: 'center', marginBottom: 22 }}>
           <Ionicons name={(slide.icon + '-outline') as any} size={44} color="white" />
         </View>
-        <Text style={{ fontSize: 26, fontWeight: '900', textAlign: 'center', color: colors.text }}>{slide.title}</Text>
-        <Text style={{ fontSize: 14, color: colors.muted, textAlign: 'center', marginTop: 12, lineHeight: 20 }}>{slide.body}</Text>
+        <Text style={{ fontSize: typography.h1, lineHeight: 38, fontWeight: '900', textAlign: 'center', color: colors.text }}>{slide.title}</Text>
+        <Text style={{ fontSize: typography.body, color: colors.mutedDark, textAlign: 'center', marginTop: 14, lineHeight: 25 }}>{slide.body}</Text>
       </View>
 
       <View style={{ padding: spacing.xl, paddingBottom: spacing.xxl }}>
