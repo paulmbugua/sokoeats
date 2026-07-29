@@ -10,6 +10,12 @@ cron.schedule('0 * * * *', async () => {
       "🔹 Running cron job: Checking expired 'completed_pending' sessions...",
     );
 
+    const legacySessionsTable = await pool.query("SELECT to_regclass('public.tutor_sessions') AS table_name");
+    if (!legacySessionsTable.rows[0]?.table_name) {
+      console.log('[scheduler] tutor_sessions table not present; skipping legacy session completion cron.');
+      return;
+    }
+
     // Query to fetch expired sessions
     const expiredSessionsQuery = `
       SELECT ts.id, ts.subject, ts.student_id, ts.tutor_id, u1.email AS student_email, u2.email AS tutor_email

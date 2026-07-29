@@ -41,6 +41,7 @@ async function ensureUserProfileSchema() {
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(32)');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_completed_at TIMESTAMPTZ');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN NOT NULL DEFAULT FALSE');
+      await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_city TEXT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS preferred_estate TEXT');
       await pool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS emergency_contact VARCHAR(32)');
@@ -824,6 +825,8 @@ export async function deleteUser(req, res) {
   const userId = req.user?.id;
   if (!userId) return res.status(401).json({ message: 'Unauthorized' });
 
+  await ensureUserProfileSchema();
+
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -844,10 +847,9 @@ export async function deleteUser(req, res) {
         otp              = NULL,
         otp_expiration   = NULL,
         tokens           = 0,
-        is_active        = FALSE,
+        account_status   = 'deleted',
         deleted_at       = NOW(),
-        updated_at       = NOW(),
-        onboarding_state = NULL
+        updated_at       = NOW()
       WHERE id = $1
       `,
       [userId],
