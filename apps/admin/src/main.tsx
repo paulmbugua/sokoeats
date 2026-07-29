@@ -8,15 +8,9 @@ import { ShopContextProvider } from '@myhandymanapp/shared/context';
 import { queryClient } from '@myhandymanapp/shared/utils/queryClient';
 import App from './App';
 import './index.css';
+import { APP_BACKEND_URL } from './config';
 
-const runtimeEnv = typeof window !== 'undefined' ? ((window as any).__EKAZI_ENV__ || {}) : {};
-const backendUrl =
-  runtimeEnv.VITE_BACKEND_URL ||
-  runtimeEnv.VITE_API_URL ||
-  (import.meta as any).env?.VITE_BACKEND_URL ||
-  (import.meta as any).env?.VITE_API_URL ||
-  (window as any).__BACKEND_URL__ ||
-  'http://localhost:4005';
+const backendUrl = APP_BACKEND_URL;
 
 const storage = {
   getItem: async (k: string) =>

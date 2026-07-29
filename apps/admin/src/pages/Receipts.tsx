@@ -1,6 +1,7 @@
 // apps/admin/src/pages/Receipts.tsx
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import axios from 'axios';
+import { APP_BACKEND_URL } from '../config';
 import { toast } from 'react-toastify';
 import { useShopContext } from '@myhandymanapp/shared/context';
 import {
@@ -31,13 +32,6 @@ type Tx = {
   mpesaRef?: string; // M-Pesa receipt
 };
 
-function pickBackend(): string {
-  const v =
-    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_BACKEND_URL) ||
-    (typeof window !== 'undefined' && (window as any).__BACKEND_URL__) ||
-    'http://localhost:4005';
-  return String(v).replace(/\/+$/, '');
-}
 
 function normalizeStatus(s: string | undefined | null): Tx['status'] {
   const v = String(s ?? '').toLowerCase();
@@ -112,7 +106,7 @@ function toISOEndExclusive(d: string) {
 
 export default function Receipts() {
   const { backendUrl: ctxBackendUrl, adminToken, token } = useShopContext();
-  const BACKEND = useMemo(() => (ctxBackendUrl || pickBackend()).replace(/\/+$/, ''), [ctxBackendUrl]);
+  const BACKEND = useMemo(() => (ctxBackendUrl || APP_BACKEND_URL).replace(/\/+$/, ''), [ctxBackendUrl]);
   const authToken = adminToken || token || '';
   const [list, setList] = useState<Tx[]>([]);
   const [loading, setLoading] = useState(false);

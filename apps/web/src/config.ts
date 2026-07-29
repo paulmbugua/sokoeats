@@ -1,6 +1,5 @@
-// apps/Admin/src/config.ts
 const PRODUCTION_BACKEND_URL = 'https://server.ekazi.co.ke';
-const IS_DEV = Boolean((import.meta as any).env?.DEV);
+const IS_DEV = Boolean(import.meta.env.DEV);
 
 function cleanUrl(value: unknown): string {
   return String(value || '').trim().replace(/\/+$/, '');
@@ -32,4 +31,4 @@ export function resolveBackendUrl(): string {
   return IS_DEV ? localBackendUrl() : PRODUCTION_BACKEND_URL;
 }
 
-export const APP_BACKEND_URL = resolveBackendUrl();
+export const API_BASE = resolveBackendUrl();

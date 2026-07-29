@@ -5,15 +5,8 @@ import {
   FileCheck2, Hammer, Home, ImagePlus, Loader2, LogOut, MapPin, MessageCircle,
   Navigation, Phone, RefreshCw, Send, ShieldCheck, Sparkles, Star, UploadCloud, WalletCards, XCircle,
 } from 'lucide-react';
+import { API_BASE } from './config';
 
-const runtimeEnv = typeof window !== 'undefined' ? ((window as any).__EKAZI_ENV__ || {}) : {};
-const API_BASE = (
-  runtimeEnv.VITE_BACKEND_URL ||
-  runtimeEnv.VITE_API_URL ||
-  import.meta.env.VITE_BACKEND_URL ||
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV ? 'http://localhost:4005' : 'https://server.ekazi.co.ke')
-).replace(/\/+$/, '');
 const CENTER = { latitude: -1.286389, longitude: 36.817223 };
 const DEFAULT_PROMPTS = ['Share the issue clearly', 'Add when it started', 'Mention access or materials needed'];
 const PROVIDER_FREE_SERVICE_LIMIT = 2;

@@ -15,6 +15,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import ThemeToggle from '../components/ThemeToggle';
+import { APP_BACKEND_URL } from '../config';
 
 type AdminLoginResponse = {
   token: string;
@@ -156,6 +157,7 @@ const tryAdminFirst = async (base: string, email: string, password: string): Pro
 /* ------------------------------ COMPONENT ------------------------------ */
 export default function AdminLogin() {
   const { backendUrl, setAdminToken } = useShopContext();
+  const effectiveBackendUrl = backendUrl || APP_BACKEND_URL;
   const [email, setEmail] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [busy, setBusy] = useState<boolean>(false);
@@ -170,16 +172,16 @@ export default function AdminLogin() {
   useEffect(() => {
     if (DEBUG) {
       console.groupCollapsed('[AdminLogin] Context/Env');
-      console.log('backendUrl:', backendUrl);
+      console.log('backendUrl:', effectiveBackendUrl);
       console.log('NODE_ENV:', import.meta?.env?.MODE);
       console.groupEnd();
     }
-  }, [backendUrl]);
+  }, [effectiveBackendUrl]);
 
   const onSubmit: React.FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
 
-    if (!backendUrl) {
+    if (!effectiveBackendUrl) {
       toast.error('Backend URL is not configured.');
       if (DEBUG) console.error('[AdminLogin] Missing backendUrl in context');
       return;
@@ -193,7 +195,7 @@ export default function AdminLogin() {
 
     try {
       setBusy(true);
-      const base = backendUrl.replace(/\/+$/, '');
+      const base = effectiveBackendUrl.replace(/\/+$/, '');
 
       if (DEBUG) {
         console.group('[AdminLogin] Submit');

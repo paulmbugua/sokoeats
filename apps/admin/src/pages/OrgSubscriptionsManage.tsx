@@ -1,3 +1,4 @@
+import { APP_BACKEND_URL } from '../config';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { toast } from 'react-toastify';
@@ -64,13 +65,6 @@ type UpgradeForm = {
   promoReason: string;
 };
 
-function pickBackend(): string {
-  const v =
-    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_BACKEND_URL) ||
-    (typeof window !== 'undefined' && (window as any).__BACKEND_URL__) ||
-    'http://localhost:4005';
-  return String(v).replace(/\/+$/, '');
-}
 
 function toDateInputValue(raw: string | null | undefined) {
   if (!raw) return '';
@@ -126,7 +120,7 @@ function buildUpgradeDefaults(org: OrgRow | null): UpgradeForm {
 
 export default function OrgSubscriptionsManage() {
   const { backendUrl: ctxBackendUrl, adminToken, token } = useShopContext();
-  const BACKEND = useMemo(() => (ctxBackendUrl || pickBackend()).replace(/\/+$/, ''), [
+  const BACKEND = useMemo(() => (ctxBackendUrl || APP_BACKEND_URL).replace(/\/+$/, ''), [
     ctxBackendUrl,
   ]);
   const authToken = adminToken || token || '';
