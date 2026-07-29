@@ -1,0 +1,23 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "ekazi-admin",
+  "main": "cloudflare-worker.js",
+  "compatibility_date": "2026-07-29",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {
+    "APP_ENV": "production",
+    "VITE_BACKEND_URL": "https://server.ekazi.co.ke",
+    "VITE_API_URL": "https://server.ekazi.co.ke",
+    "VITE_SITE_URL": "https://admin.ekazi.co.ke",
+    "VITE_IMAGES_BASE_URL": "https://images.ekazi.co.ke",
+    "VITE_PREVIEWS_BASE_URL": "https://previews.ekazi.co.ke"
+  },
+  "routes": [
+    { "pattern": "admin.ekazi.co.ke", "custom_domain": true }
+  ]
+}

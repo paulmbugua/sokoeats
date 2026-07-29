@@ -4,7 +4,9 @@ import { GoogleOAuthProvider } from '@react-oauth/google';
 import App from './App';
 import './styles.css';
 
+const runtimeEnv = typeof window !== 'undefined' ? ((window as any).__EKAZI_ENV__ || {}) : {};
 const googleClientId =
+  runtimeEnv.VITE_GOOGLE_WEB_CLIENT_ID ||
   import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID ||
   '912636242362-m5hogktgcnramtb6g132aada1jftsfrl.apps.googleusercontent.com';
 
