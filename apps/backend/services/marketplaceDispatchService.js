@@ -162,8 +162,10 @@ export async function notifyQuoteSubmitted(db, quoteId, options = {}) {
     `${providerName} quoted ${money(row.total)} for ${jobLabel(row)}.`,
     { screen: 'QuotesInbox', params: { jobId: String(row.job_id) }, jobId: String(row.job_id), quoteId: String(row.id) },
   );
+  console.log('[ekazi-notify] quote_client_push:start', { quoteId: String(row.id), jobId: String(row.job_id), clientUserId: String(row.client_user_id), kind: payload.data.kind });
   await sendPushToUser(row.client_user_id, payload);
   await recordNotificationEvent(db, row.client_user_id, payload.data.kind, payload);
+  console.log('[ekazi-notify] quote_client_push:sent', { quoteId: String(row.id), clientUserId: String(row.client_user_id), kind: payload.data.kind });
 }
 
 export async function notifyBookingLifecycle(db, bookingId, kind, actorId = null) {

@@ -359,22 +359,45 @@ export const addJobPhotos = async (req, res) => {
 };
 
 export const cancelJob = async (req, res) => {
+  const client = await pool.connect();
   try {
     await ensureMarketplaceSchema();
     const id = userId(req);
-    const { rows } = await pool.query(
+    if (!id) return res.status(401).json({ message: 'Unauthorized' });
+    await client.query('BEGIN');
+    const { rows } = await client.query(
       `UPDATE ekazi_jobs SET status = 'cancelled', updated_at = NOW()
-        WHERE id = $1 AND client_user_id = $2 AND status IN ('active','quoted')
+        WHERE id = $1
+          AND client_user_id = $2
+          AND status IN ('active','quoted')
+          AND NOT EXISTS (SELECT 1 FROM ekazi_bookings b WHERE b.job_id = ekazi_jobs.id)
         RETURNING *`,
       [req.params.id, id],
     );
     if (!rows.length) {
-      return res.status(409).json({ message: 'Job can no longer be cancelled' });
+      await client.query('ROLLBACK');
+      return res.status(409).json({ message: 'Request can no longer be deleted. Cancel the booking instead.' });
     }
+    await client.query(
+      `UPDATE ekazi_quotes
+          SET status = 'cancelled', updated_at = NOW()
+        WHERE job_id = $1 AND status = 'open'`,
+      [rows[0].id],
+    );
+    await client.query(
+      `UPDATE ekazi_job_dispatches
+          SET status = 'cancelled', updated_at = NOW()
+        WHERE job_id = $1 AND status IN ('offered','quoted')`,
+      [rows[0].id],
+    ).catch(() => undefined);
+    await client.query('COMMIT');
     return res.json({ ok: true, job: jobJson(rows[0]) });
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
     console.error('cancelJob error:', error);
-    return res.status(500).json({ message: 'Could not cancel job' });
+    return res.status(500).json({ message: 'Could not delete request' });
+  } finally {
+    client.release();
   }
 };
 

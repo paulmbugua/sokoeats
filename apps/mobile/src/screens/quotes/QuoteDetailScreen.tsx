@@ -8,6 +8,30 @@ import PrimaryButton from '../../components/PrimaryButton';
 import SecondaryButton from '../../components/SecondaryButton';
 import { colors, spacing } from '../../theme/tokens';
 
+function ProviderReputation({ pro }: { pro: any }) {
+  const reviews = Array.isArray(pro?.reviews)
+    ? pro.reviews.filter((item: any) => item?.comment).slice(0, 3)
+    : [];
+  const ratingCount = Number(pro?.ratingCount || 0);
+  const ratingAvg = Number(pro?.ratingAvg || 0);
+  return (
+    <Card style={{ marginTop: 14, backgroundColor: '#F8FAFC' }}>
+      <Text style={{ fontWeight: '900' }}>Provider reputation</Text>
+      <Text style={{ color: colors.muted, marginTop: 6 }}>
+        {ratingCount > 0
+          ? `${ratingAvg.toFixed(1)}/5 from ${ratingCount} completed review${ratingCount === 1 ? '' : 's'}`
+          : 'New provider - no completed client ratings yet'}
+      </Text>
+      {reviews.map((review: any, index: number) => (
+        <View key={`${review.reviewedAt || index}`} style={{ marginTop: 10 }}>
+          <Text style={{ color: colors.ink, lineHeight: 21 }}>"{review.comment}"</Text>
+          <Text style={{ color: colors.muted, marginTop: 3 }}>{review.rating}/5 client rating</Text>
+        </View>
+      ))}
+    </Card>
+  );
+}
+
 export default function QuoteDetailScreen({ route, navigation }: any) {
   const { http } = useShopContext();
   const quoteId = route.params?.quoteId;
@@ -92,6 +116,8 @@ export default function QuoteDetailScreen({ route, navigation }: any) {
             {quote.pro?.jobsCompleted || 0} jobs completed
           </Text>
         </Card>
+
+        <ProviderReputation pro={quote.pro} />
 
         <Text style={{ textAlign: 'center', marginTop: 16, fontSize: 34, fontWeight: '900' }}>
           KES {quote.total.toLocaleString()}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
+import { Alert, Pressable, RefreshControl, ScrollView, Text, TextInput, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useShopContext } from '@myhandymanapp/shared/context';
@@ -28,6 +28,7 @@ export default function HomeScreen({ navigation }: any) {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [promotion, setPromotion] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [deletingJobId, setDeletingJobId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setRefreshing(true);
@@ -53,6 +54,31 @@ export default function HomeScreen({ navigation }: any) {
       .filter((item: any) => !q || item.name.toLowerCase().includes(q))
       .slice(0, 12);
   }, [query]);
+
+  const deleteRequest = (job: Job) => {
+    Alert.alert(
+      'Delete request?',
+      'This removes the request from active jobs and closes open quotes. Booked jobs must be cancelled from the booking screen.',
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingJobId(job.id);
+            try {
+              await http.delete(`/api/jobs/${job.id}`);
+              setJobs((current) => current.filter((item) => item.id !== job.id));
+            } catch (error: any) {
+              Alert.alert('Could not delete request', error?.response?.data?.message || 'Please try again.');
+            } finally {
+              setDeletingJobId(null);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   const continueRequest = () => {
     if (selectedCategory) {
@@ -237,6 +263,28 @@ export default function HomeScreen({ navigation }: any) {
                           {job.quoteCount || 0} quotes received
                         </Text>
                       </View>
+                      {['active', 'quoted'].includes(String(job.status || '').toLowerCase()) ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="Delete request"
+                          disabled={deletingJobId === job.id}
+                          onPress={(event: any) => {
+                            event?.stopPropagation?.();
+                            deleteRequest(job);
+                          }}
+                          style={({ pressed }) => ({
+                            width: 44,
+                            height: 44,
+                            borderRadius: radius.lg,
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            backgroundColor: '#FEF2F2',
+                            opacity: deletingJobId === job.id ? 0.45 : pressed ? 0.82 : 1,
+                          })}
+                        >
+                          <Ionicons name="trash-outline" size={20} color={colors.danger} />
+                        </Pressable>
+                      ) : null}
                     </View>
                   </Card>
                 </Pressable>

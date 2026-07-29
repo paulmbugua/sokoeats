@@ -9,6 +9,12 @@ import PrimaryButton from '../../components/PrimaryButton';
 import SecondaryButton from '../../components/SecondaryButton';
 import { colors, spacing } from '../../theme/tokens';
 
+type ProviderReview = {
+  rating?: number | null;
+  comment?: string;
+  reviewedAt?: string | null;
+};
+
 type Quote = {
   id: string;
   total: number;
@@ -20,8 +26,39 @@ type Quote = {
   etaMinutes?: number;
   durationHours?: number;
   message?: string;
-  pro: any;
+  pro: any & { reviews?: ProviderReview[] };
 };
+
+function ProviderReputation({ pro }: { pro: Quote['pro'] }) {
+  const reviews: ProviderReview[] = Array.isArray(pro?.reviews)
+    ? pro.reviews.filter((item: ProviderReview) => item?.comment).slice(0, 2)
+    : [];
+  const ratingCount = Number(pro?.ratingCount || 0);
+  const ratingAvg = Number(pro?.ratingAvg || 0);
+  return (
+    <View
+      style={{
+        marginTop: 10,
+        padding: 10,
+        borderRadius: 8,
+        backgroundColor: '#F8FAFC',
+        borderWidth: 1,
+        borderColor: '#E2E8F0',
+      }}
+    >
+      <Text style={{ fontWeight: '900', color: colors.ink }}>
+        {ratingCount > 0
+          ? `${ratingAvg.toFixed(1)}/5 from ${ratingCount} completed review${ratingCount === 1 ? '' : 's'}`
+          : 'New provider - no completed client ratings yet'}
+      </Text>
+      {reviews.map((review: ProviderReview, index: number) => (
+        <Text key={`${review.reviewedAt || index}`} style={{ color: colors.muted, marginTop: 6, lineHeight: 20 }} numberOfLines={2}>
+          "{review.comment}" - {review.rating}/5
+        </Text>
+      ))}
+    </View>
+  );
+}
 
 export default function QuotesInboxScreen({ route, navigation }: any) {
   const { http, backendUrl, token } = useShopContext() as any;
@@ -166,6 +203,7 @@ export default function QuotesInboxScreen({ route, navigation }: any) {
                   Rating {quote.pro?.ratingAvg || 'New'} - arrival in about{' '}
                   {quote.etaMinutes || '?'} min
                 </Text>
+                <ProviderReputation pro={quote.pro} />
               </View>
               <View>
                 <Text style={{ fontWeight: '900', fontSize: 18 }}>

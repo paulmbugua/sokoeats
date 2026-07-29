@@ -348,6 +348,27 @@ function quoteCommissionJson(row) {
   return { percent, amount, handymanPayout: payout };
 }
 
+function providerReviewsJson(value) {
+  const source = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? (() => {
+          try {
+            return JSON.parse(value);
+          } catch {
+            return [];
+          }
+        })()
+      : [];
+  return source
+    .map((item) => ({
+      rating: item?.rating == null ? null : Number(item.rating),
+      comment: String(item?.comment || '').trim(),
+      reviewedAt: item?.reviewedAt || null,
+    }))
+    .filter((item) => item.rating != null && item.comment);
+}
+
 export function quoteJson(row) {
   return row && {
     id: String(row.id),
@@ -380,6 +401,7 @@ export function quoteJson(row) {
       cancellationScore: Number(row.cancellation_score || 100),
       suspendedUntil: row.suspended_until || null,
       phone: row.handyman_phone || row.phone || null,
+      reviews: providerReviewsJson(row.provider_reviews),
     },
     commission: quoteCommissionJson(row),
   };

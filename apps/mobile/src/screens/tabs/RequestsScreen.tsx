@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Screen } from '../../components/Screen';
-import { View, Text, ScrollView, RefreshControl, Pressable } from 'react-native';
+import { Alert, View, Text, ScrollView, RefreshControl, Pressable } from 'react-native';
 import { useShopContext } from '@myhandymanapp/shared/context';
 import { colors, spacing, typography } from '../../theme/tokens';
 import Chip from '../../components/Chip';
@@ -34,6 +34,7 @@ export default function RequestsScreen({ navigation }: any) {
   const [tab, setTab] = useState<'active' | 'completed' | 'cancelled'>('active');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -48,6 +49,31 @@ export default function RequestsScreen({ navigation }: any) {
   useEffect(() => {
     void load();
   }, [tab]);
+
+  const deleteRequest = (job: Job) => {
+    Alert.alert(
+      'Delete request?',
+      'This request will leave Active requests and any open provider quotes will be closed.',
+      [
+        { text: 'Keep', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setDeletingId(job.id);
+            try {
+              await http.delete(`/api/jobs/${job.id}`);
+              setJobs((current) => current.filter((item) => item.id !== job.id));
+            } catch (error: any) {
+              Alert.alert('Could not delete request', error?.response?.data?.message || 'Please try again.');
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <Screen backgroundColor={colors.bg}>
@@ -94,23 +120,41 @@ export default function RequestsScreen({ navigation }: any) {
                     Provider: {job.booking.providerName}
                   </Text>
                 ) : null}
-                <Pressable onPress={openBooking}>
-                  <Text
-                    style={{
-                      color: completed && !job.booking?.review?.rating ? colors.primary : count > 0 ? colors.green : colors.muted,
-                      fontWeight: '900',
-                      marginTop: 10,
-                    }}
-                  >
-                    {completed
-                      ? job.booking?.review?.rating
-                        ? 'Rated ' + job.booking.review.rating + '/5'
-                        : 'Rate completed service'
-                      : job.booking?.id
-                        ? 'View booking'
-                        : quoteLabel(count)}
-                  </Text>
-                </Pressable>
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginTop: 10 }}>
+                  <Pressable onPress={openBooking} style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        color: completed && !job.booking?.review?.rating ? colors.primary : count > 0 ? colors.green : colors.muted,
+                        fontWeight: '900',
+                      }}
+                    >
+                      {completed
+                        ? job.booking?.review?.rating
+                          ? 'Rated ' + job.booking.review.rating + '/5'
+                          : 'Rate completed service'
+                        : job.booking?.id
+                          ? 'View booking'
+                          : quoteLabel(count)}
+                    </Text>
+                  </Pressable>
+                  {tab === 'active' && !job.booking?.id && ['active', 'quoted'].includes(String(job.status || '').toLowerCase()) ? (
+                    <Pressable
+                      disabled={deletingId === job.id}
+                      onPress={() => deleteRequest(job)}
+                      style={({ pressed }) => ({
+                        paddingVertical: 9,
+                        paddingHorizontal: 12,
+                        borderRadius: 8,
+                        backgroundColor: '#FEF2F2',
+                        opacity: deletingId === job.id ? 0.45 : pressed ? 0.82 : 1,
+                      })}
+                    >
+                      <Text style={{ color: colors.danger, fontWeight: '900' }}>
+                        {deletingId === job.id ? 'Deleting...' : 'Delete'}
+                      </Text>
+                    </Pressable>
+                  ) : null}
+                </View>
               </Card>
             );
           })

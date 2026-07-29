@@ -105,7 +105,24 @@ const quoteSelect = `
          hp.business_name, hp.rating_avg, hp.rating_count,
          hp.verified, hp.profile_image_url, hp.profile_image_status, hp.id_document_status,
          hp.certificate_status, hp.good_conduct_status, hp.verification_status,
-         hp.jobs_completed, hp.cancellation_score, hp.suspended_until
+         hp.jobs_completed, hp.cancellation_score, hp.suspended_until,
+         COALESCE((
+           SELECT jsonb_agg(review_row ORDER BY reviewed_at DESC NULLS LAST)
+             FROM (
+               SELECT jsonb_build_object(
+                        'rating', b.client_rating,
+                        'comment', b.client_review,
+                        'reviewedAt', b.client_reviewed_at
+                      ) AS review_row,
+                      b.client_reviewed_at AS reviewed_at
+                 FROM ekazi_bookings b
+                WHERE b.handyman_user_id = q.handyman_user_id
+                  AND b.client_rating IS NOT NULL
+                  AND NULLIF(BTRIM(COALESCE(b.client_review, '')), '') IS NOT NULL
+                ORDER BY b.client_reviewed_at DESC NULLS LAST, b.id DESC
+                LIMIT 3
+             ) recent_provider_reviews
+         ), '[]'::jsonb) AS provider_reviews
     FROM ekazi_quotes q
     JOIN users u ON u.id = q.handyman_user_id
     LEFT JOIN ekazi_handyman_profiles hp ON hp.user_id = q.handyman_user_id

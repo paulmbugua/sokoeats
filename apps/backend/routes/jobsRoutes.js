@@ -33,5 +33,6 @@ router.get('/jobs/:id', authUser, getJob);
 router.patch('/jobs/:id', authUser, updateJob);
 router.post('/jobs/:id/photos', authUser, addJobPhotos);
 router.post('/jobs/:id/cancel', authUser, cancelJob);
+router.delete('/jobs/:id', authUser, cancelJob);
 
 export default router;

@@ -103,6 +103,10 @@ h4 { font-size: 18px; margin-bottom: 8px; }
 .pill.rejected { background: #fee2e2; color: #991b1b; }
 .badge-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
 .badge-row span { background: #ecfdf5; color: #047857; }
+.provider-reputation { margin-top: 10px; padding: 10px; border: 1px solid #e2e8f0; border-radius: 8px; background: #f8fafc; color: #0f172a; }
+.provider-reputation strong { display: block; font-size: 13px; font-weight: 950; }
+.provider-reputation p { margin: 7px 0 0; color: #64748b; line-height: 1.45; }
+.provider-reputation span { color: #047857; font-weight: 900; }
 .empty { border: 1px dashed #cbd5e1; border-radius: 8px; padding: 22px; color: #64748b; background: #f8fafc; }
 .category-grid, .prompt-strip { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
 .chip, .prompt-strip button { background: #f8fafc; border-color: #cbd5e1; color: #334155; min-height: 38px; }
