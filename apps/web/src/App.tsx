@@ -40,14 +40,91 @@ const extraServiceQualificationReady = (verification?: Verification | null, prof
 };
 
 const POLICY_LINKS: Array<[string, string]> = [
-  ['Privacy Policy', 'https://ekazi.co.ke/privacy-policy'],
-  ['Terms of Service', 'https://ekazi.co.ke/terms'],
-  ['Anti-Spam Policy', 'https://ekazi.co.ke/anti-spam-policy'],
-  ['Complaints & Feedback', 'https://ekazi.co.ke/complaints-feedback'],
-  ['Refund & Cancellation Policy', 'https://ekazi.co.ke/refunds'],
-  ['Fulfillment & Delivery Policy', 'https://ekazi.co.ke/fulfillment'],
-  ['How Payments Work', 'https://ekazi.co.ke/payment-flow'],
+  ['Privacy Policy', '/privacy-policy'],
+  ['Terms of Service', '/terms'],
+  ['Anti-Spam Policy', '/anti-spam-policy'],
+  ['Complaints & Feedback', '/complaints-feedback'],
+  ['Refund & Cancellation Policy', '/refunds'],
+  ['Fulfillment & Delivery Policy', '/fulfillment'],
+  ['How Payments Work', '/payment-flow'],
 ];
+
+const LEGAL_PAGES: Record<string, { title: string; updated: string; intro: string; sections: Array<{ heading: string; body: string }> }> = {
+  '/privacy-policy': {
+    title: 'Privacy Policy',
+    updated: 'July 30, 2026',
+    intro: 'Ekazi respects your privacy. This policy explains how Ekazi Connect Solutions Ltd collects, uses, protects, and shares information when clients and providers use Ekazi.',
+    sections: [
+      { heading: 'Information we collect', body: 'We collect account details such as name, phone number, email address, role, profile photo, service location, job requests, quote details, messages, ratings, payment references, and provider verification documents where applicable.' },
+      { heading: 'How we use information', body: 'We use this information to create accounts, connect clients with nearby providers, process quotes and bookings, support payments, verify providers, prevent fraud, deliver notifications, improve support, and comply with Kenyan legal and safety obligations.' },
+      { heading: 'Location and job details', body: 'Clients may share job location, photos, descriptions, schedule, and contact details so providers can quote and complete work. Exact address details are only used for service delivery and platform safety.' },
+      { heading: 'Provider verification', body: 'Providers may upload identity documents, profile images, certificates, and good conduct documents. Ekazi uses these records for review, trust, fraud prevention, and marketplace safety.' },
+      { heading: 'Sharing of information', body: 'We share relevant booking details between the client and accepted provider. We may also share data with payment processors, hosting providers, messaging and notification providers, regulators, or law enforcement where required.' },
+      { heading: 'Security and retention', body: 'We use reasonable technical and organizational safeguards to protect user data. We retain information for as long as needed to provide Ekazi services, resolve disputes, prevent fraud, and meet legal or accounting obligations.' },
+      { heading: 'Your choices', body: 'Users can update profile details, request account deletion, or request partial or full data deletion from the account area or by contacting Ekazi support.' },
+      { heading: 'Contact', body: 'For privacy questions or deletion requests, contact Ekazi through the Complaints & Feedback page or official support channels on ekazi.co.ke.' },
+    ],
+  },
+  '/terms': {
+    title: 'Terms of Service',
+    updated: 'July 30, 2026',
+    intro: 'These terms govern use of Ekazi by clients and providers in Kenya.',
+    sections: [
+      { heading: 'Marketplace role', body: 'Ekazi helps clients discover, request, compare, book, message, and pay providers. Providers are independent service providers and are responsible for the quality, safety, pricing, and delivery of their services.' },
+      { heading: 'User responsibilities', body: 'Users must provide accurate account information, use lawful content, communicate respectfully, honour accepted bookings, and avoid fraud, harassment, spam, or unsafe conduct.' },
+      { heading: 'Bookings and payments', body: 'Clients may pay using available methods. Cash is paid directly to the provider. Card or supported digital payments may be processed through Ekazi and released according to the platform payment flow.' },
+      { heading: 'Provider commission', body: 'Ekazi may charge providers a platform commission on labour charges. Commission rules are shown to providers before or during quote submission.' },
+      { heading: 'Suspension and enforcement', body: 'Ekazi may warn, restrict, suspend, or ban accounts for repeated cancellations, poor conduct, fraud, safety issues, abuse, or breach of these terms.' },
+    ],
+  },
+  '/anti-spam-policy': {
+    title: 'Anti-Spam Policy',
+    updated: 'July 30, 2026',
+    intro: 'Ekazi does not allow spam, abusive messaging, fake requests, or unsolicited promotional activity.',
+    sections: [
+      { heading: 'Prohibited activity', body: 'Users may not send repeated unwanted messages, fake quotes, phishing links, abusive content, misleading promotions, or unrelated advertising through Ekazi.' },
+      { heading: 'Enforcement', body: 'Ekazi may limit messaging, remove content, suspend accounts, or report abusive activity where necessary to protect users and the platform.' },
+    ],
+  },
+  '/complaints-feedback': {
+    title: 'Complaints & Feedback',
+    updated: 'July 30, 2026',
+    intro: 'Ekazi welcomes complaints, safety reports, provider feedback, and user suggestions.',
+    sections: [
+      { heading: 'How to complain', body: 'Include your account email or phone, booking or quote reference if available, a clear description of the issue, screenshots or evidence where relevant, and the outcome you are requesting.' },
+      { heading: 'Review process', body: 'Ekazi reviews complaints involving poor workmanship, unsafe conduct, harassment, fraud, payment disputes, cancellations, and platform abuse. Serious issues may lead to warnings, suspensions, or bans.' },
+    ],
+  },
+  '/refunds': {
+    title: 'Refund & Cancellation Policy',
+    updated: 'July 30, 2026',
+    intro: 'This policy explains how cancellations, refunds, and disputes are handled on Ekazi.',
+    sections: [
+      { heading: 'Cancellations', body: 'Clients and providers may cancel accepted bookings but must provide a reason. Repeated or unfair cancellations can affect ratings, access, or account standing.' },
+      { heading: 'Refunds', body: 'Refund eligibility depends on payment method, booking status, service progress, evidence provided, and whether the provider has started or completed the work.' },
+      { heading: 'Disputes', body: 'Ekazi may review messages, job details, payment records, photos, ratings, and cancellation reasons when handling a dispute.' },
+    ],
+  },
+  '/fulfillment': {
+    title: 'Fulfillment & Delivery Policy',
+    updated: 'July 30, 2026',
+    intro: 'Ekazi services are fulfilled by independent providers after a client accepts a quote.',
+    sections: [
+      { heading: 'Service delivery', body: 'The provider attends the agreed location, performs the accepted service scope, marks arrival and completion, and communicates with the client through the app where needed.' },
+      { heading: 'Client confirmation', body: 'After completion, clients can rate the provider and leave feedback. Ekazi uses ratings and reports to maintain marketplace quality.' },
+    ],
+  },
+  '/payment-flow': {
+    title: 'How Payments Work',
+    updated: 'July 30, 2026',
+    intro: 'Ekazi supports clear payment flows for clients and providers.',
+    sections: [
+      { heading: 'Cash bookings', body: 'When cash is selected, the client pays the provider directly. Provider commission may accrue separately and can affect cash job availability when unpaid balances reach the platform threshold.' },
+      { heading: 'Card bookings', body: 'When card payment is selected, the client pays securely in the app through the supported payment provider. Provider payouts are calculated after applicable platform commission and outstanding balances.' },
+      { heading: 'Provider payouts', body: 'Provider balances may be paid out according to Ekazi payout schedules and the payment method configured for the provider.' },
+    ],
+  },
+};
 
 function readJson<T>(key: string, fallback: T): T {
   try { const value = localStorage.getItem(key); return value ? JSON.parse(value) as T : fallback; } catch { return fallback; }
@@ -100,6 +177,8 @@ export default function App() {
     setToken('');
     setUser(null);
   }, []);
+  const publicPage = typeof window !== 'undefined' ? LEGAL_PAGES[window.location.pathname] : undefined;
+  if (publicPage) return <PublicLegalPage page={publicPage} />;
   return <div className="app">{notice ? <div className="toast">{notice}</div> : null}{token && user ? <Workspace token={token} user={user} updateUser={updateUser} logout={logout} setNotice={setNotice} /> : <AuthPage onAuth={onAuth} setNotice={setNotice} />}</div>;
 }
 
@@ -484,8 +563,22 @@ function Field({ label, value, onChange, type = 'text', textarea = false, placeh
   return <label className={textarea ? 'field span' : 'field'}><span>{label}</span>{textarea ? <textarea value={value} onChange={(e) => onChange(e.target.value)} rows={4} placeholder={placeholder} /> : <input type={type} value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} />}</label>;
 }
 
+function PublicLegalPage({ page }: { page: (typeof LEGAL_PAGES)[string] }) {
+  return <main className="legal-shell">
+    <nav className="legal-nav"><a className="logo-lockup" href="/"><span className="logo-mark small">E</span><span>Ekazi</span></a><a className="ghost" href="/">Open Ekazi</a></nav>
+    <article className="legal-card">
+      <p className="eyebrow">Ekazi policy</p>
+      <h1>{page.title}</h1>
+      <p className="legal-updated">Last updated: {page.updated}</p>
+      <p className="lead legal-lead">{page.intro}</p>
+      {page.sections.map((section) => <section key={section.heading} className="legal-section"><h2>{section.heading}</h2><p>{section.body}</p></section>)}
+    </article>
+    <PolicyFooter />
+  </main>;
+}
+
 function PolicyFooter({ compact = false }: { compact?: boolean }) {
-  return <footer className={compact ? 'policy-footer compact' : 'policy-footer'}>{POLICY_LINKS.map(([label, url]) => <a key={url} href={url} target="_blank" rel="noreferrer">{label}</a>)}</footer>;
+  return <footer className={compact ? 'policy-footer compact' : 'policy-footer'}>{POLICY_LINKS.map(([label, url]) => <a key={url} href={url}>{label}</a>)}</footer>;
 }
 
 function Empty({ text }: { text: string }) { return <div className="empty">{text}</div>; }
