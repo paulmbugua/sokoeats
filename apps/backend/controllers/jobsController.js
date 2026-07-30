@@ -76,6 +76,14 @@ function isLocalUploadUrl(url) {
   return typeof url === 'string' && /\/uploads\//i.test(url);
 }
 
+function normalizePublicAssetUrl(url) {
+  if (!url) return null;
+  const targetBase = String(process.env.R2_PUBLIC_BASE_URL_IMAGES || 'https://images.ekazi.co.ke').replace(/\/+$/, '');
+  return String(url)
+    .replace(/^https?:\/\/image\.desiredoha\.com/i, targetBase)
+    .replace(/^https?:\/\/images\.desiredoha\.com/i, targetBase);
+}
+
 function verificationPatch(documentType, url) {
   if (documentType === 'profile_image') return { column: 'profile_image_url', statusColumn: 'profile_image_status', url };
   if (documentType === 'id_document') return { column: 'id_document_url', statusColumn: 'id_document_status', url };
@@ -103,13 +111,13 @@ async function recalculateHandymanVerification(db, handymanId) {
 
 function handymanVerificationJson(profile) {
   return profile && {
-    profileImageUrl: profile.profile_image_url || null,
+    profileImageUrl: normalizePublicAssetUrl(profile.profile_image_url),
     profileImageStatus: profile.profile_image_status || 'missing',
-    idDocumentUrl: profile.id_document_url || null,
+    idDocumentUrl: normalizePublicAssetUrl(profile.id_document_url),
     idDocumentStatus: profile.id_document_status || 'missing',
-    certificateUrl: profile.certificate_url || null,
+    certificateUrl: normalizePublicAssetUrl(profile.certificate_url),
     certificateStatus: profile.certificate_status || 'missing',
-    goodConductUrl: profile.good_conduct_url || null,
+    goodConductUrl: normalizePublicAssetUrl(profile.good_conduct_url),
     goodConductStatus: profile.good_conduct_status || 'missing',
     verified: Boolean(profile.verified),
     fullyVerified: Boolean(profile.verified && profile.certificate_status === 'approved' && profile.good_conduct_status === 'approved'),

@@ -2,6 +2,15 @@ import pool from '../config/db.js';
 
 let schemaPromise;
 
+function normalizePublicAssetUrl(url) {
+  if (!url) return null;
+  const targetBase = String(process.env.R2_PUBLIC_BASE_URL_IMAGES || 'https://images.ekazi.co.ke').replace(/\/+$/, '');
+  return String(url)
+    .replace(/^https?:\/\/image\.desiredoha\.com/i, targetBase)
+    .replace(/^https?:\/\/images\.desiredoha\.com/i, targetBase);
+}
+
+
 export function ensureMarketplaceSchema() {
   if (!schemaPromise) {
     schemaPromise = pool.query(`
@@ -390,7 +399,7 @@ export function quoteJson(row) {
       ratingAvg: Number(row.rating_avg || 0),
       ratingCount: Number(row.rating_count || 0),
       verifiedId: Boolean(row.verified),
-      profileImageUrl: row.profile_image_url || null,
+      profileImageUrl: normalizePublicAssetUrl(row.profile_image_url),
       idDocumentStatus: row.id_document_status || 'missing',
       profileImageStatus: row.profile_image_status || 'missing',
       certificateStatus: row.certificate_status || 'missing',
