@@ -6,6 +6,7 @@ import {
   Navigation, Phone, RefreshCw, Send, ShieldCheck, Sparkles, Star, UploadCloud, WalletCards, XCircle,
 } from 'lucide-react';
 import { API_BASE } from './config';
+import { services as kenyaServices } from '../../../packages/shared/api/kenya-data';
 
 const CENTER = { latitude: -1.286389, longitude: 36.817223 };
 const DEFAULT_PROMPTS = ['Share the issue clearly', 'Add when it started', 'Mention access or materials needed'];
@@ -27,7 +28,7 @@ type ProviderReview = { rating?: number | null; comment?: string; reviewedAt?: s
 type Quote = { id: string; jobId?: string; total: number; labor: number; materials: number; transport: number; discountAmount?: number; status?: string; etaMinutes?: number; durationHours?: number | null; message?: string; pro?: { name?: string; phone?: string | null; ratingAvg?: number; ratingCount?: number; jobsCompleted?: number; profileImageUrl?: string | null; verifiedId?: boolean; profileImageStatus?: string; certificateStatus?: string; goodConductStatus?: string; fullyVerified?: boolean; reviews?: ProviderReview[] }; job?: { description?: string; estate?: string; city?: string; status?: string }; booking?: { id?: string; status?: string } | null; commission?: { percent?: number; amount?: number; handymanNet?: number } };
 type Verification = { profileImageUrl?: string | null; idDocumentUrl?: string | null; certificateUrl?: string | null; goodConductUrl?: string | null; profileImageStatus?: string; idDocumentStatus?: string; certificateStatus?: string; goodConductStatus?: string; verified?: boolean; fullyVerified?: boolean; status?: string };
 type HandymanProfileData = { business_name?: string; businessName?: string; bio?: string; estate?: string; city?: string; address?: string; latitude?: number | null; longitude?: number | null; service_radius_km?: number; serviceRadiusKm?: number; categories?: string[]; verified?: boolean; profile_image_url?: string | null; id_document_url?: string | null; certificate_url?: string | null; good_conduct_url?: string | null; profile_image_status?: string; id_document_status?: string; certificate_status?: string; good_conduct_status?: string; verification?: Verification };
-type Conversation = { id: string; bookingId?: string; job?: { description?: string; estate?: string; city?: string }; otherUser?: { name?: string; phone?: string | null; role?: string }; lastMessage?: string; lastAt?: string; unreadCount?: number };
+type Conversation = { id: string; bookingId?: string; job?: { description?: string; serviceName?: string; estate?: string; city?: string }; otherUser?: { name?: string; phone?: string | null; role?: string }; pro?: { name?: string; phone?: string | null; role?: string }; lastMessage?: string; lastAt?: string; unreadCount?: number };
 type ChatMessage = { id: string; body: string; sender?: string; mine?: boolean; createdAt?: string };
 type ApiInit = { method?: string; body?: unknown; headers?: Record<string, string> };
 
@@ -323,25 +324,109 @@ function ClientHome({ jobs, promo, quotes, loadQuotes, deleteJob }: { jobs: Job[
 }
 
 function RequestJob({ token, categories, authApi, onCreated, setNotice }: { token: string; categories: Category[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; onCreated: () => Promise<void>; setNotice: (message: string) => void }) {
-  const [form, setForm] = useState({ categoryId: '', description: '', estate: 'Kilimani', city: 'Nairobi', address: '', latitude: String(CENTER.latitude), longitude: String(CENTER.longitude), scheduleType: 'soon', scheduledFor: '', budgetMin: '1500', budgetMax: '8000', providerBringsMaterials: true, notes: '' });
+  const [form, setForm] = useState({ categoryId: '', categoryName: '', serviceId: '', serviceName: '', description: '', estate: '', city: '', address: '', latitude: '', longitude: '', scheduleType: 'soon', scheduledFor: '', budgetMin: '1500', budgetMax: '8000', providerBringsMaterials: true, notes: '' });
   const [files, setFiles] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
   const selectedCategory = categories.find((item) => item.id === form.categoryId) || categories[0];
-  const prompts = useMemo(() => dynamicPrompts(selectedCategory?.name || form.categoryId), [selectedCategory, form.categoryId]);
-  useEffect(() => { if (!form.categoryId && categories[0]) setForm((prev) => ({ ...prev, categoryId: categories[0].id })); }, [categories, form.categoryId]);
+  const scopeOptions = useMemo(() => kenyaServices.filter((service) => service.categoryId === form.categoryId), [form.categoryId]);
+  const selectedService = scopeOptions.find((service) => service.id === form.serviceId) || scopeOptions[0];
+  const prompts = useMemo(() => dynamicPrompts(selectedCategory?.name || form.categoryId, selectedService?.name || form.serviceName), [selectedCategory, selectedService, form.categoryId, form.serviceName]);
+  const hasLocation = Number.isFinite(Number(form.latitude)) && Number.isFinite(Number(form.longitude));
+  useEffect(() => {
+    if (!form.categoryId && categories[0]) {
+      setForm((prev) => ({ ...prev, categoryId: categories[0].id, categoryName: categories[0].name }));
+    }
+  }, [categories, form.categoryId]);
+  useEffect(() => {
+    if (!form.categoryId) return;
+    const category = categories.find((item) => item.id === form.categoryId);
+    const firstService = kenyaServices.find((service) => service.categoryId === form.categoryId);
+    if (firstService && !scopeOptions.some((service) => service.id === form.serviceId)) {
+      setForm((prev) => ({ ...prev, categoryName: category?.name || prev.categoryName, serviceId: firstService.id, serviceName: firstService.name, description: prev.description || firstService.name }));
+    }
+  }, [categories, form.categoryId, form.serviceId, scopeOptions]);
   useEffect(() => () => previews.forEach((url) => URL.revokeObjectURL(url)), [previews]);
   const update = (key: keyof typeof form, value: string | boolean) => setForm((prev) => ({ ...prev, [key]: value }));
+  const chooseCategory = (next: string[]) => {
+    const categoryId = next[next.length - 1] || '';
+    const category = categories.find((item) => item.id === categoryId);
+    const firstService = kenyaServices.find((service) => service.categoryId === categoryId);
+    setForm((prev) => ({ ...prev, categoryId, categoryName: category?.name || '', serviceId: firstService?.id || '', serviceName: firstService?.name || '', description: firstService?.name || prev.description }));
+  };
+  const chooseService = (serviceId: string) => {
+    const service = scopeOptions.find((item) => item.id === serviceId);
+    setForm((prev) => ({ ...prev, serviceId, serviceName: service?.name || '', description: service?.name || prev.description }));
+  };
   const chooseFiles = (picked: FileList | null) => { const next = Array.from(picked || []).slice(0, 6); previews.forEach((url) => URL.revokeObjectURL(url)); setFiles(next); setPreviews(next.map((file) => URL.createObjectURL(file))); };
+  const fillAddressFromGps = async (latitude: number, longitude: number) => {
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${latitude}&lon=${longitude}&zoom=18&addressdetails=1`, { headers: { Accept: 'application/json' } });
+      if (!response.ok) throw new Error('Reverse geocoding failed');
+      const data = await response.json();
+      const address = data?.address || {};
+      const estate = address.suburb || address.neighbourhood || address.quarter || address.city_district || address.residential || address.village || address.town || '';
+      const city = address.city || address.town || address.municipality || address.county || '';
+      const display = data?.display_name || '';
+      setForm((prev) => ({ ...prev, latitude: latitude.toFixed(6), longitude: longitude.toFixed(6), estate: estate || prev.estate, city: city || prev.city, address: prev.address || display || 'GPS current location' }));
+    } catch {
+      setForm((prev) => ({ ...prev, latitude: latitude.toFixed(6), longitude: longitude.toFixed(6), address: prev.address || 'GPS current location' }));
+      setNotice('Location captured. Estate/city could not be detected automatically, so add a nearby landmark if needed.');
+    }
+  };
+  const useCurrentLocation = () => {
+    if (!window.isSecureContext) {
+      setNotice('Location prompts need HTTPS or localhost. Open the web app on http://localhost:5173 during local development.');
+      return;
+    }
+    if (!navigator.geolocation) {
+      setNotice('Current location is not available in this browser.');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        void fillAddressFromGps(coords.latitude, coords.longitude).finally(() => {
+          setLocationAccuracy(Number.isFinite(coords.accuracy) ? Math.round(coords.accuracy) : null);
+          setNotice('Current location captured. Estate and city are filled when your browser can identify them.');
+          setLocating(false);
+        });
+      },
+      (error) => {
+        const hint = error.code === error.PERMISSION_DENIED
+          ? 'Allow location for this site in your browser settings, then click Use current location again.'
+          : error.code === error.POSITION_UNAVAILABLE
+            ? 'Turn on Windows Location Services and confirm your browser has location permission.'
+            : 'Move near a window or try again; GPS lookup timed out.';
+        setNotice((error.message || 'Location was not captured.') + ' ' + hint);
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 20000, maximumAge: 0 },
+    );
+  };
   const submit = async () => {
+    const latitude = Number(form.latitude);
+    const longitude = Number(form.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+      setNotice('Click Use current location first so Ekazi can send providers the real job location.');
+      return;
+    }
     setSaving(true);
     try {
-      const created = await authApi<{ job: Job }>('/api/jobs', { method: 'POST', body: { ...form, categoryName: selectedCategory?.name, latitude: Number(form.latitude) || null, longitude: Number(form.longitude) || null, budgetMin: Number(form.budgetMin) || null, budgetMax: Number(form.budgetMax) || null, discountCode: 'FIRST5' } });
-      if (files.length && created.job?.id) { const urls = await Promise.all(files.map((file) => uploadFile(file, token, 'image'))); await authApi(`/api/jobs/${created.job.id}/photos`, { method: 'POST', body: { photoUrls: urls } }); }
-      setNotice('Job posted. Nearby verified providers can now send quotes.'); setForm((prev) => ({ ...prev, description: '', notes: '' })); setFiles([]); setPreviews([]); await onCreated();
+      const photoUrls = files.length ? await Promise.all(files.map((file) => uploadFile(file, token, 'image'))) : [];
+      const payload = { ...form, categoryName: selectedCategory?.name || form.categoryName, serviceName: selectedService?.name || form.serviceName, photoUrls, latitude, longitude, estate: form.estate || form.address || 'Current GPS point', city: form.city || 'Detected by GPS', budgetMin: Number(form.budgetMin) || null, budgetMax: Number(form.budgetMax) || null, discountCode: 'FIRST5' };
+      await authApi<{ job: Job }>('/api/jobs', { method: 'POST', body: payload });
+      setNotice('Job posted with scope, current location and photos. Nearby verified providers can now send quotes.');
+      setForm((prev) => ({ ...prev, description: '', notes: '', address: '', estate: '', city: '', latitude: '', longitude: '' }));
+      setLocationAccuracy(null);
+      setFiles([]);
+      setPreviews([]);
+      await onCreated();
     } catch (error) { setNotice(messageOf(error)); } finally { setSaving(false); }
   };
-  return <section className="panel wide"><div className="section-head"><div><p className="eyebrow">Request flow</p><h3>Request a quote</h3></div><Send size={28} /></div><CategoryPicker categories={categories} selected={[form.categoryId]} setSelected={(next) => update('categoryId', next[next.length - 1] || '')} single /><div className="prompt-strip">{prompts.map((prompt) => <button key={prompt} onClick={() => update('description', `${form.description}${form.description ? '\n' : ''}${prompt}: `)}>{prompt}</button>)}</div><div className="form-grid"><Field label="Describe the job" value={form.description} onChange={(v) => update('description', v)} textarea /><Field label="Estate" value={form.estate} onChange={(v) => update('estate', v)} /><Field label="City" value={form.city} onChange={(v) => update('city', v)} /><Field label="Address or landmark" value={form.address} onChange={(v) => update('address', v)} /><Field label="Latitude" value={form.latitude} onChange={(v) => update('latitude', v)} /><Field label="Longitude" value={form.longitude} onChange={(v) => update('longitude', v)} /><label className="field"><span>Schedule type</span><select value={form.scheduleType} onChange={(e) => update('scheduleType', e.target.value)}><option value="soon">As soon as possible</option><option value="scheduled">Scheduled</option><option value="flexible">Flexible</option></select></label><Field label="Scheduled for" type="datetime-local" value={form.scheduledFor} onChange={(v) => update('scheduledFor', v)} /><Field label="Minimum budget" value={form.budgetMin} onChange={(v) => update('budgetMin', v)} /><Field label="Maximum budget" value={form.budgetMax} onChange={(v) => update('budgetMax', v)} /><Field label="Notes" value={form.notes} onChange={(v) => update('notes', v)} textarea /></div><LocationPreview lat={Number(form.latitude)} lng={Number(form.longitude)} label={`${form.estate}, ${form.city}`} /><label className="upload-box"><input type="file" accept="image/*" multiple onChange={(e) => chooseFiles(e.target.files)} /><ImagePlus size={22} /> Add photos with preview</label>{previews.length ? <div className="preview-grid">{previews.map((url) => <img key={url} src={url} alt="Job preview" />)}</div> : null}<label className="check"><input type="checkbox" checked={form.providerBringsMaterials} onChange={(e) => update('providerBringsMaterials', e.target.checked)} /> Ask the provider to include materials.</label><button className="primary" disabled={saving} onClick={() => void submit()}>{saving ? 'Posting...' : 'Post request'}</button></section>;
+  return <section className="panel wide"><div className="section-head"><div><p className="eyebrow">Request flow</p><h3>Request a quote</h3></div><Send size={28} /></div><CategoryPicker categories={categories} selected={[form.categoryId]} setSelected={chooseCategory} single /><div className="prompt-strip">{prompts.map((prompt) => <button key={prompt} onClick={() => update('description', form.description + (form.description ? '\n' : '') + prompt + ': ')}>{prompt}</button>)}</div><div className="form-grid"><Field label="Describe the job" value={form.description} onChange={(v) => update('description', v)} textarea /><Field label="Estate" value={form.estate} placeholder="Auto-filled after current location" onChange={(v) => update('estate', v)} /><Field label="City" value={form.city} placeholder="Auto-filled after current location" onChange={(v) => update('city', v)} /><Field label="Address or landmark" value={form.address} onChange={(v) => update('address', v)} /><label className="field"><span>Schedule type</span><select value={form.scheduleType} onChange={(e) => update('scheduleType', e.target.value)}><option value="soon">As soon as possible</option><option value="scheduled">Scheduled</option><option value="flexible">Flexible</option></select></label><Field label="Scheduled for" type="datetime-local" value={form.scheduledFor} onChange={(v) => update('scheduledFor', v)} /><Field label="Minimum budget" value={form.budgetMin} onChange={(v) => update('budgetMin', v)} /><Field label="Maximum budget" value={form.budgetMax} onChange={(v) => update('budgetMax', v)} /><Field label="Notes" value={form.notes} onChange={(v) => update('notes', v)} textarea /></div><div className="location-tools"><LocationPreview lat={Number(form.latitude)} lng={Number(form.longitude)} label={hasLocation ? [form.estate, form.city].filter(Boolean).join(', ') || 'GPS location captured' : 'No GPS location captured yet'} /><div className="location-action-card"><div><strong>Use the exact job location</strong><p>Click once and allow your browser to share location. Ekazi fills estate/city where available and uses the GPS point for provider matching.</p>{locationAccuracy != null ? <span>Accuracy: about {locationAccuracy} m</span> : null}</div><button className="secondary" type="button" disabled={locating} onClick={() => void useCurrentLocation()}>{locating ? <Loader2 className="spin" size={18} /> : <Navigation size={18} />} Use current location</button></div></div><label className="upload-box"><input type="file" accept="image/*" multiple onChange={(e) => chooseFiles(e.target.files)} /><ImagePlus size={22} /> Add photos with preview</label>{previews.length ? <div className="preview-grid">{previews.map((url) => <img key={url} src={url} alt="Job preview" />)}</div> : null}<label className="check"><input type="checkbox" checked={form.providerBringsMaterials} onChange={(e) => update('providerBringsMaterials', e.target.checked)} /> Ask the provider to include materials.</label><button className="primary" disabled={saving || !hasLocation} onClick={() => void submit()}>{saving ? 'Posting...' : hasLocation ? 'Post request' : 'Use current location first'}</button></section>;
 }
 
 
@@ -451,6 +536,7 @@ function HandymanProfile({ token, categories, authApi, setNotice, refresh, logou
   const [form, setForm] = useState({ address: 'Nairobi CBD', estate: 'Kilimani', city: 'Nairobi', latitude: String(CENTER.latitude), longitude: String(CENTER.longitude), serviceRadiusKm: '20' });
   const [selected, setSelected] = useState<string[]>([]);
   const [busy, setBusy] = useState('');
+  const [profileLocating, setProfileLocating] = useState(false);
   const load = useCallback(async () => {
     const data = await authApi<{ profile: HandymanProfileData | null; verification?: Verification }>('/api/handyman/profile');
     setProfile(data.profile); setVerification(data.verification || data.profile?.verification || null);
@@ -460,6 +546,19 @@ function HandymanProfile({ token, categories, authApi, setNotice, refresh, logou
     }
   }, [authApi]);
   useEffect(() => { void load(); }, [load]);
+  const useProfileCurrentLocation = () => {
+    if (!navigator.geolocation) { setNotice('Current location is not available in this browser.'); return; }
+    setProfileLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setForm((prev) => ({ ...prev, latitude: coords.latitude.toFixed(6), longitude: coords.longitude.toFixed(6), address: prev.address || 'Current location' }));
+        setNotice('Current location added to your provider service area.');
+        setProfileLocating(false);
+      },
+      (error) => { setNotice(error.message || 'Allow location access to use your current position.'); setProfileLocating(false); },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 },
+    );
+  };
   const saveLocation = async () => {
     try { await authApi('/api/handyman/profile/location', { method: 'PUT', body: { ...form, latitude: Number(form.latitude), longitude: Number(form.longitude), serviceRadiusKm: Number(form.serviceRadiusKm), categories: selected } }); setNotice('Service profile saved.'); await load(); await refresh(); }
     catch (error) { setNotice(messageOf(error)); }
@@ -471,7 +570,7 @@ function HandymanProfile({ token, categories, authApi, setNotice, refresh, logou
   };
   const currentVerification = verification || profileVerification(profile);
   const canAddExtraServices = extraServiceQualificationReady(currentVerification, profile);
-  return <section className="panel wide"><div className="section-head"><div><p className="eyebrow">Provider profile</p><h3>Service area and verification</h3></div><ShieldCheck size={30} /></div><div className="profile-grid"><div><div className="form-grid"><Field label="Address" value={form.address} onChange={(v) => setForm((p) => ({ ...p, address: v }))} /><Field label="Estate" value={form.estate} onChange={(v) => setForm((p) => ({ ...p, estate: v }))} /><Field label="City" value={form.city} onChange={(v) => setForm((p) => ({ ...p, city: v }))} /><Field label="Service radius km" value={form.serviceRadiusKm} onChange={(v) => setForm((p) => ({ ...p, serviceRadiusKm: v }))} /><Field label="Latitude" value={form.latitude} onChange={(v) => setForm((p) => ({ ...p, latitude: v }))} /><Field label="Longitude" value={form.longitude} onChange={(v) => setForm((p) => ({ ...p, longitude: v }))} /></div><CategoryPicker categories={categories} selected={selected} setSelected={setSelected} maxSelection={PROVIDER_FREE_SERVICE_LIMIT} canExceedLimit={canAddExtraServices} onLimitReached={() => setNotice('Upload a qualification certificate before adding a third service.')} /><p className="muted service-rule">Two services are available immediately. A submitted or approved qualification certificate unlocks extra service categories.</p><LocationPreview lat={Number(form.latitude)} lng={Number(form.longitude)} label={form.estate} /><button className="primary" onClick={() => void saveLocation()}><CheckCircle2 size={18} /> Save service profile</button></div><div><VerificationGate verification={currentVerification} message="Profile photo and national ID must be approved before nearby jobs and quote submission unlock." />{currentVerification?.profileImageUrl ? <img className="verification-avatar" src={currentVerification.profileImageUrl} alt="Approved or submitted profile" /> : null}<DocumentUploader title="Profile photo" required description="Required for active provider status. Use a clear face photo." status={currentVerification?.profileImageStatus || profile?.profile_image_status} currentUrl={currentVerification?.profileImageUrl || profile?.profile_image_url || null} busy={busy === 'profile_image'} accept="image/*" onPick={(file) => void uploadVerification('profile_image', file)} icon={<Camera size={20} />} /><DocumentUploader title="National ID" required description="Required. Upload a clear photo or PDF of your Kenyan ID." status={currentVerification?.idDocumentStatus || profile?.id_document_status} currentUrl={currentVerification?.idDocumentUrl || profile?.id_document_url || null} busy={busy === 'id_document'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('id_document', file)} icon={<ShieldCheck size={20} />} /><DocumentUploader title="Qualification certificate" description="Optional trust badge shown to clients after approval." status={currentVerification?.certificateStatus || profile?.certificate_status} currentUrl={currentVerification?.certificateUrl || profile?.certificate_url || null} busy={busy === 'certificate'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('certificate', file)} icon={<FileCheck2 size={20} />} /><DocumentUploader title="Good conduct" description="Optional trust badge shown to clients after approval." status={currentVerification?.goodConductStatus || profile?.good_conduct_status} currentUrl={currentVerification?.goodConductUrl || profile?.good_conduct_url || null} busy={busy === 'good_conduct'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('good_conduct', file)} icon={<BadgeCheck size={20} />} /><p className={currentVerification?.verified ? 'verify-note ok' : 'verify-note danger'}>{currentVerification?.verified ? 'Account active for nearby jobs and quotes.' : 'Account not active for jobs until profile photo and National ID are approved.'}</p>{currentVerification?.fullyVerified ? <p className="verify-note ok">Fully verified: ID, profile, certificate and good conduct approved.</p> : null}</div></div><AccountControls authApi={authApi} setNotice={setNotice} logout={logout} /></section>;
+  return <section className="panel wide"><div className="section-head"><div><p className="eyebrow">Provider profile</p><h3>Service area and verification</h3></div><ShieldCheck size={30} /></div><div className="profile-grid"><div><div className="form-grid"><Field label="Address" value={form.address} onChange={(v) => setForm((p) => ({ ...p, address: v }))} /><Field label="Estate" value={form.estate} onChange={(v) => setForm((p) => ({ ...p, estate: v }))} /><Field label="City" value={form.city} onChange={(v) => setForm((p) => ({ ...p, city: v }))} /><Field label="Service radius km" value={form.serviceRadiusKm} onChange={(v) => setForm((p) => ({ ...p, serviceRadiusKm: v }))} /><Field label="Latitude" value={form.latitude} onChange={(v) => setForm((p) => ({ ...p, latitude: v }))} /><Field label="Longitude" value={form.longitude} onChange={(v) => setForm((p) => ({ ...p, longitude: v }))} /></div><CategoryPicker categories={categories} selected={selected} setSelected={setSelected} maxSelection={PROVIDER_FREE_SERVICE_LIMIT} canExceedLimit={canAddExtraServices} onLimitReached={() => setNotice('Upload a qualification certificate before adding a third service.')} /><p className="muted service-rule">Two services are available immediately. A submitted or approved qualification certificate unlocks extra service categories.</p><div className="location-tools"><LocationPreview lat={Number(form.latitude)} lng={Number(form.longitude)} label={form.estate} /><button className="secondary" type="button" disabled={profileLocating} onClick={() => void useProfileCurrentLocation()}>{profileLocating ? <Loader2 className="spin" size={18} /> : <Navigation size={18} />} Use current location</button></div><button className="primary" onClick={() => void saveLocation()}><CheckCircle2 size={18} /> Save service profile</button></div><div><VerificationGate verification={currentVerification} message="Profile photo and national ID must be approved before nearby jobs and quote submission unlock." />{currentVerification?.profileImageUrl ? <img className="verification-avatar" src={currentVerification.profileImageUrl} alt="Approved or submitted profile" /> : null}<DocumentUploader title="Profile photo" required description="Required for active provider status. Use a clear face photo." status={currentVerification?.profileImageStatus || profile?.profile_image_status} currentUrl={currentVerification?.profileImageUrl || profile?.profile_image_url || null} busy={busy === 'profile_image'} accept="image/*" onPick={(file) => void uploadVerification('profile_image', file)} icon={<Camera size={20} />} /><DocumentUploader title="National ID" required description="Required. Upload a clear photo or PDF of your Kenyan ID." status={currentVerification?.idDocumentStatus || profile?.id_document_status} currentUrl={currentVerification?.idDocumentUrl || profile?.id_document_url || null} busy={busy === 'id_document'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('id_document', file)} icon={<ShieldCheck size={20} />} /><DocumentUploader title="Qualification certificate" description="Optional trust badge shown to clients after approval." status={currentVerification?.certificateStatus || profile?.certificate_status} currentUrl={currentVerification?.certificateUrl || profile?.certificate_url || null} busy={busy === 'certificate'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('certificate', file)} icon={<FileCheck2 size={20} />} /><DocumentUploader title="Good conduct" description="Optional trust badge shown to clients after approval." status={currentVerification?.goodConductStatus || profile?.good_conduct_status} currentUrl={currentVerification?.goodConductUrl || profile?.good_conduct_url || null} busy={busy === 'good_conduct'} accept="image/*,.pdf" onPick={(file) => void uploadVerification('good_conduct', file)} icon={<BadgeCheck size={20} />} /><p className={currentVerification?.verified ? 'verify-note ok' : 'verify-note danger'}>{currentVerification?.verified ? 'Account active for nearby jobs and quotes.' : 'Account not active for jobs until profile photo and National ID are approved.'}</p>{currentVerification?.fullyVerified ? <p className="verify-note ok">Fully verified: ID, profile, certificate and good conduct approved.</p> : null}</div></div><AccountControls authApi={authApi} setNotice={setNotice} logout={logout} /></section>;
 }
 
 function AccountControls({ authApi, setNotice, logout }: { authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; logout: () => void }) {
@@ -486,23 +585,40 @@ function AccountControls({ authApi, setNotice, logout }: { authApi: <T>(path: st
     try { await authApi('/api/user/account', { method: 'DELETE' }); logout(); }
     catch (error) { setNotice(messageOf(error)); }
   };
-  return <div className="account-controls"><span>Privacy and account controls</span><button onClick={() => void requestDeletion('partial')}>Request data deletion</button><button onClick={() => void requestDeletion('all')}>Request all data deletion</button><button className="danger-link" onClick={() => void deleteAccount()}>Delete account</button></div>;
+  return <div className="account-controls"><span>Privacy and account controls</span><button onClick={() => void requestDeletion('partial')}>Request data deletion</button><button onClick={() => void requestDeletion('all')}>Request all data deletion</button><button onClick={logout}>Log out</button><button className="danger-link" onClick={() => void deleteAccount()}>Delete account</button></div>;
 }
 
 function Messages({ conversations, authApi, setNotice, refresh }: { conversations: Conversation[]; authApi: <T>(path: string, init?: ApiInit) => Promise<T>; setNotice: (message: string) => void; refresh: () => Promise<void> }) {
   const [active, setActive] = useState<Conversation | null>(conversations[0] || null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [body, setBody] = useState('');
-  useEffect(() => { if (!active && conversations[0]) setActive(conversations[0]); }, [active, conversations]);
-  useEffect(() => { if (!active) return; authApi<{ messages: ChatMessage[] }>(`/api/conversations/${active.id}/messages`).then((data) => setMessages(data.messages || [])).catch((e) => setNotice(messageOf(e))); }, [active, authApi, setNotice]);
+  const [sending, setSending] = useState(false);
+  useEffect(() => {
+    if (!conversations.length) { setActive(null); return; }
+    setActive((current) => conversations.find((item) => item.id === current?.id) || conversations[0]);
+  }, [conversations]);
+  useEffect(() => {
+    if (!active) { setMessages([]); return; }
+    authApi<{ messages: ChatMessage[] }>(`/api/conversations/${active.id}/messages`)
+      .then((data) => setMessages(data.messages || []))
+      .catch((e) => setNotice(messageOf(e)));
+  }, [active?.id, authApi, setNotice]);
   const send = async () => {
-    if (!active || !body.trim()) return;
-    try { const data = await authApi<{ message: ChatMessage }>(`/api/conversations/${active.id}/messages`, { method: 'POST', body: { body } }); setMessages((prev) => [...prev, data.message]); setBody(''); await refresh(); }
-    catch (error) { setNotice(messageOf(error)); }
+    const trimmed = body.trim();
+    if (!active || !trimmed || sending) return;
+    setSending(true);
+    try {
+      const data = await authApi<{ message?: ChatMessage }>(`/api/conversations/${active.id}/messages`, { method: 'POST', body: { body: trimmed } });
+      const sent = data.message || { id: 'local-' + Date.now(), body: trimmed, mine: true, sender: 'user', createdAt: new Date().toISOString() } as ChatMessage;
+      setMessages((prev) => [...prev, sent]);
+      setBody('');
+      await refresh();
+    } catch (error) { setNotice(messageOf(error)); } finally { setSending(false); }
   };
-  return <section className="panel wide messages-panel"><div className="conversation-list">{conversations.map((item) => <button key={item.id} className={active?.id === item.id ? 'active' : ''} onClick={() => setActive(item)}><strong>{item.otherUser?.name || 'Ekazi chat'}</strong><span>{item.job?.description || item.lastMessage || 'Booking conversation'}</span></button>)}{!conversations.length ? <Empty text="Messages open after a quote is accepted and a booking conversation starts." /> : null}</div><div className="chat-pane"><h3>{active?.otherUser?.name || 'Messages'}</h3><div className="chat-messages">{messages.map((message) => <div key={message.id} className={message.mine || message.sender === 'user' ? 'bubble mine' : 'bubble'}>{message.body}</div>)}{active && !messages.length ? <Empty text="No messages yet. Send the first update." /> : null}</div><div className="chat-input"><input value={body} onChange={(e) => setBody(e.target.value)} placeholder="Type a message" /><button className="primary" onClick={() => void send()}><Send size={17} /></button></div></div></section>;
+  const nameOf = (item?: Conversation | null) => item?.otherUser?.name || item?.pro?.name || 'Ekazi chat';
+  const detailOf = (item: Conversation) => item.job?.description || item.job?.serviceName || item.lastMessage || 'Booking conversation';
+  return <section className="panel wide messages-panel"><div className="conversation-list">{conversations.map((item) => <button key={item.id} className={active?.id === item.id ? 'active' : ''} onClick={() => setActive(item)}><strong>{nameOf(item)}</strong><span>{detailOf(item)}</span></button>)}{!conversations.length ? <Empty text="Messages open after a quote is accepted and a booking conversation starts." /> : null}</div><div className="chat-pane"><h3>{nameOf(active) || 'Messages'}</h3><div className="chat-messages">{messages.map((message) => <div key={message.id} className={message.mine || message.sender === 'user' ? 'bubble mine' : 'bubble'}>{message.body}</div>)}{active && !messages.length ? <Empty text="No messages yet. Send the first update." /> : null}</div><div className="chat-input"><input value={body} onChange={(e) => setBody(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void send(); } }} placeholder={active ? 'Type a message' : 'Select a conversation'} disabled={!active || sending} /><button className="primary" disabled={!active || !body.trim() || sending} onClick={() => void send()}>{sending ? <Loader2 className="spin" size={17} /> : <Send size={17} />}</button></div></div></section>;
 }
-
 function JobRow({ job, actionLabel, onAction, onDelete }: { job: Job; actionLabel: string; onAction: () => void; onDelete?: () => void }) {
   return <article className="row-card"><div className="row-main"><p className="eyebrow">{job.categoryName || job.serviceName || 'Ekazi job'}</p><h4>{job.description}</h4><p className="muted"><MapPin size={14} /> {job.estate}, {job.city}{job.distanceKm != null ? ` - ${job.distanceKm.toFixed(1)} km` : ''}</p><p className="muted"><CalendarClock size={14} /> {job.scheduleType || 'soon'} {job.scheduledFor ? `- ${new Date(job.scheduledFor).toLocaleString()}` : ''}</p>{job.client?.phone ? <p className="contact-line"><Phone size={14} /> Client: {job.client.phone}</p> : null}{job.photoUrls?.length ? <div className="thumb-strip">{job.photoUrls.slice(0, 4).map((url) => <img key={url} src={url} alt="Job" />)}</div> : null}</div><div className="row-actions"><button className="secondary" onClick={onAction}>{actionLabel}<ChevronRight size={16} /></button>{onDelete ? <button className="danger-link" onClick={onDelete}>Delete</button> : null}</div></article>;
 }
@@ -583,12 +699,26 @@ function PolicyFooter({ compact = false }: { compact?: boolean }) {
 
 function Empty({ text }: { text: string }) { return <div className="empty">{text}</div>; }
 
-function dynamicPrompts(category: string) {
+function dynamicPrompts(category: string, service = '') {
+  const serviceText = service || 'the selected scope';
+  const lowerService = serviceText.toLowerCase();
   const key = Object.keys(promptMap).find((item) => category.toLowerCase().includes(item));
-  return key ? promptMap[key] : DEFAULT_PROMPTS;
+  const base = key ? promptMap[key] : DEFAULT_PROMPTS;
+  const servicePrompts = [
+    'What exactly should the provider do for ' + serviceText + '?',
+    'Where is the affected area for ' + serviceText + '?',
+    'Should parts, materials, or cleanup be included?',
+  ];
+  if (lowerService.includes('leak') || lowerService.includes('drain') || lowerService.includes('tap')) servicePrompts.unshift('Where is the leak or blockage and is water still running?');
+  if (lowerService.includes('socket') || lowerService.includes('power') || lowerService.includes('lighting')) servicePrompts.unshift('Is the power tripping or is one fitting affected?');
+  if (lowerService.includes('moving')) servicePrompts.unshift('What items are moving and between which estates?');
+  return Array.from(new Set([...servicePrompts, ...base])).slice(0, 5);
 }
 
 function profileVerification(profile: HandymanProfileData | null): Verification | null {
   if (!profile) return null;
   return { profileImageUrl: profile.profile_image_url, idDocumentUrl: profile.id_document_url, certificateUrl: profile.certificate_url, goodConductUrl: profile.good_conduct_url, profileImageStatus: profile.profile_image_status || 'missing', idDocumentStatus: profile.id_document_status || 'missing', certificateStatus: profile.certificate_status || 'missing', goodConductStatus: profile.good_conduct_status || 'missing', verified: Boolean(profile.verified), fullyVerified: Boolean(profile.verified && profile.certificate_status === 'approved' && profile.good_conduct_status === 'approved') };
 }
+
+
+

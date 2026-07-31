@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, Text, TextInput, View } from 'react-native';
 import Constants from 'expo-constants';
-import MapView, { Marker, PROVIDER_GOOGLE, type MapPressEvent, type Region } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, UrlTile, type MapPressEvent, type Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { colors, radius } from '../theme/tokens';
 
@@ -17,6 +17,8 @@ type Props = {
   value?: PickedLocation | null;
   onChange: (location: PickedLocation) => void;
 };
+
+const OSM_TILE_URL = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
 
 const NAIROBI: Region = {
   latitude: -1.286389,
@@ -80,6 +82,7 @@ export default function LocationPicker({ value, onChange }: Props) {
   const [locating, setLocating] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [mapLoaded, setMapLoaded] = useState(false);
+  const [useFallbackTiles, setUseFallbackTiles] = useState(false);
   const [address, setAddress] = useState(value?.address || '');
   const mapProvider = Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined;
 
@@ -203,20 +206,26 @@ export default function LocationPicker({ value, onChange }: Props) {
   useEffect(() => {
     if (!mapReady || mapLoaded) return undefined;
     const timer = setTimeout(() => {
+      setUseFallbackTiles(true);
       mapLog('tiles_timeout', {
-        reason: 'MapView became ready but Google tiles did not finish loading.',
+        reason: 'MapView became ready but Google tiles did not finish loading. Switching to fallback map tiles.',
         likelyCauses: [
-          'installed dev build does not contain the native Android Maps API key',
-          'Google Cloud key is not allowed for package com.paulmbugua2.ekazi and the EAS keystore SHA-1',
+          'installed build does not contain the expected native Android Maps API key',
+          'Google Cloud key is not allowed for package com.paulmbugua2.ekazi and the Play signing SHA-1',
           'Maps SDK for Android is not enabled for this Google Cloud project',
           'billing is not enabled or the key is blocked',
         ],
-        nextAction: 'Rebuild and reinstall the development client after confirming Google Cloud Android key restrictions.',
+        nextAction: 'Keep the location picker usable with fallback tiles while Google Cloud Android key restrictions are fixed.',
+        fallback: 'openstreetmap',
         key: summarizeMapsKey(runtimeMapsKey()),
       });
     }, 8000);
     return () => clearTimeout(timer);
   }, [mapLoaded, mapReady]);
+
+  useEffect(() => {
+    if (mapLoaded && useFallbackTiles) setUseFallbackTiles(false);
+  }, [mapLoaded, useFallbackTiles]);
 
   return (
     <View>
@@ -246,7 +255,8 @@ export default function LocationPicker({ value, onChange }: Props) {
       >
         <MapView
           ref={mapRef}
-          provider={mapProvider}
+          provider={useFallbackTiles ? undefined : mapProvider}
+          mapType={useFallbackTiles && Platform.OS === 'android' ? 'none' : 'standard'}
           style={{ flex: 1 }}
           loadingEnabled
           loadingIndicatorColor={colors.primary}
@@ -270,8 +280,30 @@ export default function LocationPicker({ value, onChange }: Props) {
           showsUserLocation
           showsMyLocationButton={false}
         >
+          {useFallbackTiles ? (
+            <UrlTile urlTemplate={OSM_TILE_URL} maximumZ={19} flipY={false} zIndex={-1} />
+          ) : null}
           {coordinate ? <Marker coordinate={coordinate} title="Selected location" /> : null}
         </MapView>
+        {useFallbackTiles ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              left: 10,
+              right: 10,
+              top: 10,
+              borderRadius: radius.sm,
+              paddingHorizontal: 10,
+              paddingVertical: 8,
+              backgroundColor: 'rgba(255,255,255,0.92)',
+            }}
+          >
+            <Text style={{ color: colors.mutedDark, fontSize: 11, fontWeight: '800' }}>
+              Map fallback active while Google tiles are unavailable.
+            </Text>
+          </View>
+        ) : null}
         {!mapReady ? (
           <View
             pointerEvents="none"

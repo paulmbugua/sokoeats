@@ -116,6 +116,12 @@ h4 { font-size: 18px; margin-bottom: 8px; }
 .check { display: flex; gap: 10px; align-items: center; margin: 10px 0 16px; color: #334155; }
 .upload-box { display: inline-flex; align-items: center; gap: 10px; min-height: 46px; padding: 10px 14px; border: 1px dashed #0f766e; border-radius: 8px; color: #047857; font-weight: 950; background: #ecfdf5; cursor: pointer; }
 .upload-box input, .document-row input { display: none; }
+.location-tools { display: grid; gap: 10px; margin: 10px 0 16px; }
+.location-tools .map-card { margin: 0; }
+.location-tools > .secondary { justify-self: start; }
+.location-action-card { display: flex; align-items: center; justify-content: space-between; gap: 14px; border: 1px solid #bbf7d0; background: #ecfdf5; color: #064e3b; border-radius: 8px; padding: 12px; }
+.location-action-card p { margin: 4px 0 0; color: #047857; line-height: 1.4; }
+.location-action-card span { display: inline-flex; margin-top: 7px; font-size: 12px; font-weight: 950; color: #166534; }
 .map-card { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; margin: 10px 0 16px; background: #f8fafc; }
 .map-card iframe { width: 100%; height: 260px; border: 0; display: block; }
 .map-card span { display: block; padding: 10px 12px; font-weight: 900; color: #334155; }
@@ -201,3 +207,12 @@ h4 { font-size: 18px; margin-bottom: 8px; }
   .legal-nav { align-items: stretch; flex-direction: column; }
   .legal-nav .ghost { width: 100%; }
 }
+
+.scope-panel { margin: 2px 0 16px; padding: 12px; border: 1px solid #dbeafe; background: #f8fbff; border-radius: 8px; }
+.scope-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+.scope-chip { min-height: 58px; text-align: left; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #0f172a; padding: 10px 12px; display: grid; gap: 3px; cursor: pointer; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease, background-color .18s ease; }
+.scope-chip strong { font-size: 14px; }
+.scope-chip span { font-size: 12px; color: #64748b; font-weight: 850; }
+.scope-chip.active { border-color: #0f766e; background: #ecfdf5; box-shadow: 0 10px 24px rgba(15,118,110,.12); }
+.scope-chip.active strong { color: #065f46; }
+.scope-chip:not(:disabled):hover { transform: translateY(-1px); box-shadow: 0 14px 30px rgba(15,23,42,.12); }

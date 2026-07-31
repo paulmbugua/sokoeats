@@ -10,12 +10,21 @@ function isLocalUrl(value: string): boolean {
 }
 
 function localBackendUrl(): string {
-  return ['http://localhost', '4005'].join(':');
+  return ['http://localhost', '4000'].join(':');
 }
 
 export function resolveBackendUrl(): string {
   const runtimeEnv = typeof window !== 'undefined' ? ((window as any).__EKAZI_ENV__ || {}) : {};
+  const buildEnvUrl = cleanUrl(import.meta.env.VITE_BACKEND_URL || import.meta.env.VITE_API_URL);
+
+  if (IS_DEV) {
+    // Vite serves public/env.js locally too, but that file is production-oriented for Cloudflare.
+    // In local development, prefer an explicit Vite env URL or the local backend.
+    return buildEnvUrl || localBackendUrl();
+  }
+
   const candidates = [
+    buildEnvUrl,
     runtimeEnv.VITE_BACKEND_URL,
     runtimeEnv.VITE_API_URL,
     typeof window !== 'undefined' ? (window as any).__BACKEND_URL__ : '',
@@ -23,12 +32,11 @@ export function resolveBackendUrl(): string {
 
   for (const candidate of candidates) {
     const url = cleanUrl(candidate);
-    if (!url) continue;
-    if (!IS_DEV && isLocalUrl(url)) continue;
+    if (!url || isLocalUrl(url)) continue;
     return url;
   }
 
-  return IS_DEV ? localBackendUrl() : PRODUCTION_BACKEND_URL;
+  return PRODUCTION_BACKEND_URL;
 }
 
 export const API_BASE = resolveBackendUrl();

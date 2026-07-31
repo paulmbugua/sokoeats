@@ -1,6 +1,6 @@
 // apps/mobile/src/screens/CustomGoogleLoginButton.native.tsx
 import React, { useState } from 'react';
-import { TouchableOpacity, Text, ActivityIndicator, Alert, Platform } from 'react-native';
+import { TouchableOpacity, Text, ActivityIndicator, Platform } from 'react-native';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import tw from '../../tailwind';
 import { logGoogleAuthFlow, summarizeGoogleIdToken } from '../utils/googleAuthDebug';
@@ -97,15 +97,14 @@ const CustomGoogleLoginButtonNative: React.FC<GoogleButtonProps> = ({ onSuccess,
             ? 'Sign in already in progress'
             : code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE
               ? 'Google Play services not available'
-              : code === '10' || getErrMessage(e).includes('DEVELOPER_ERROR')
+              : code === '10' || rawMessage.includes('DEVELOPER_ERROR')
                 ? 'Google is not configured for this build. Rebuild after adding the EAS keystore SHA-1/SHA-256 to Firebase and using the latest google-services.json.'
-                : getErrMessage(e).includes('No ID token')
+                : rawMessage.includes('No ID token')
                   ? 'Google authentication failed - no token'
-                  : base;
-
-      // Surface error and notify caller
-      Alert.alert('Google Sign-In', message);
-      onFailure(e instanceof Error ? e : new Error(getErrMessage(e)));
+                  : code === '7' || rawMessage.includes('NETWORK_ERROR')
+                    ? 'Google services could not connect. Check internet, turn off VPN or Private DNS, then try again. If this continues, install the latest Play build after Firebase is updated.'
+                    : base;
+      onFailure(new Error(message));
     } finally {
       setLoading(false);
     }
@@ -123,7 +122,7 @@ const CustomGoogleLoginButtonNative: React.FC<GoogleButtonProps> = ({ onSuccess,
       accessibilityState={{ busy: loading, disabled: loading }}
     >
       <Text style={tw`text-white font-semibold`}>
-        {loading ? 'Signing in…' : 'Continue with Google'}
+        {loading ? 'Signing in...' : 'Continue with Google'}
       </Text>
       {loading && <ActivityIndicator style={tw`ml-2`} />}
     </TouchableOpacity>

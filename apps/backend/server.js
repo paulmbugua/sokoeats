@@ -171,13 +171,20 @@ const PROD_BACKEND_URL =
 // ─── 2) Allowed origins ────────────────────────────────────────────────────────
 const WEB_BASE_URL = process.env.WEB_BASE_URL || process.env.WEB_BASE_URLS || '';
 const APP_BASE_URL = process.env.APP_BASE_URL || '';
+const parseOriginList = (value = '') =>
+  String(value || '')
+    .split(',')
+    .map((origin) => origin.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
 const productionOrigins = [
   PROD_BACKEND_URL,
   'https://ekazi.co.ke',
   'https://www.ekazi.co.ke',
+  'https://admin.ekazi.co.ke',
   'https://server.ekazi.co.ke',
   WEB_BASE_URL,
   APP_BASE_URL,
+  ...parseOriginList(process.env.CORS_EXTRA_ORIGINS || process.env.WEB_DEV_ORIGINS),
 ];
 
 const developmentOrigins = [
@@ -197,15 +204,16 @@ const developmentOrigins = [
   'exp://192.168.68.47:19000', // Expo app
 ];
 
-const allowedOrigins = isProduction ? productionOrigins : developmentOrigins;
+const allowedOrigins = Array.from(new Set((isProduction ? productionOrigins : developmentOrigins).filter(Boolean)));
 
 // ─── 3) CORS for ALL endpoints & preflight OPTIONS (single source of truth) ────
 const corsOptions = {
   origin: (origin, callback) => {
     console.log('🛂 CORS origin check:', origin);
-    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    const cleanOrigin = String(origin || '').replace(/\/+$/, '');
+    if (!origin || allowedOrigins.includes(cleanOrigin)) return callback(null, true);
     console.warn('🚫 Blocked by CORS:', origin);
-    return callback(new Error(`Not allowed by CORS: ${origin}`));
+    return callback(null, false);
   },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: [
@@ -245,10 +253,11 @@ const corsOptions = {
     'X-Degraded',
   ],
   credentials: true,
+  optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // Same options for preflight
+app.options('*', cors(corsOptions), (_req, res) => res.sendStatus(204)); // Same options for preflight
 
 // ─── 7) Webhooks (raw body) must come BEFORE JSON parser for that route only ───
 app.post(

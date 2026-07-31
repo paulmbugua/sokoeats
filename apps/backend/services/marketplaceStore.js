@@ -306,7 +306,7 @@ export function jobJson(row) {
     serviceId: row.service_id,
     serviceName: row.service_name,
     description: row.description,
-    photoUrls: row.photo_urls || [],
+    photoUrls: (Array.isArray(row.photo_urls) ? row.photo_urls : []).map(normalizePublicAssetUrl).filter(Boolean),
     estate: row.estate,
     city: row.city,
     address: row.address,
