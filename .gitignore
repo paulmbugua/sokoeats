@@ -125,3 +125,12 @@ apps/mobile/GoogleService-Info
 # packages/**/exports/
 
 .yarn/install-state.gz
+# Google / Firebase generated credentials
+google-services.json
+GoogleService-Info.plist
+**/google-services.json
+**/GoogleService-Info.plist
+**/google-services*.json
+**/*firebase*.json
+**/*service-account*.json
+**/*credentials*.json

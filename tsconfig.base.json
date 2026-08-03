@@ -22,11 +22,11 @@
       "@shared/*": ["packages/shared/*"],
 
       // canonical workspace aliases (⚠️ no /src, since your shared is flat)
-      "@myhandymanapp/shared": ["packages/shared/index.ts", "packages/shared/index.d.ts"],
-      "@myhandymanapp/shared/*": ["packages/shared/*"],
+      "@sokoeats/shared": ["packages/shared/index.ts", "packages/shared/index.d.ts"],
+      "@sokoeats/shared/*": ["packages/shared/*"],
 
       // explicit subpath for types
-      "@myhandymanapp/shared/types": [
+      "@sokoeats/shared/types": [
         "packages/shared/types/index.ts",
         "packages/shared/types/index.d.ts"
       ]
@@ -34,3 +34,4 @@
   },
   "include": ["apps", "packages"]
 }
+
