@@ -14,7 +14,8 @@ export default {
     },
     ios: { bundleIdentifier: 'com.paulmbugua.sokoeats', supportsTablet: true },
     android: {
-      package: 'com.paulmbugua.sokoeats',
+      package: 'com.paulmbugua2.sokoeats',
+      googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon-foreground.png',
         backgroundColor: '#10231d'
