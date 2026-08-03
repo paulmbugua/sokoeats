@@ -21,7 +21,9 @@ export default {
       }
     },
     extra: {
-      EXPO_PUBLIC_BACKEND_URL: process.env.EXPO_PUBLIC_BACKEND_URL || 'http://10.0.2.2:4005'
+      EXPO_PUBLIC_BACKEND_URL: process.env.EXPO_PUBLIC_BACKEND_URL || 'http://10.0.2.2:4005',
+      eas: { projectId: '53ff8952-ff52-45f2-b580-73e42582bcbe' }
     }
   }
 };
+
