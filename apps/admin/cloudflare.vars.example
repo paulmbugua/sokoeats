@@ -1,6 +1,0 @@
-# Copy these into Cloudflare Workers build/runtime variables for ekazi-admin.
-VITE_BACKEND_URL=https://server.ekazi.co.ke
-VITE_API_URL=https://server.ekazi.co.ke
-VITE_SITE_URL=https://admin.ekazi.co.ke
-VITE_IMAGES_BASE_URL=https://images.ekazi.co.ke
-VITE_PREVIEWS_BASE_URL=https://previews.ekazi.co.ke

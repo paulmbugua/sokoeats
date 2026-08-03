@@ -1,81 +1,12 @@
-// packages/shared/types/index.ts
-
-// -------------------------------------------------------------
-// 🔹 Utility & Core Types
-// -------------------------------------------------------------
-export type GalleryImage = File | string | null;
-
-
-export type OrgRole = 'owner' | 'admin' | 'instructor' | 'learner';
-
-export type PayoutCurrency = 'USD' | 'KES';
-
-
-
-
-
-/** Payload your API expects for updates */
-export interface UpdateProfilePayload {
-  name: string;
-  age?: string; // server expects string
-  languages: string[];
-
-  country?: string;
-  schoolGrade?: string; // camelCase for client
-  gallery?: string[];
-  video?: string;
-
-  status?: string;
-  notifications?: boolean;
-
-  pricing: {
-    privateSession: number;
-    groupSession: number;
-    lecture: number;
-    workshop: number;
-  };
-
-  experienceLevel?: string;
-  category?: string;
-  recommended: string[];
-
- 
-
-  // ── Legacy (deprecated) still accepted by older backends but not used by UI ──
-  /** @deprecated */
-  paymentMethod?: 'bank' | 'mpesa';
-  /** @deprecated */
-  bankAccount?: string;
-  /** @deprecated */
-  bankCode?: string;
-}
-
-
-
-
-
-export * from './ShopContextTypes';
-
-export interface PaymentPackage {
-  id?: string | number;
-  packageId?: string | number;
-  name?: string;
-  label?: string;
-  currency?: string;
-  credits?: number;
-  amount?: number;
-  price?: number;
-  priceKes?: number;
-  priceUsd?: number;
-  [key: string]: unknown;
-}
-
-export interface Course {
-  id?: string | number;
-  title?: string;
-  name?: string;
-  subject?: string;
-  thumbnail?: string;
-  image?: string;
-  [key: string]: unknown;
-}
+export type ID = string;
+export type UserRole = 'customer' | 'vendor' | 'courier' | 'support' | 'admin';
+export type OrderStatus = 'cart' | 'placed' | 'accepted' | 'preparing' | 'ready' | 'picked_up' | 'delivered' | 'cancelled';
+export type TicketStatus = 'open' | 'pending' | 'resolved' | 'closed';
+export type VendorStatus = 'draft' | 'review' | 'active' | 'paused';
+export type User = { id: ID; name: string; email: string; phone?: string; role: UserRole };
+export type Vendor = { id: ID; name: string; slug: string; status: VendorStatus; cuisine: string; rating: number; prepMinutes: number; deliveryFee: number; minimumOrder: number; imageUrl?: string };
+export type MenuItem = { id: ID; vendorId: ID; name: string; description: string; price: number; category: string; popular?: boolean; available: boolean; imageUrl?: string };
+export type CartLine = { menuItemId: ID; quantity: number; notes?: string };
+export type Order = { id: ID; code: string; customerName: string; vendorName: string; status: OrderStatus; subtotal: number; deliveryFee: number; total: number; deliveryAddress: string; createdAt: string };
+export type Ticket = { id: ID; code: string; subject: string; status: TicketStatus; priority: 'low' | 'normal' | 'high' | 'urgent'; requesterName: string; assignedTeam: string; createdAt: string };
+export type DashboardMetric = { label: string; value: string; delta?: string };

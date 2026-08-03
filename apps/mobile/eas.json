@@ -1,44 +1,8 @@
 {
-  "cli": {
-    "version": ">= 16.7.2",
-    "appVersionSource": "remote"
-  },
+  "cli": { "version": ">= 12.0.0" },
   "build": {
-    "development": {
-      "environment": "development",
-      "developmentClient": true,
-      "distribution": "internal",
-      "channel": "development",
-      "env": {
-        "EXPO_DEV_CLIENT": "true"
-      }
-    },
-    "preview": {
-      "environment": "preview",
-      "distribution": "internal",
-      "channel": "preview",
-      "env": {}
-    },
-    "production": {
-      "environment": "production",
-      "autoIncrement": true,
-      "channel": "production",
-      "distribution": "store",
-      "android": {
-        "buildType": "app-bundle"
-      },
-      "env": {
-        "EXPO_PUBLIC_APP_ENV": "production",
-        "EXPO_PUBLIC_DEFAULT_BACKEND": "prod",
-        "EXPO_NO_DOTENV": "1",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "164509786898-7ca20l8gli2hia1d8p06r55v81p9f2nh.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "164509786898-ujoi1s2k3763bhh5mgtdf6if90bnakjb.apps.googleusercontent.com",
-        "EXPO_PUBLIC_GOOGLE_REVERSED_CLIENT_ID": "com.googleusercontent.apps.164509786898-ujoi1s2k3763bhh5mgtdf6if90bnakjb",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "164509786898-d3nmhmkqv9hf16ekqkelgis6705jsjtq.apps.googleusercontent.com"
-      }
-    }
-  },
-  "submit": {
+    "development": { "developmentClient": true, "distribution": "internal" },
+    "preview": { "distribution": "internal" },
     "production": {}
   }
 }

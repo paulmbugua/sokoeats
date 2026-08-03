@@ -1,73 +1,25 @@
 {
-  "name": "@myhandymanapp/admin",
+  "name": "@sokoeats/admin",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "start": "serve -s dist",
-    "preview": "vite preview",
-    "lint": "eslint . --ext .js,.jsx,.ts,.tsx --max-warnings=0",
-    "format": "prettier . --write",
-    "format:check": "prettier . --check",
-    "type-check": "tsc --noEmit",
-    "cf:build": "vite build",
-    "cf:preview": "vite build && npx wrangler@latest dev",
-    "cf:deploy": "npx wrangler@latest deploy"
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@fortawesome/fontawesome-svg-core": "6.4.0",
-    "@fortawesome/free-brands-svg-icons": "6.4.0",
-    "@fortawesome/free-regular-svg-icons": "6.4.0",
-    "@fortawesome/free-solid-svg-icons": "6.4.0",
-    "@fortawesome/react-fontawesome": "0.2.2",
-    "@porscheofficial/cookie-consent-banner-react": "4.0.3",
-    "@react-oauth/google": "0.12.1",
-    "@react-three/drei": "^10.7.4",
-    "@react-three/fiber": "^9.3.0",
-    "@stripe/react-stripe-js": "2.9.0",
-    "@stripe/stripe-js": "4.10.0",
-    "@tanstack/react-query": "5.89.0",
-    "@tanstack/react-query-devtools": "5.89.0",
-    "axios": "1.8.3",
-    "axios-rate-limit": "^1.4.0",
-    "framer-motion": "^12.23.12",
+    "@sokoeats/shared": "workspace:*",
     "lucide-react": "^0.541.0",
-    "moti": "^0.30.0",
     "react": "^19.1.0",
-    "react-cookie-consent": "^9.0.0",
-    "react-dom": "^19.1.0",
-    "react-error-boundary": "^6.0.0",
-    "react-helmet-async": "^2.0.5",
-    "react-icons": "5.3.0",
-    "react-medium-image-zoom": "5.2.10",
-    "react-native-web": "^0.20.0",
-    "react-router-dom": "6.26.1",
-    "react-toastify": "11.0.5",
-    "socket.io-client": "4.8.1",
-    "tailwind-merge": "2.3.0",
-    "three": "^0.179.1"
+    "react-dom": "^19.1.0"
   },
   "devDependencies": {
     "@types/react": "19.0.8",
     "@types/react-dom": "19.0.3",
-    "@types/react-native-web": "^0",
-    "@types/three": "^0",
     "@vitejs/plugin-react": "4.3.1",
-    "vite": "4.5.9",
-    "vite-plugin-svgr": "4.3.0"
-  },
-  "lint-staged": {
-    "*.{js,jsx,ts,tsx}": [
-      "eslint --fix",
-      "prettier --write"
-    ],
-    "*.{css,scss}": [
-      "prettier --write"
-    ],
-    "*.{json,md}": [
-      "prettier --write"
-    ]
+    "typescript": "^5.9.3",
+    "vite": "4.5.9"
   }
 }

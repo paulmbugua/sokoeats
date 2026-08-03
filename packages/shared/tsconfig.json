@@ -1,33 +1,17 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "composite": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-
+    "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "Bundler",
-
-    "jsx": "react",
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
     "baseUrl": ".",
-    "lib": ["dom", "dom.iterable", "esnext"],
     "paths": {
-      "@shared/*": ["./*"],
-      "@myhandymanapp/shared": ["./index.ts", "./index.d.ts"],
-      "@myhandymanapp/shared/*": ["./*"],
-      "@myhandymanapp/shared/types": ["./types/index.ts", "./types/index.d.ts"]
-    },
-    "types": ["node"],
-    "outDir": "dist"
+      "@sokoeats/shared": ["./types/index.ts"],
+      "@sokoeats/shared/*": ["./*"]
+    }
   },
-  "include": [
-    "api/**/*",
-    "hooks/**/*",
-    "utils/**/*",
-    "context/**/*",
-    "types/**/*.d.ts",
-    "types",
-    "scripts/**/*"
-  ]
+  "include": ["api", "context", "hooks", "types", "utils"]
 }

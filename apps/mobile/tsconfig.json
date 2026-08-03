@@ -1,69 +1,15 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "jsx": "react-native",
-    "moduleResolution": "bundler",
-    "skipLibCheck": true,
-    "allowSyntheticDefaultImports": true,
-    "esModuleInterop": true,
+    "jsx": "react-jsx",
     "strict": true,
-    "noUncheckedIndexedAccess": true,
-    "forceConsistentCasingInFileNames": true,
-    "module": "esnext",
-    "target": "esnext",
-    "lib": [
-      "esnext",
-      "DOM",
-      "DOM.Iterable"
-    ],
-    "resolveJsonModule": true,
-    "isolatedModules": true,
+    "skipLibCheck": true,
+    "types": ["react"],
     "baseUrl": ".",
     "paths": {
-      "@/*": [
-        "src/*"
-      ],
-      "@myhandymanapp/shared": [
-        "../../packages/shared/index.ts",
-        "../../packages/shared/index.d.ts"
-      ],
-      "@myhandymanapp/shared/*": [
-        "../../packages/shared/*"
-      ],
-      "@myhandymanapp/shared/types": [
-        "../../packages/shared/types/index.ts",
-        "../../packages/shared/types/index.d.ts"
-      ]
-    },
-    "typeRoots": [
-      "../../node_modules/@types"
-    ]
+      "@sokoeats/shared": ["../../packages/shared/types/index.ts"],
+      "@sokoeats/shared/*": ["../../packages/shared/*"]
+    }
   },
-  "include": [
-    "src/**/*",
-    "index.tsx",
-    "images.d.ts",
-    "types/**/*.ts",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts",
-    "**/*.spec.ts",
-    "**/*.test.ts",
-    "nativewind-env.d.ts",
-    "declarations.d.ts",
-    "src/**/*.d.ts",
-    "utils"
-  ],
-  "exclude": [
-    "node_modules",
-    "android",
-    "ios",
-    "web-build",
-    "**/__mocks__/**",
-    "**/__fixtures__/**",
-    "src/screens/LoginScreen.native.tsx",
-    "src/screens/Messages.native.tsx",
-    "src/screens/PaymentWidget.native.tsx",
-    "src/screens/DeleteAccount.native.tsx",
-    "utils/subjectImages.ts"
-  ]
+  "include": ["src", "expo-env.d.ts", "images.d.ts"]
 }
