@@ -144,3 +144,53 @@ export async function monthlyStatementDetail(_req, res, next) {
 export async function marketingAssetsLibrary(_req, res, next) {
   try { res.json({ assets: await getScreenPayload('marketing_assets_library') }); } catch (err) { next(err); }
 }
+
+
+export async function merchantOperationsSuite(_req, res, next) {
+  try {
+    const screens = {};
+    for (const key of ["welcome_to_sokoeats_merchant","business_information","verify_your_business","store_configuration","merchant_terms_conditions","application_submitted","menu_categories_overview","category_items_breakfast","add_menu_item","bulk_menu_import","fees_commission_structure","create_ad_step_1_choose_goal","create_ad_step_2_creative","create_ad_step_3_audience_budget","create_ad_final_step_review_launch"]) screens[key] = await getScreenPayload(key);
+    res.json({ operations: screens });
+  } catch (err) { next(err); }
+}
+
+export async function submitMerchantOnboarding(req, res, next) {
+  try {
+    const submitted = await getScreenPayload('application_submitted');
+    submitted.lastSubmission = { ...req.body, status: 'submitted', submittedAt: new Date().toISOString() };
+    res.status(201).json({ application: await saveScreenPayload('application_submitted', submitted) });
+  } catch (err) { next(err); }
+}
+
+export async function acceptMerchantTerms(req, res, next) {
+  try {
+    const terms = await getScreenPayload('merchant_terms_conditions');
+    terms.acceptance = { ...req.body, accepted: true, acceptedAt: new Date().toISOString() };
+    res.json({ terms: await saveScreenPayload('merchant_terms_conditions', terms) });
+  } catch (err) { next(err); }
+}
+
+export async function createMerchantMenuItem(req, res, next) {
+  try {
+    const breakfast = await getScreenPayload('category_items_breakfast');
+    breakfast.items.unshift({ ...req.body, status: 'In Stock', badge: 'New', imageUrl: breakfast.items[0]?.imageUrl });
+    res.status(201).json({ category: await saveScreenPayload('category_items_breakfast', breakfast) });
+  } catch (err) { next(err); }
+}
+
+export async function importMerchantMenu(req, res, next) {
+  try {
+    const bulk = await getScreenPayload('bulk_menu_import');
+    bulk.lastImport = { ...req.body, status: 'imported', importedAt: new Date().toISOString() };
+    bulk.processing = { ...(bulk.processing || {}), progress: 100, body: String(req.body.itemCount || 142) + ' items imported successfully.' };
+    res.status(201).json({ import: await saveScreenPayload('bulk_menu_import', bulk) });
+  } catch (err) { next(err); }
+}
+
+export async function launchMerchantAd(req, res, next) {
+  try {
+    const launch = await getScreenPayload('create_ad_final_step_review_launch');
+    launch.lastLaunch = { ...req.body, status: 'live', launchedAt: new Date().toISOString() };
+    res.status(201).json({ campaign: await saveScreenPayload('create_ad_final_step_review_launch', launch) });
+  } catch (err) { next(err); }
+}

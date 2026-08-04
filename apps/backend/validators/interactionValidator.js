@@ -90,3 +90,25 @@ export const merchantPayoutRequestSchema = Joi.object({
   amount: Joi.number().min(1).required(),
   destination: Joi.string().required(),
 }).unknown(true);
+
+
+export const merchantOnboardingSubmissionSchema = Joi.object({
+  screenKey: Joi.string().allow('', null),
+}).unknown(true);
+
+export const merchantMenuItemSchema = Joi.object({
+  name: Joi.string().min(2).required(),
+  price: Joi.string().required(),
+  category: Joi.string().required(),
+}).unknown(true);
+
+export const merchantBulkImportSchema = Joi.object({
+  fileName: Joi.string().default('Restaurant_Menu_July.csv'),
+  itemCount: Joi.number().integer().min(1).default(142),
+}).unknown(true);
+
+export const merchantAdLaunchSchema = Joi.object({
+  goal: Joi.string().required(),
+  budget: Joi.number().min(1).required(),
+  durationDays: Joi.number().integer().min(1).default(7),
+}).unknown(true);
