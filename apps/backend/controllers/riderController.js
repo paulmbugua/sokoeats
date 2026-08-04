@@ -100,3 +100,69 @@ export async function riderProfileRatings(_req, res, next) {
     res.json({ profile: await getScreenPayload('rider_profile_ratings') });
   } catch (err) { next(err); }
 }
+
+
+export async function riderSupportTrainingSuite(_req, res, next) {
+  try {
+    const screens = {};
+    for (const key of ["safety_incident_report","rider_help_center","live_chat_support","order_details_sko_1294","rider_training_dashboard","customer_service_lesson","rider_training_quiz","quiz_results_feedback"]) screens[key] = await getScreenPayload(key);
+    res.json({ suite: screens });
+  } catch (err) { next(err); }
+}
+
+export async function riderHelpCenter(_req, res, next) {
+  try { res.json({ helpCenter: await getScreenPayload('rider_help_center') }); } catch (err) { next(err); }
+}
+
+export async function liveChatSupport(_req, res, next) {
+  try { res.json({ chat: await getScreenPayload('live_chat_support') }); } catch (err) { next(err); }
+}
+
+export async function sendRiderChatMessage(req, res, next) {
+  try {
+    const chat = await getScreenPayload('live_chat_support');
+    chat.messages.push({ sender: 'You', body: req.body.body, time: new Intl.DateTimeFormat('en-KE', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'Africa/Nairobi' }).format(new Date()), mine: true });
+    res.status(201).json({ chat: await saveScreenPayload('live_chat_support', chat) });
+  } catch (err) { next(err); }
+}
+
+export async function safetyIncidentReport(_req, res, next) {
+  try { res.json({ incident: await getScreenPayload('safety_incident_report') }); } catch (err) { next(err); }
+}
+
+export async function submitSafetyIncident(req, res, next) {
+  try {
+    const incident = await getScreenPayload('safety_incident_report');
+    incident.lastSubmission = { ...req.body, submittedAt: new Date().toISOString(), status: 'submitted' };
+    res.status(201).json({ incident: await saveScreenPayload('safety_incident_report', incident) });
+  } catch (err) { next(err); }
+}
+
+export async function riderOrderDetails(_req, res, next) {
+  try { res.json({ orderDetails: await getScreenPayload('order_details_sko_1294') }); } catch (err) { next(err); }
+}
+
+export async function riderTrainingDashboard(_req, res, next) {
+  try { res.json({ training: await getScreenPayload('rider_training_dashboard') }); } catch (err) { next(err); }
+}
+
+export async function riderTrainingLesson(_req, res, next) {
+  try { res.json({ lesson: await getScreenPayload('customer_service_lesson') }); } catch (err) { next(err); }
+}
+
+export async function riderTrainingQuiz(_req, res, next) {
+  try { res.json({ quiz: await getScreenPayload('rider_training_quiz') }); } catch (err) { next(err); }
+}
+
+export async function submitTrainingQuiz(req, res, next) {
+  try {
+    const quiz = await getScreenPayload('rider_training_quiz');
+    const results = await getScreenPayload('quiz_results_feedback');
+    results.lastAnswer = { selectedIndex: req.body.selectedIndex, correct: req.body.selectedIndex === quiz.correctIndex, submittedAt: new Date().toISOString() };
+    res.status(201).json({ results: await saveScreenPayload('quiz_results_feedback', results) });
+  } catch (err) { next(err); }
+}
+
+export async function quizResultsFeedback(_req, res, next) {
+  try { res.json({ results: await getScreenPayload('quiz_results_feedback') }); } catch (err) { next(err); }
+}

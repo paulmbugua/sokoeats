@@ -62,3 +62,28 @@ export async function updateInventoryStock(req, res, next) {
     res.json({ inventory: await saveScreenPayload('vendor_inventory_management', inventory) });
   } catch (err) { next(err); }
 }
+
+
+export async function vendorOrderHistory(_req, res, next) {
+  try { res.json({ orderHistory: await getScreenPayload('vendor_order_history') }); } catch (err) { next(err); }
+}
+
+export async function vendorOrderDetails(_req, res, next) {
+  try {
+    const details = await getScreenPayload('order_details_sko_1294');
+    if (details.code !== req.params.code) return res.status(404).json({ message: 'Vendor order not found' });
+    res.json({ orderDetails: details });
+  } catch (err) { next(err); }
+}
+
+export async function vendorProfileSettings(_req, res, next) {
+  try { res.json({ profileSettings: await getScreenPayload('vendor_profile_settings') }); } catch (err) { next(err); }
+}
+
+export async function updateVendorProfileSettings(req, res, next) {
+  try {
+    const settings = await getScreenPayload('vendor_profile_settings');
+    Object.assign(settings, req.body, { updatedAt: new Date().toISOString() });
+    res.json({ profileSettings: await saveScreenPayload('vendor_profile_settings', settings) });
+  } catch (err) { next(err); }
+}

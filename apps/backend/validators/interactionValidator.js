@@ -33,3 +33,27 @@ export const inventoryStockSchema = Joi.object({
   numericStock: Joi.number().min(0).required(),
   stock: Joi.string().allow('', null),
 });
+
+
+export const incidentReportSchema = Joi.object({
+  category: Joi.string().required(),
+  urgency: Joi.string().required(),
+  location: Joi.string().allow('', null),
+  incidentTime: Joi.string().allow('', null),
+  description: Joi.string().min(2).required(),
+  photos: Joi.array().items(Joi.string()).default([]),
+});
+
+export const riderChatMessageSchema = Joi.object({
+  body: Joi.string().min(1).max(1200).required(),
+});
+
+export const quizSubmissionSchema = Joi.object({
+  selectedIndex: Joi.number().integer().min(0).required(),
+});
+
+export const vendorProfileSettingsSchema = Joi.object({
+  acceptingOrders: Joi.boolean(),
+  business: Joi.object().unknown(true),
+  operations: Joi.array().items(Joi.object().unknown(true)),
+}).unknown(true);

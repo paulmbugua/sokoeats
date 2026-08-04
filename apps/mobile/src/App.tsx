@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 
-type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile';
+type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults';
 type PaymentMethod = 'mpesa' | 'card';
 
 const colors = {
@@ -102,6 +102,26 @@ const stitchFilesUsed = [
   'vendor_analytics_dashboard/screen.png',
   'vendor_inventory_management/code.html',
   'vendor_inventory_management/screen.png',
+  'safety_incident_report/code.html',
+  'safety_incident_report/screen.png',
+  'rider_help_center/code.html',
+  'rider_help_center/screen.png',
+  'live_chat_support/code.html',
+  'live_chat_support/screen.png',
+  'order_details_sko_1294/code.html',
+  'order_details_sko_1294/screen.png',
+  'rider_training_dashboard/code.html',
+  'rider_training_dashboard/screen.png',
+  'customer_service_lesson/code.html',
+  'customer_service_lesson/screen.png',
+  'rider_training_quiz/code.html',
+  'rider_training_quiz/screen.png',
+  'quiz_results_feedback/code.html',
+  'quiz_results_feedback/screen.png',
+  'vendor_order_history/code.html',
+  'vendor_order_history/screen.png',
+  'vendor_profile_settings/code.html',
+  'vendor_profile_settings/screen.png',
 ];
 
 const images = {
@@ -254,6 +274,286 @@ const fallbackActiveDelivery: ActiveDeliveryPayload = {
 
 type GenericPayload = Record<string, any>;
 const fallbackRiderBatch: Record<string, GenericPayload> = {
+  "safety_incident_report": {
+    "sourceFiles": [
+      "safety_incident_report/code.html",
+      "safety_incident_report/screen.png"
+    ],
+    "title": "Incident Reporting",
+    "dangerTitle": "Immediate Danger?",
+    "dangerBody": "Get help instantly from our dispatch team or emergency services.",
+    "actions": [
+      "Call Dispatch"
+    ],
+    "categories": [
+      "Road Accident",
+      "Breakdown",
+      "Customer Safety",
+      "Theft/Harassment",
+      "Other"
+    ],
+    "urgencyLevels": [
+      "Low",
+      "Medium",
+      "Emergency"
+    ],
+    "fields": [
+      "Location of Incident",
+      "Time of Incident",
+      "Detailed Description",
+      "Photos & Evidence"
+    ],
+    "evidenceImages": [
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuDd5vUYZDsstfjJCfwS0VtG05TncFDcLTEYsL6UIqvU5CY0bCf9r3nNiD2IxdrvzZZqPoxz955I8ZifOJsdjrhGIEM8gfmTEsN1BWZeLtkrIZIw4Paxp4sEsm_d4WAcaDsxHtbb3dyc7gJp88-c7WNbsYYxw4ufOI_e3ayMp0yKeVqrIrRfRM7hGWlwt4PkEjXs-0M4zLLwP9nor7xrgIrxckNEmvqxgseM6DgPt2u1VSCpwdaqHQVD",
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuDrf6I_ffY5b9_MeZY_ImYE1deJ1kzK4QRUajcm7d4TAYXSPbIpbiEIONKjWI8pT3pCxJo-gYOZIJ4aQQKHHqLCUvCDbrgSTnU0wb6SmLIg_uGvB-2FXKaa711JLfbMeP_pH8OeW-dYbW3CeiBL0m5AkRmXGqUFrk3KxRLWoZXLvPWoa681jPsc8t-77NmP0sB-NOZnw17M-4k9WeupO_q5LVjxY5tCSeIGWd3xMUo7fblyCng8eCMs"
+    ],
+    "legal": "By submitting, you confirm that this information is accurate. False reporting can lead to account suspension."
+  },
+  "rider_help_center": {
+    "sourceFiles": [
+      "rider_help_center/code.html",
+      "rider_help_center/screen.png"
+    ],
+    "title": "Rider Help Center",
+    "heroImageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuDoazv5nZh1KBLL6nJe6e-VUVDQu3LmhxU_YVJuGPFcpIajc4tqUmAFrWuGiU9mVgAhhdfn_WrYujcjnaP0kf-HYsuwrZQCt01B8dxMkdbzWaQbkJwbLMhTNqBXzAm5llHVWtxRu_jnYoV3XXgOH1r1I6ymCWD8a8w1sVv3c_XP5wi0vHxfHj68XRAAkaWPTgIm9DabmVh6bN92B5MNYi-UqqeZ0HwMhHxuvWf3m1ssrEeqwX_mb_x9",
+    "primaryActions": [
+      {
+        "title": "Live Support",
+        "body": "WhatsApp or Direct Call"
+      },
+      {
+        "title": "Report an Issue",
+        "body": "Report safety or order incidents"
+      }
+    ],
+    "headline": "We're here to keep you moving",
+    "categories": [
+      {
+        "title": "Earnings & Payouts",
+        "body": "M-Pesa, statements & bonuses"
+      },
+      {
+        "title": "Order Issues",
+        "body": "Cancellations, missing items"
+      },
+      {
+        "title": "App & Navigation",
+        "body": "GPS, login & device issues"
+      },
+      {
+        "title": "Safety & Training",
+        "body": "Road safety & protocols"
+      }
+    ],
+    "questions": [
+      "When will I receive my M-Pesa payout?",
+      "How do I change my delivery zone?",
+      "My account is under review",
+      "Customer was not available to collect"
+    ]
+  },
+  "live_chat_support": {
+    "sourceFiles": [
+      "live_chat_support/code.html",
+      "live_chat_support/screen.png"
+    ],
+    "title": "Rider Help Center",
+    "agent": {
+      "name": "Sarah",
+      "status": "Online"
+    },
+    "tip": "For faster resolution, please provide your Order ID or a Photo of the receipt if you are reporting a delivery discrepancy.",
+    "messages": [
+      {
+        "sender": "Sarah",
+        "body": "Jambo! I'm Sarah from SokoEats Rider Support. I see you're having trouble with your current pickup at Westlands Mall. How can I assist you today?",
+        "time": "10:42 AM",
+        "mine": false
+      },
+      {
+        "sender": "You",
+        "body": "The restaurant is saying the order will take another 20 minutes. My app says it should have been ready 5 minutes ago. What should I do?",
+        "time": "10:44 AM",
+        "mine": true
+      },
+      {
+        "sender": "Sarah",
+        "body": "I'm sorry for the wait! I'm reaching out to the restaurant manager now to expedite this. Please stay in the rider waiting zone. I'll update your wait time compensation automatically.",
+        "time": "10:45 AM",
+        "mine": false
+      },
+      {
+        "sender": "You",
+        "body": "Here is the crowd at the counter right now.",
+        "time": "10:46 AM",
+        "mine": true,
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuCsp1suTdfxD3AlPcXFUsPbqw9CNWxNCARfp-g_cpbIJfb1qM9Fmx0fb-pGoXnFHKfKLj6y4Hcs2M0KLeMvAX7mH6iifzq2MCc7YA1uSaYUJ4LCEJ5fmLpZGYDdA--qkuhVhIleVSwZT7WGawtZHuKS6M3aeep69vbWlNg5aVg7thqbidK3WAzb6dX6qIjAccNZ6qT99ERZ_tEQi-8tpHxDn1euS6kXFyCFXegveiKCAzt_8-ZcJU-H"
+      }
+    ]
+  },
+  "order_details_sko_1294": {
+    "sourceFiles": [
+      "order_details_sko_1294/code.html",
+      "order_details_sko_1294/screen.png"
+    ],
+    "code": "SKO-1294",
+    "status": "PREPARED",
+    "timeline": [
+      "Received",
+      "Prepared",
+      "Dispatched"
+    ],
+    "customer": {
+      "name": "Faith Wanjiru",
+      "phone": "+254 712 345 678",
+      "address": "Kilimani, Nairobi, Kenya",
+      "note": "Gate 4, Wood Avenue Heights"
+    },
+    "items": [
+      {
+        "quantity": "1x",
+        "name": "Double Beef Burger",
+        "price": "KSh 1,200",
+        "note": "Well done, No onions",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuDTMjefIzgitI8b6GS4ui1jcJ3aNkI8WU3F4qYY8f5bCEEhmUZQZTNpO2tQCD2oaUEKfmJbC2sHLymT71nwhxZviD1o3mQTc7ZQj2croeYhXHkdLZ96V2NuG0vhB4zkWLlXIeZh4fIg4F-AGQflE0x1up1cEx3xzJZi7OSaxsegk133uMU00nFuK0ARZh3_MxCjXWg3Dy7xmZk-s9QyNUCZ0NfDgPEwz_Ek2LT-EDieFYhAwfT-4kaI"
+      },
+      {
+        "quantity": "1x",
+        "name": "Large Masala Fries",
+        "price": "KSh 450",
+        "note": "Extra spice on side",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuC_1WDWnrgzCaoEsB-e9Gdd2lQ9_S2QqoAnH0WrFB46U8lMpx-vyiz8eSQp2JmMSJ5QX4xokM3tG0QCPtI40bycqIGvX8dVPXDJoVSYsHDpfpD_ZWNGM_wGQvoMdfbaFLlxPKNyF6-DWE4vwsyK7mkTZOUvnLUFQqj6gbaUw1fczuMCaiR3ZFtFnJROuSmh7iqXlqShXLDwj_FoBR91hpfI6VYbfSd8XgDV-PeYmuEiNAV1LYy4bYKY"
+      },
+      {
+        "quantity": "1x",
+        "name": "Fresh Passion Juice",
+        "price": "KSh 350",
+        "note": "Chilled, No added sugar",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuARkSHdLLJmScU4-j6HcU2RGT0sAuW-8fKcCAxsziLEI3_XeRwYa5xyyyKCP6PlPNvZqk9JqNsfdVCfsMpiYRObL5oVERDj_kd4qYa_qUmo1luLYpCSeiYH7si81E9MfQOxLSIcdMjbcCgITaae3LbzHsH4oAvQW72bdQqH_E0Sr3i3ZPNzq7WEtr06LiqI7OLfe9OSm4iR1lKc84_hewBgVHllAWQp6OpwEL7i6NZO9l-NdwbmvYqt"
+      }
+    ],
+    "payment": {
+      "status": "M-PESA CONFIRMED",
+      "subtotal": "KSh 2,000",
+      "deliveryFee": "KSh 250",
+      "serviceFee": "KSh 50",
+      "total": "KSh 2,300"
+    },
+    "rider": "John D. (2 mins away)"
+  },
+  "rider_training_dashboard": {
+    "sourceFiles": [
+      "rider_training_dashboard/code.html",
+      "rider_training_dashboard/screen.png"
+    ],
+    "title": "Your Training Journey",
+    "subtitle": "Complete all modules to start earning",
+    "progress": "40% COMPLETE",
+    "completed": "2 of 5 modules completed",
+    "modules": [
+      {
+        "title": "Welcome to SokoEats",
+        "duration": "5 mins",
+        "status": "COMPLETED",
+        "action": "Review Module",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuCbgAhKe2AbgDDex45XdMylr74e2OKTntQ_s5ZNF1cx6Mff9BBJPTabbHXEg_G5CY-2oVR64wkLpTIpQdlDnRGzvXijSlyRo2wUtdfLNuwLQw88rzfHPaji40gbHHPVRa3x0x0NqfH7pYZEOSVutVfSYOoEuWfd0nzp7TqAY2oJ1t8r_KH5oWYAyUf1CpySdnVy5EEb_Nls7CTgJ6Iu5r1wLQ0NR9bsnck-fPlKUbijN98qLozdn8Qn"
+      },
+      {
+        "title": "Customer Service Excellence",
+        "duration": "12 mins",
+        "status": "UP NEXT",
+        "action": "Start Now",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuBfj_-i3rWiTyOLYDhnLgJNRUsbFmTkpT1qqdP7nnlZsTs9MWyhLUkW34xTi1UnDL_Ha9POnlJ98WalISXze9s5_nbQfYk9evsDHMEQTQdRx5Uih7uMvwSZr4YKJ86zybjVDn6Ri9hcTZYezbNTMPLaisp6oRXqVQ_jcxrWKtlPH3VfpJwxZLb4GCfJFbQc8Zyh-sunz1PSuS-s4tRpDGw9mKP1HR2U-4c4QFgnUmhOtdWzPIRPqwIO"
+      },
+      {
+        "title": "Safe Riding in Nairobi",
+        "duration": "15 mins",
+        "status": "LOCKED",
+        "action": "Locked",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAyxvz91JUCqP03PFVoQgdV-gvYokiEQ5HOcSwYrxt34iU_EZ2Ad9t5Afg_Y3ca9JbiNhqhW5SUp2OJn-Bx_FoBuUHk4MQPfblT4knEcxTkMTm7G-NceqTTwCNT3j7RCSpBuHT4J85ZZzbD58c0z3QTOvvlVGiqkaf3to6_VKzU6rVVz8HYwv9cVVt7saFR_UTFkMwCCy-f-uVXRieoC3VeVaCVZVJdCL4CCKtZI5RmlE5zh9AtP0zq"
+      },
+      {
+        "title": "Using the App & M-Pesa",
+        "duration": "10 mins",
+        "status": "LOCKED",
+        "action": "Locked",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAmiIXFaRfqD7S7eDEmIqePrmtKK6Jf0f6woeq5Ffr8MNZbgZ1fXgoSF3-UGdTz5XEYIJDi11zi6e_TtTA7WTebZUXf0sZMEpyuH42lpm9VzKu2NsZFA3PJ4lO4QYtWDIG7MWo9JcDEqoJRzyZf3MlL7Cb8fo1hmvnL6r7KGyv1sLezB-XO0FGCywS4jOGux1yPaZKDkZCkMNrb-OVG3RxyoSDkmF55ufkhHcXRUW_Wlt85uFWfdHs6"
+      },
+      {
+        "title": "Emergency & First Aid",
+        "duration": "20 mins",
+        "status": "LOCKED",
+        "action": "Locked"
+      }
+    ],
+    "support": "Need help with training? Our onboarding team is available to assist you via WhatsApp or call."
+  },
+  "customer_service_lesson": {
+    "sourceFiles": [
+      "customer_service_lesson/code.html",
+      "customer_service_lesson/screen.png"
+    ],
+    "step": "Step 4/6",
+    "module": "Module 4",
+    "title": "Customer Service Excellence",
+    "duration": "08:45",
+    "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuCPnEAcRPGN81PTWWc7Q2S_9JwPp7bVMqUIRsBcQp8075Cv-0wBYv-5m_ttTsP6ys72GvP4Ch2bqU0fHNFUt0dxFVbWK_M4k9BGtlxQT2Nuk1-Zt5gxWYM37ZYFFaXb37Gj4kNy5OQhvoJneBYB5ct0l0juVRizhrg6uDLQ01RV9UpvgbZ5cYd-n6fKPhUp1f1pycQlCxemHvPOz7lEmwoOdED4ELZljnvzihDzfrCPLCGpMwU1SAKs",
+    "sections": [
+      {
+        "title": "The Perfect Handover",
+        "body": "First impressions matter. As the face of our service, your interaction during the handover is the most critical part of the customer's journey."
+      },
+      {
+        "title": "Greet with a Smile",
+        "body": "Always start with a friendly greeting like \"Good afternoon! Your order from [Restaurant] is here.\" Use the customer name if it is available in the app."
+      },
+      {
+        "title": "Bag Management",
+        "body": "Carefully remove the order from your thermal bag in front of the customer. This demonstrates that you've kept their food at the correct temperature."
+      },
+      {
+        "title": "Accuracy Check",
+        "body": "Briefly confirm the contents or the number of items."
+      }
+    ],
+    "proTip": "If an item is missing or damaged, never argue. Apologize and immediately direct the customer to the 'Help' button in their app.",
+    "quote": "A polite farewell like 'Enjoy your meal!' or 'Have a great evening!' can be the difference between a 4-star and a 5-star rating."
+  },
+  "rider_training_quiz": {
+    "sourceFiles": [
+      "rider_training_quiz/code.html",
+      "rider_training_quiz/screen.png"
+    ],
+    "title": "Module Quiz",
+    "progress": "Question 1 of 5",
+    "completion": "20% Complete",
+    "question": "If a customer's food item is missing or damaged upon delivery, what is the correct 'Pro Tip' action?",
+    "options": [
+      "Argue with the customer to defend the restaurant's reputation.",
+      "Apologize and immediately direct the customer to the 'Help' button in their app.",
+      "Tell the customer there is nothing you can do as a rider.",
+      "Offer to go back to the restaurant and pay for it yourself."
+    ],
+    "correctIndex": 1,
+    "tip": "SokoEats Support is trained to handle these issues quickly with refunds or redeliveries. Your job is to stay polite and guide them to the right tool!"
+  },
+  "quiz_results_feedback": {
+    "sourceFiles": [
+      "quiz_results_feedback/code.html",
+      "quiz_results_feedback/screen.png"
+    ],
+    "title": "Module Complete!",
+    "body": "Great job, Juma! You've successfully finished the Customer Etiquette module.",
+    "score": "4 / 5",
+    "accuracy": "80% Accuracy - Excellent!",
+    "badge": "Ethical Deliverer Level 1",
+    "mastered": [
+      "Order Handover Procedures",
+      "Safety & Compliance"
+    ],
+    "review": "One question regarding 'Handling Spillages' could use another look to reach 100% mastery.",
+    "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAavSWwtnYnEnxp-U4-KLUNA-SRyuCbjUiQ52QyASXMhCJlVV4iPFB_llH9a5_hQnDJo-A3Y-KDvT68se3eCKRMVsGM2zCJLM_qKfi16gBeCwJETjvPHq8h8ExmbN5vZDJuSz56UFaGyFsYWho-oE_7njZE6e8ZPGRWV7lLah_ew5y9T9-94dIfP_qcDV13nE-S1vsTH9SP4e3z2Np8Aoc5rp1qPo5_92mQ2Vel54NF4SVT3BHiDO7N"
+  },
   "welcome_to_sokoeats_rider": {
     "sourceFiles": [
       "welcome_to_sokoeats_rider/code.html",
@@ -885,7 +1185,7 @@ export default function App() {
             onCheckout={() => openScreen('checkout')}
           />
         )}
-        {screen === 'riderHome' && <RiderHomeScreen data={riderHome} onBack={() => openScreen('home')} onOnboarding={() => openScreen('riderOnboardingWelcome')} onEarnings={() => openScreen('riderEarnings')} onLeaderboard={() => openScreen('riderLeaderboard')} onProfile={() => openScreen('riderProfile')} onAccept={async () => { try { const next = await sokoeatsApi<{ riderHome: RiderHomePayload; delivery: ActiveDeliveryPayload }>(`/api/rider/requests/${riderHome.request.id}/accept`, { method: 'POST' }); setRiderHome(next.riderHome); setActiveDelivery(next.delivery); } catch {} openScreen('activeDelivery'); }} />}
+        {screen === 'riderHome' && <RiderHomeScreen data={riderHome} onBack={() => openScreen('home')} onOnboarding={() => openScreen('riderOnboardingWelcome')} onEarnings={() => openScreen('riderEarnings')} onLeaderboard={() => openScreen('riderLeaderboard')} onProfile={() => openScreen('riderProfile')} onHelp={() => openScreen('riderHelpCenter')} onIncident={() => openScreen('riderIncidentReport')} onTraining={() => openScreen('riderTraining')} onOrderDetail={() => openScreen('riderOrderDetail')} onAccept={async () => { try { const next = await sokoeatsApi<{ riderHome: RiderHomePayload; delivery: ActiveDeliveryPayload }>(`/api/rider/requests/${riderHome.request.id}/accept`, { method: 'POST' }); setRiderHome(next.riderHome); setActiveDelivery(next.delivery); } catch {} openScreen('activeDelivery'); }} />}
         {screen === 'activeDelivery' && <ActiveDeliveryScreen data={activeDelivery} onBack={() => openScreen('riderHome')} onArrived={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/arrived`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} onPickup={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/pickup`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} />}
         {screen === 'riderOnboardingWelcome' && <RiderWelcomeScreen data={riderBatch.welcome_to_sokoeats_rider} onBack={() => openScreen('riderHome')} onNext={() => openScreen('riderPersonal')} />}
         {screen === 'riderPersonal' && <RiderFormScreen data={riderBatch.personal_information} onBack={() => openScreen('riderOnboardingWelcome')} onNext={() => openScreen('riderVehicle')} />}
@@ -896,6 +1196,14 @@ export default function App() {
         {screen === 'riderPayout' && <RiderPayoutScreen data={riderBatch.m_pesa_payout_confirmation} onBack={() => openScreen('riderEarnings')} />}
         {screen === 'riderLeaderboard' && <RiderLeaderboardScreen data={riderBatch.rider_leaderboard} onBack={() => openScreen('riderHome')} />}
         {screen === 'riderProfile' && <RiderProfileScreen data={riderBatch.rider_profile_ratings} onBack={() => openScreen('riderHome')} />}
+        {screen === 'riderIncidentReport' && <RiderIncidentScreen data={riderBatch.safety_incident_report} onBack={() => openScreen('riderHome')} />}
+        {screen === 'riderHelpCenter' && <RiderHelpCenterScreen data={riderBatch.rider_help_center} onBack={() => openScreen('riderHome')} onChat={() => openScreen('riderLiveChat')} onIncident={() => openScreen('riderIncidentReport')} />}
+        {screen === 'riderLiveChat' && <RiderLiveChatScreen data={riderBatch.live_chat_support} onBack={() => openScreen('riderHelpCenter')} onSend={async (body) => { const next = await sokoeatsApi<{ chat: GenericPayload }>('/api/rider/live-chat/messages', { method: 'POST', body: JSON.stringify({ body }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, live_chat_support: next.chat })); }} />}
+        {screen === 'riderOrderDetail' && <RiderOrderDetailScreen data={riderBatch.order_details_sko_1294} onBack={() => openScreen('riderHome')} />}
+        {screen === 'riderTraining' && <RiderTrainingScreen data={riderBatch.rider_training_dashboard} onBack={() => openScreen('riderHome')} onLesson={() => openScreen('riderLesson')} />}
+        {screen === 'riderLesson' && <RiderLessonScreen data={riderBatch.customer_service_lesson} onBack={() => openScreen('riderTraining')} onQuiz={() => openScreen('riderQuiz')} />}
+        {screen === 'riderQuiz' && <RiderQuizScreen data={riderBatch.rider_training_quiz} onBack={() => openScreen('riderLesson')} onSubmit={async (selectedIndex) => { const next = await sokoeatsApi<{ results: GenericPayload }>('/api/rider/training/quiz/submissions', { method: 'POST', body: JSON.stringify({ selectedIndex }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, quiz_results_feedback: next.results })); openScreen('riderQuizResults'); }} />}
+        {screen === 'riderQuizResults' && <RiderQuizResultsScreen data={riderBatch.quiz_results_feedback} onBack={() => openScreen('riderTraining')} />}
         {screen === 'checkout' && (
           <CheckoutScreen
             subtotal={subtotal}
@@ -1135,7 +1443,7 @@ function HomeScreen({
 }
 
 
-function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onLeaderboard, onProfile }: { data: RiderHomePayload; onBack: () => void; onAccept: () => void; onOnboarding: () => void; onEarnings: () => void; onLeaderboard: () => void; onProfile: () => void }) {
+function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onLeaderboard, onProfile, onHelp, onIncident, onTraining, onOrderDetail }: { data: RiderHomePayload; onBack: () => void; onAccept: () => void; onOnboarding: () => void; onEarnings: () => void; onLeaderboard: () => void; onProfile: () => void; onHelp: () => void; onIncident: () => void; onTraining: () => void; onOrderDetail: () => void }) {
   return (
     <View style={styles.riderShell}>
       <View style={styles.riderTop}>
@@ -1149,7 +1457,7 @@ function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onL
           <View style={styles.riderStat}><Text style={styles.upperLabel}>Current Zone</Text><Text style={styles.riderStatValue}>{data.rider.zone}</Text></View>
           <View style={styles.riderStat}><Text style={styles.upperLabel}>Today's Earnings</Text><Text style={styles.riderStatValue}>{data.rider.earningsToday}</Text></View>
         </View>
-        <View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onOnboarding}><Text style={styles.riderQuickTitle}>Onboarding</Text><Text style={styles.riderQuickText}>Finish rider verification</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onEarnings}><Text style={styles.riderQuickTitle}>Earnings</Text><Text style={styles.riderQuickText}>Cash out to M-Pesa</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onLeaderboard}><Text style={styles.riderQuickTitle}>Leaderboard</Text><Text style={styles.riderQuickText}>Weekly rider rank</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onProfile}><Text style={styles.riderQuickTitle}>Profile</Text><Text style={styles.riderQuickText}>Ratings and reviews</Text></TouchableOpacity></View>
+        <View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onOnboarding}><Text style={styles.riderQuickTitle}>Onboarding</Text><Text style={styles.riderQuickText}>Finish rider verification</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onEarnings}><Text style={styles.riderQuickTitle}>Earnings</Text><Text style={styles.riderQuickText}>Cash out to M-Pesa</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onLeaderboard}><Text style={styles.riderQuickTitle}>Leaderboard</Text><Text style={styles.riderQuickText}>Weekly rider rank</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onProfile}><Text style={styles.riderQuickTitle}>Profile</Text><Text style={styles.riderQuickText}>Ratings and reviews</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onHelp}><Text style={styles.riderQuickTitle}>Help</Text><Text style={styles.riderQuickText}>Support and FAQs</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onIncident}><Text style={styles.riderQuickTitle}>Incident</Text><Text style={styles.riderQuickText}>Report safety issues</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onTraining}><Text style={styles.riderQuickTitle}>Training</Text><Text style={styles.riderQuickText}>Lessons and quiz</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onOrderDetail}><Text style={styles.riderQuickTitle}>Order #1294</Text><Text style={styles.riderQuickText}>Customer and items</Text></TouchableOpacity></View>
         <ImageBackground source={{ uri: data.heatmapUrl }} style={styles.riderMapCard} imageStyle={styles.riderMapImage}>
           <View style={styles.surgeBadge}><Text style={styles.surgeText}>{data.surge.label}</Text></View>
         </ImageBackground>
@@ -1232,6 +1540,45 @@ function RiderLeaderboardScreen({ data, onBack }: { data: GenericPayload; onBack
 
 function RiderProfileScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
   return <View style={styles.riderShell}><RiderScreenHeader title="Rider Profile" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.profileHero}><Image source={{ uri: data.rider.avatarUrl }} style={styles.profileAvatar} /><Text style={styles.checkoutTitle}>{data.rider.name}</Text><Text style={styles.restaurantMeta}>{data.rider.since}</Text><Text style={styles.restaurantMeta}>{data.rider.vehicle}</Text><Text style={styles.balanceText}>{data.rider.rating}</Text><Text style={styles.upperLabel}>{data.rider.reviews}</Text></View><View style={styles.riderStats}>{data.stats.map((stat: GenericPayload) => <View style={styles.riderStat} key={stat.label}><Text style={styles.riderStatValue}>{stat.value}</Text><Text style={styles.upperLabel}>{stat.label}</Text></View>)}</View><View style={styles.deliveryRequestCard}><Text style={styles.vendorName}>Ratings Breakdown</Text>{data.ratingBreakdown.map((row: GenericPayload) => <View style={styles.ratingLine} key={row.stars}><Text>{row.stars}</Text><View style={styles.deliveryProgress}><View style={[styles.deliveryProgressFill, { width: String(row.value) + '%' as any }]} /></View></View>)}</View><View style={styles.riderQuickGrid}>{data.qualities.map((item: GenericPayload) => <View style={styles.riderQuickButton} key={item.label}><Text style={styles.riderQuickTitle}>{item.label}</Text><Text style={styles.riderQuickText}>{item.value}</Text></View>)}</View><Text style={styles.checkoutSectionTitle}>Achievements</Text><View style={styles.tabsRow}>{data.achievements.map((item: string) => <Text style={styles.tabPillActive} key={item}>{item}</Text>)}</View><Text style={styles.checkoutSectionTitle}>Recent Feedback</Text>{data.feedback.map((entry: GenericPayload) => <View style={styles.uploadCard} key={entry.customer}><Text style={styles.avatarInitial}>{entry.initials}</Text><View style={{ flex: 1 }}><Text style={styles.vendorName}>{entry.customer}</Text><Text style={styles.restaurantMeta}>{entry.age}</Text><Text style={styles.smsBody}>{entry.body}</Text></View></View>)}</ScrollView><BottomNav active="Account" /><SourceLedger /></View>;
+}
+
+
+function RiderIncidentScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  const [category, setCategory] = useState(data.categories[0]);
+  const [urgency, setUrgency] = useState(data.urgencyLevels[1]);
+  const [description, setDescription] = useState('');
+  const submit = async () => { await sokoeatsApi('/api/rider/incidents', { method: 'POST', body: JSON.stringify({ category, urgency, description: description || 'Reported from mobile incident form.' }) }).catch(() => null); onBack(); };
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.emergencyCard}><Text style={styles.checkoutSectionTitle}>{data.dangerTitle}</Text><Text style={styles.smsBody}>{data.dangerBody}</Text><TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Call Dispatch</Text></TouchableOpacity></View><Text style={styles.upperLabel}>Category</Text><View style={styles.tabsRow}>{data.categories.map((item: string) => <Text onPress={() => setCategory(item)} style={item === category ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><Text style={styles.upperLabel}>Urgency Level</Text><View style={styles.tabsRow}>{data.urgencyLevels.map((item: string) => <Text onPress={() => setUrgency(item)} style={item === urgency ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>Detailed Description</Text><TextInput style={styles.formFieldInput} value={description} onChangeText={setDescription} multiline placeholder="Tell dispatch what happened" placeholderTextColor={colors.outline} /></View><View style={styles.riderQuickGrid}>{data.evidenceImages.map((uri: string) => <Image source={{ uri }} style={styles.evidenceThumb} key={uri} />)}</View><Text style={styles.secureText}>{data.legal}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={submit}><Text style={styles.placeOrderText}>Submit Report</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" /><SourceLedger /></View>;
+}
+
+function RiderHelpCenterScreen({ data, onBack, onChat, onIncident }: { data: GenericPayload; onBack: () => void; onChat: () => void; onIncident: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.heroImageUrl }} style={styles.riderMiniMap} /><View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onChat}><Text style={styles.riderQuickTitle}>{data.primaryActions[0].title}</Text><Text style={styles.riderQuickText}>{data.primaryActions[0].body}</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onIncident}><Text style={styles.riderQuickTitle}>{data.primaryActions[1].title}</Text><Text style={styles.riderQuickText}>{data.primaryActions[1].body}</Text></TouchableOpacity></View><Text style={styles.checkoutTitle}>{data.headline}</Text>{data.categories.map((item: GenericPayload) => <View style={styles.uploadCard} key={item.title}><View><Text style={styles.vendorName}>{item.title}</Text><Text style={styles.restaurantMeta}>{item.body}</Text></View><Text style={styles.changeText}>chevron</Text></View>)}<Text style={styles.checkoutSectionTitle}>Common Questions</Text>{data.questions.map((item: string) => <Text style={styles.helpQuestion} key={item}>{item}</Text>)}</ScrollView><BottomNav active="Alerts" /><SourceLedger /></View>;
+}
+
+function RiderLiveChatScreen({ data, onBack, onSend }: { data: GenericPayload; onBack: () => void; onSend: (body: string) => void }) {
+  const [body, setBody] = useState('');
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><View style={styles.chatAgent}><Text style={styles.vendorName}>Support Agent: {data.agent.name}</Text><Text style={styles.discountText}>{data.agent.status}</Text></View><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.smsCard}><Text style={styles.smsBody}>{data.tip}</Text></View>{data.messages.map((message: GenericPayload, index: number) => <View style={[styles.chatBubble, message.mine && styles.chatBubbleMine]} key={String(index)}><Text style={styles.vendorName}>{message.sender}</Text><Text style={styles.smsBody}>{message.body}</Text>{message.imageUrl && <Image source={{ uri: message.imageUrl }} style={styles.chatImage} />}<Text style={styles.secureText}>{message.time}</Text></View>)}</ScrollView><View style={styles.chatComposer}><TextInput style={styles.chatInput} value={body} onChangeText={setBody} placeholder="Message support" placeholderTextColor={colors.outline} /><TouchableOpacity style={styles.primaryButton} onPress={() => { if (body.trim()) { onSend(body); setBody(''); } }}><Text style={styles.primaryButtonText}>Send</Text></TouchableOpacity></View><SourceLedger /></View>;
+}
+
+function RiderOrderDetailScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title={'Order #' + data.code} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.deliveryRequestCard}><Text style={styles.upperLabel}>Current Status</Text><Text style={styles.checkoutTitle}>{data.status}</Text><View style={styles.tabsRow}>{data.timeline.map((item: string) => <Text style={styles.tabPillActive} key={item}>{item}</Text>)}</View></View><View style={styles.deliveryRequestCard}><Text style={styles.checkoutSectionTitle}>Customer Information</Text><Text style={styles.vendorName}>{data.customer.name}</Text><Text style={styles.restaurantMeta}>{data.customer.phone}</Text><Text style={styles.restaurantMeta}>{data.customer.address}</Text><Text style={styles.restaurantMeta}>{data.customer.note}</Text></View><Text style={styles.checkoutSectionTitle}>Order Items</Text>{data.items.map((item: GenericPayload) => <View style={styles.uploadCard} key={item.name}><Image source={{ uri: item.imageUrl }} style={styles.thumbSquare} /><View style={{ flex: 1 }}><Text style={styles.vendorName}>{item.quantity} {item.name}</Text><Text style={styles.restaurantMeta}>{item.note}</Text></View><Text style={styles.priceValue}>{item.price}</Text></View>)}<View style={styles.breakdownCard}>{Object.entries(data.payment).map(([label, value]) => <View style={styles.priceLine} key={label}><Text style={styles.priceLabel}>{label}</Text><Text style={styles.priceValue}>{String(value)}</Text></View>)}<Text style={styles.secureText}>Rider: {data.rider}</Text></View></ScrollView><SourceLedger /></View>;
+}
+
+function RiderTrainingScreen({ data, onBack, onLesson }: { data: GenericPayload; onBack: () => void; onLesson: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Rider Onboarding" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text><View style={styles.balanceCard}><Text style={styles.upperLabel}>{data.progress}</Text><Text style={styles.vendorName}>{data.completed}</Text></View><Text style={styles.checkoutSectionTitle}>Curriculum</Text>{data.modules.map((item: GenericPayload, index: number) => <TouchableOpacity style={styles.uploadCard} key={item.title} onPress={index === 1 ? onLesson : undefined}><Image source={item.imageUrl ? { uri: item.imageUrl } : undefined as any} style={styles.thumbSquare} /><View style={{ flex: 1 }}><Text style={styles.vendorName}>{item.title}</Text><Text style={styles.restaurantMeta}>{item.duration}</Text></View><Text style={item.status === 'COMPLETED' ? styles.discountText : styles.changeText}>{item.action}</Text></TouchableOpacity>)}<View style={styles.smsCard}><Text style={styles.smsBody}>{data.support}</Text></View></ScrollView><SourceLedger /></View>;
+}
+
+function RiderLessonScreen({ data, onBack, onQuiz }: { data: GenericPayload; onBack: () => void; onQuiz: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Customer Service" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.imageUrl }} style={styles.riderHeroImage} /><Text style={styles.upperLabel}>{data.step} - {data.module}</Text><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.countdownText}>{data.duration}</Text>{data.sections.map((section: GenericPayload) => <View style={styles.deliveryRequestCard} key={section.title}><Text style={styles.vendorName}>{section.title}</Text><Text style={styles.smsBody}>{section.body}</Text></View>)}<View style={styles.smsCard}><Text style={styles.vendorName}>The Pro Tip</Text><Text style={styles.smsBody}>{data.proTip}</Text><Text style={styles.secureText}>{data.quote}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={onQuiz}><Text style={styles.placeOrderText}>Take Quiz</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
+}
+
+function RiderQuizScreen({ data, onBack, onSubmit }: { data: GenericPayload; onBack: () => void; onSubmit: (selectedIndex: number) => void }) {
+  const [selected, setSelected] = useState(1);
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Text style={styles.upperLabel}>{data.progress}</Text><Text style={styles.checkoutTitle}>{data.question}</Text>{data.options.map((option: string, index: number) => <Text onPress={() => setSelected(index)} style={selected === index ? styles.quizOptionActive : styles.quizOption} key={option}>{option}</Text>)}<View style={styles.smsCard}><Text style={styles.vendorName}>Rider Pro Tip</Text><Text style={styles.smsBody}>{data.tip}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={() => onSubmit(selected)}><Text style={styles.placeOrderText}>Submit Answer</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
+}
+
+function RiderQuizResultsScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Rider Training" onBack={onBack} /><ScrollView contentContainerStyle={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.imageUrl }} style={styles.successImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><Text style={styles.balanceText}>{data.score}</Text><Text style={styles.discountText}>{data.accuracy}</Text><View style={styles.smsCard}><Text style={styles.vendorName}>New Badge Earned</Text><Text style={styles.totalAmount}>{data.badge}</Text></View><Text style={styles.checkoutSectionTitle}>Knowledge Check</Text>{data.mastered.map((item: string) => <Text style={styles.helpQuestion} key={item}>Mastered: {item}</Text>)}<View style={styles.emergencyCard}><Text style={styles.vendorName}>Quick Review Needed</Text><Text style={styles.smsBody}>{data.review}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Return to Dashboard</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
 }
 
 function PromoBanner({
@@ -2933,4 +3280,17 @@ const styles = StyleSheet.create({
   profileAvatar: { width: 92, height: 92, borderRadius: 46, marginBottom: 12 },
   ratingLine: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
   avatarInitial: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primaryContainer, color: colors.onPrimaryContainer, textAlign: 'center', textAlignVertical: 'center', fontWeight: '900' },
+  emergencyCard: { borderRadius: 16, backgroundColor: colors.errorContainer, padding: 16, marginBottom: 16 },
+  evidenceThumb: { width: '48%', height: 110, borderRadius: 12, backgroundColor: colors.surfaceContainerHigh },
+  helpQuestion: { borderRadius: 12, backgroundColor: colors.surfaceContainerLowest, padding: 14, marginBottom: 10, color: colors.onSurface, fontWeight: '800' },
+  chatAgent: { padding: 14, backgroundColor: colors.surfaceContainerLowest, flexDirection: 'row', justifyContent: 'space-between' },
+  chatBubble: { borderRadius: 16, backgroundColor: colors.surfaceContainerLowest, padding: 14, marginBottom: 12, maxWidth: '88%' },
+  chatBubbleMine: { alignSelf: 'flex-end', backgroundColor: colors.primaryFixed },
+  chatImage: { width: 180, height: 120, borderRadius: 12, marginTop: 8 },
+  chatComposer: { flexDirection: 'row', gap: 10, padding: 12, backgroundColor: colors.surfaceContainerLowest },
+  chatInput: { flex: 1, borderRadius: 12, backgroundColor: colors.surfaceContainer, paddingHorizontal: 12, color: colors.onSurface },
+  thumbSquare: { width: 56, height: 56, borderRadius: 10, backgroundColor: colors.surfaceContainerHigh },
+  quizOption: { borderRadius: 14, backgroundColor: colors.surfaceContainerLowest, padding: 14, marginBottom: 10, color: colors.onSurfaceVariant, fontWeight: '800' },
+  quizOptionActive: { borderRadius: 14, backgroundColor: colors.primaryContainer, padding: 14, marginBottom: 10, color: colors.onPrimaryContainer, fontWeight: '900', overflow: 'hidden' },
+
 });

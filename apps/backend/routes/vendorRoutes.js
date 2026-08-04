@@ -1,12 +1,16 @@
 import { Router } from 'express';
 import { createVendor, vendorDashboard } from '../controllers/vendorController.js';
-import { updateInventoryStock, updateMenuAvailability, updateVendorOrderStatus, vendorAnalytics, vendorInventory, vendorMenu, vendorPortal } from '../controllers/vendorExperienceController.js';
+import { updateInventoryStock, updateMenuAvailability, updateVendorOrderStatus, updateVendorProfileSettings, vendorAnalytics, vendorInventory, vendorMenu, vendorOrderDetails, vendorOrderHistory, vendorPortal, vendorProfileSettings } from '../controllers/vendorExperienceController.js';
 import { validate } from '../validators/validate.js';
 import { vendorSchema } from '../validators/vendorValidator.js';
-import { inventoryStockSchema, menuAvailabilitySchema, vendorOrderStatusSchema } from '../validators/interactionValidator.js';
+import { inventoryStockSchema, menuAvailabilitySchema, vendorOrderStatusSchema, vendorProfileSettingsSchema } from '../validators/interactionValidator.js';
 const router = Router();
 router.get('/vendor-dashboard', vendorDashboard);
 router.get('/vendor/portal', vendorPortal);
+router.get('/vendor/orders/history', vendorOrderHistory);
+router.get('/vendor/orders/SKO-1294/details', vendorOrderDetails);
+router.get('/vendor/profile-settings', vendorProfileSettings);
+router.patch('/vendor/profile-settings', validate(vendorProfileSettingsSchema), updateVendorProfileSettings);
 router.get('/vendor/menu', vendorMenu);
 router.get('/vendor/analytics', vendorAnalytics);
 router.get('/vendor/inventory', vendorInventory);

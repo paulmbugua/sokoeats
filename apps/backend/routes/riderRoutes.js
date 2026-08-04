@@ -1,10 +1,22 @@
 import { Router } from 'express';
-import { acceptDeliveryRequest, activeDelivery, confirmPickup, markArrived, requestRiderPayout, riderEarnings, riderHome, riderLeaderboard, riderOnboarding, riderPayoutConfirmation, riderProfileRatings, updateRiderOnboardingStep } from '../controllers/riderController.js';
+import { acceptDeliveryRequest, activeDelivery, confirmPickup, liveChatSupport, markArrived, quizResultsFeedback, requestRiderPayout, riderEarnings, riderHelpCenter, riderHome, riderLeaderboard, riderOnboarding, riderOrderDetails, riderPayoutConfirmation, riderProfileRatings, riderSupportTrainingSuite, riderTrainingDashboard, riderTrainingLesson, riderTrainingQuiz, safetyIncidentReport, sendRiderChatMessage, submitSafetyIncident, submitTrainingQuiz, updateRiderOnboardingStep } from '../controllers/riderController.js';
 import { validate } from '../validators/validate.js';
-import { riderOnboardingStepSchema } from '../validators/interactionValidator.js';
+import { incidentReportSchema, quizSubmissionSchema, riderChatMessageSchema, riderOnboardingStepSchema } from '../validators/interactionValidator.js';
 
 const router = Router();
 router.get('/rider/home', riderHome);
+router.get('/rider/support-training-suite', riderSupportTrainingSuite);
+router.get('/rider/help-center', riderHelpCenter);
+router.get('/rider/live-chat', liveChatSupport);
+router.post('/rider/live-chat/messages', validate(riderChatMessageSchema), sendRiderChatMessage);
+router.get('/rider/incidents/report', safetyIncidentReport);
+router.post('/rider/incidents', validate(incidentReportSchema), submitSafetyIncident);
+router.get('/rider/orders/SKO-1294', riderOrderDetails);
+router.get('/rider/training', riderTrainingDashboard);
+router.get('/rider/training/customer-service', riderTrainingLesson);
+router.get('/rider/training/quiz', riderTrainingQuiz);
+router.post('/rider/training/quiz/submissions', validate(quizSubmissionSchema), submitTrainingQuiz);
+router.get('/rider/training/quiz/results', quizResultsFeedback);
 router.get('/rider/onboarding', riderOnboarding);
 router.patch('/rider/onboarding/:screenKey', validate(riderOnboardingStepSchema), updateRiderOnboardingStep);
 router.get('/rider/earnings', riderEarnings);
