@@ -12,7 +12,7 @@ export default {
       resizeMode: 'contain',
       backgroundColor: '#10231d'
     },
-    ios: { bundleIdentifier: 'com.paulmbugua.sokoeats', supportsTablet: true },
+    ios: { bundleIdentifier: 'com.paulmbugua2.sokoeats', supportsTablet: true },
     android: {
       package: 'com.paulmbugua2.sokoeats',
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
