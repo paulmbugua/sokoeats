@@ -10,3 +10,6 @@ export type CartLine = { menuItemId: ID; quantity: number; notes?: string };
 export type Order = { id: ID; code: string; customerName: string; vendorName: string; status: OrderStatus; subtotal: number; deliveryFee: number; total: number; deliveryAddress: string; createdAt: string };
 export type Ticket = { id: ID; code: string; subject: string; status: TicketStatus; priority: 'low' | 'normal' | 'high' | 'urgent'; requesterName: string; assignedTeam: string; createdAt: string };
 export type DashboardMetric = { label: string; value: string; delta?: string };
+
+export type StitchScreenPayload<T = Record<string, unknown>> = T & { sourceFiles?: string[] };
+export type ApiEnvelope<TName extends string, TPayload> = { [K in TName]: TPayload };

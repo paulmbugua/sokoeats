@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 
-type Screen = 'splash' | 'onboarding' | 'home' | 'checkout';
+type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'riderHome' | 'activeDelivery';
 type PaymentMethod = 'mpesa' | 'card';
 
 const colors = {
@@ -76,6 +76,10 @@ const stitchFilesUsed = [
   'home_screen/screen.png',
   'checkout/code.html',
   'checkout/screen.png',
+  'rider_home_delivery_request/code.html',
+  'rider_home_delivery_request/screen.png',
+  'active_delivery_to_vendor/code.html',
+  'active_delivery_to_vendor/screen.png',
 ];
 
 const images = {
@@ -150,6 +154,86 @@ const orderItems = [
 ];
 
 const money = (value: number) => `KSh ${value.toLocaleString('en-KE')}`;
+const API_BASE = process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://10.0.2.2:4005';
+type RiderHomePayload = { sourceFiles?: string[]; tabs?: string[]; rider: { name?: string; status: string; zone: string; earningsToday: string; online?: boolean }; heatmapUrl: string; surge: { active?: boolean; label: string }; request: { id: string; status: string; title: string; countdownSeconds: number; pickup: { name: string; distance: string }; dropoff: { area: string; distance: string }; payout: string; acceptedMessage: string } };
+type ActiveDeliveryPayload = { sourceFiles?: string[]; tabs?: string[]; order: { code: string; eta: string; status: string; progressLabel: string; progressPercent: number }; mapUrl: string; destinationLabel: string; vendor: { name: string; address: string; badge: string; prepTime: string; imageUrl: string }; arrived: boolean; pickupConfirmed: boolean };
+const fallbackRiderHome: RiderHomePayload = {
+  "sourceFiles": [
+    "rider_home_delivery_request/code.html",
+    "rider_home_delivery_request/screen.png"
+  ],
+  "rider": {
+    "name": "SokoEats Rider",
+    "status": "ONLINE",
+    "zone": "Westlands",
+    "earningsToday": "KSh 1,250",
+    "online": true
+  },
+  "heatmapUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuA2l5WHz71bJGMZEP4QEkSPLHvbYOxcTcqP5Lc56XUVcHSZA_7mLZn6KlllMUgXAPqyRTasAccMw-141Jrl9z6nuWmgRsb1CUWea8LYzF7EddsCtbFXhKJvYnpSX1xQ8RkFeqgZprV8Zf4DH_X0e_qRrjqgmjNWxaEPqO4K1AuLR8Q1IYiyfGShZ5hsnK7VRiqsw9JhJ9o7TRXDILLwXPwaebQK1s2i8QU55jFU59VqWj7d_lTHgZrj",
+  "surge": {
+    "active": true,
+    "label": "1.5x SURGE ACTIVE"
+  },
+  "request": {
+    "id": "req-sko-9231",
+    "status": "new",
+    "title": "New Delivery",
+    "countdownSeconds": 15,
+    "pickup": {
+      "name": "Nairobi Grill House",
+      "distance": "1.2km away"
+    },
+    "dropoff": {
+      "area": "Kilimani, Nairobi",
+      "distance": "3.5km"
+    },
+    "payout": "KSh 350",
+    "acceptedMessage": "Order Accepted! Navigating to Nairobi Grill House..."
+  },
+  "tabs": [
+    "Home",
+    "Deliveries",
+    "Earnings",
+    "Alerts",
+    "Account"
+  ]
+};
+const fallbackActiveDelivery: ActiveDeliveryPayload = {
+  "sourceFiles": [
+    "active_delivery_to_vendor/code.html",
+    "active_delivery_to_vendor/screen.png"
+  ],
+  "order": {
+    "code": "SKO-9231",
+    "eta": "8 mins",
+    "status": "Heading to Vendor",
+    "progressLabel": "1/3",
+    "progressPercent": 33
+  },
+  "mapUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAs-tToDMZNyAKiyj-qUhKyE3STVUsAmhVzgnhmnbSNz_QoAG2UyEhB4tqFCYUydzUAlyEaycFVVWF6YnvKjisGfHIoooSyYe7NLzHpX9tHEQNpu8mRw9VhioGOogPPVEwTrm8HENKmZ636KE3-FwcLZLziWusqfVaqqT3cQVfLfzW6exzQZkr2o8XRWuheQhobS98kHtLBEmo9YTqJ1NQVJAqLbIJR6Dn50RIv5nIw3H2ZERyBpnlB",
+  "destinationLabel": "Nairobi Grill House",
+  "vendor": {
+    "name": "Nairobi Grill House",
+    "address": "The Oval, Ring Road, Westlands",
+    "badge": "TOP RATED",
+    "prepTime": "12 min",
+    "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuBaqSvjQRZGRAtlKXhowjv843Hnkf-7YMUVzMZecnfjEtuc4zXmVhyIKDZ25Ir9GrWCPv49D_8diwC5OIK3AigP3xlttihYSkhYt49PjsRkIUtKnm6TGUJU1ZB7MXhtB61UbNYxYSKfeL0s9zIfcIXF4ahAMNOxV96tvJFRNeOCKxBNrRTOpOZOQQYFSnOwwSOWmr_ZJwZQRdw1C8Iz8iOQerUBkFquGs2Cko8NVFbskU7Xw8OveMaK"
+  },
+  "arrived": false,
+  "pickupConfirmed": false,
+  "tabs": [
+    "Home",
+    "Deliveries",
+    "Earnings",
+    "Alerts",
+    "Account"
+  ]
+};
+async function sokoeatsApi<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...(init.headers || {}) } });
+  if (!res.ok) throw new Error('Sokoeats mobile API request failed');
+  return res.json() as Promise<T>;
+}
 
 function SourceLedger() {
   return (
@@ -167,6 +251,8 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('splash');
   const [activeChip, setActiveChip] = useState(chips[0]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mpesa');
+  const [riderHome, setRiderHome] = useState<RiderHomePayload>(fallbackRiderHome);
+  const [activeDelivery, setActiveDelivery] = useState<ActiveDeliveryPayload>(fallbackActiveDelivery);
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -206,6 +292,8 @@ export default function App() {
             onCheckout={() => openScreen('checkout')}
           />
         )}
+        {screen === 'riderHome' && <RiderHomeScreen data={riderHome} onBack={() => openScreen('home')} onAccept={async () => { try { const next = await sokoeatsApi<{ riderHome: RiderHomePayload; delivery: ActiveDeliveryPayload }>(`/api/rider/requests/${riderHome.request.id}/accept`, { method: 'POST' }); setRiderHome(next.riderHome); setActiveDelivery(next.delivery); } catch {} openScreen('activeDelivery'); }} />}
+        {screen === 'activeDelivery' && <ActiveDeliveryScreen data={activeDelivery} onBack={() => openScreen('riderHome')} onArrived={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/arrived`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} onPickup={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/pickup`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} />}
         {screen === 'checkout' && (
           <CheckoutScreen
             subtotal={subtotal}
@@ -444,6 +532,68 @@ function HomeScreen({
   );
 }
 
+
+function RiderHomeScreen({ data, onBack, onAccept }: { data: RiderHomePayload; onBack: () => void; onAccept: () => void }) {
+  return (
+    <View style={styles.riderShell}>
+      <View style={styles.riderTop}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}><Text style={styles.backButtonText}>back</Text></TouchableOpacity>
+        <Text style={styles.riderBrand}>SokoEats Rider</Text>
+        <View style={styles.onlinePill}><Text style={styles.onlinePillText}>{data.rider.status}</Text></View>
+      </View>
+      <ScrollView contentContainerStyle={styles.riderContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.riderStats}>
+          <View style={styles.riderStat}><Text style={styles.upperLabel}>Active Status</Text><Text style={styles.riderStatValue}>Rider Online</Text></View>
+          <View style={styles.riderStat}><Text style={styles.upperLabel}>Current Zone</Text><Text style={styles.riderStatValue}>{data.rider.zone}</Text></View>
+          <View style={styles.riderStat}><Text style={styles.upperLabel}>Today's Earnings</Text><Text style={styles.riderStatValue}>{data.rider.earningsToday}</Text></View>
+        </View>
+        <ImageBackground source={{ uri: data.heatmapUrl }} style={styles.riderMapCard} imageStyle={styles.riderMapImage}>
+          <View style={styles.surgeBadge}><Text style={styles.surgeText}>{data.surge.label}</Text></View>
+        </ImageBackground>
+        <View style={styles.deliveryRequestCard}>
+          <View style={styles.sectionHeadingRow}><Text style={styles.checkoutSectionTitle}>{data.request.title}</Text><Text style={styles.countdownText}>{data.request.countdownSeconds}s</Text></View>
+          <View style={styles.deliveryPoint}><Text style={styles.locationIcon}>pin</Text><View><Text style={styles.vendorName}>Pickup: {data.request.pickup.name}</Text><Text style={styles.restaurantMeta}>{data.request.pickup.distance}</Text></View></View>
+          <View style={styles.deliveryPoint}><Text style={styles.locationIcon}>flag</Text><View><Text style={styles.vendorName}>Drop-off: {data.request.dropoff.area}</Text><Text style={styles.restaurantMeta}>{data.request.dropoff.distance}</Text></View></View>
+          <View style={styles.payoutRow}><Text style={styles.upperLabel}>Estimated Payout</Text><Text style={styles.totalAmount}>{data.request.payout}</Text></View>
+          <TouchableOpacity style={styles.placeOrderButton} onPress={onAccept}><Text style={styles.placeOrderText}>{data.request.status === 'accepted' ? data.request.acceptedMessage : 'Accept Order'}</Text></TouchableOpacity>
+        </View>
+      </ScrollView>
+      <BottomNav active="Deliveries" />
+      <SourceLedger />
+    </View>
+  );
+}
+
+function ActiveDeliveryScreen({ data, onBack, onArrived, onPickup }: { data: ActiveDeliveryPayload; onBack: () => void; onArrived: () => void; onPickup: () => void }) {
+  return (
+    <View style={styles.riderShell}>
+      <View style={styles.riderTop}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}><Text style={styles.backButtonText}>back</Text></TouchableOpacity>
+        <Text style={styles.riderBrand}>SokoEats</Text>
+        <View style={styles.onlinePill}><Text style={styles.onlinePillText}>ONLINE</Text></View>
+      </View>
+      <View style={styles.activeDeliveryHeader}>
+        <View><Text style={styles.upperLabel}>Order #{data.order.code}</Text><Text style={styles.checkoutTitle}>ETA {data.order.eta}</Text></View>
+        <Text style={styles.countdownText}>Status: {data.order.status}</Text>
+      </View>
+      <View style={styles.deliveryProgress}><View style={[styles.deliveryProgressFill, { width: `${data.order.progressPercent}%` as `${number}%` }]} /></View>
+      <ImageBackground source={{ uri: data.mapUrl }} style={styles.fullMap} imageStyle={styles.fullMapImage}>
+        <View style={styles.destinationMarker}><Text style={styles.destinationText}>{data.destinationLabel}</Text></View>
+      </ImageBackground>
+      <View style={styles.vendorPickupCard}>
+        <Image source={{ uri: data.vendor.imageUrl }} style={styles.orderImage} />
+        <View style={{ flex: 1 }}><Text style={styles.vendorName}>{data.vendor.name}</Text><Text style={styles.restaurantMeta}>{data.vendor.address}</Text><View style={styles.restaurantStats}><Text style={styles.timeText}>{data.vendor.badge}</Text><Text style={styles.statText}>Prep time: {data.vendor.prepTime}</Text></View></View>
+        <TouchableOpacity style={styles.iconCircle}><Text style={styles.iconText}>call</Text></TouchableOpacity>
+      </View>
+      <View style={styles.placeOrderBar}>
+        <TouchableOpacity style={styles.paymentOption} onPress={onArrived}><Text style={styles.paymentName}>{data.arrived ? 'Arrived at Vendor' : 'I have Arrived'}</Text></TouchableOpacity>
+        <TouchableOpacity style={[styles.placeOrderButton, !data.arrived && styles.disabledButton]} disabled={!data.arrived} onPress={onPickup}><Text style={styles.placeOrderText}>{data.pickupConfirmed ? 'Pickup Confirmed' : 'Confirm Pickup'}</Text></TouchableOpacity>
+      </View>
+      <SourceLedger />
+    </View>
+  );
+}
+
 function PromoBanner({
   image,
   tone,
@@ -505,21 +655,17 @@ function RestaurantCard({
   );
 }
 
-function BottomNav() {
-  const tabs = [
-    ['home', 'Home'],
-    ['grid', 'Categories'],
-    ['receipt', 'Orders'],
-    ['heart', 'Favourites'],
-    ['person', 'Account'],
-  ];
+function BottomNav({ active = 'Home' }: { active?: string } = {}) {
+  const tabs = active === 'Deliveries'
+    ? [['home', 'Home'], ['bike', 'Deliveries'], ['cash', 'Earnings'], ['bell', 'Alerts'], ['person', 'Account']]
+    : [['home', 'Home'], ['grid', 'Categories'], ['receipt', 'Orders'], ['heart', 'Favourites'], ['person', 'Account']];
 
   return (
     <View style={styles.bottomNav}>
-      {tabs.map(([icon, label], index) => (
-        <View key={label} style={[styles.navItem, index === 0 && styles.navItemActive]}>
-          <Text style={[styles.navIcon, index === 0 && styles.navIconActive]}>{icon}</Text>
-          <Text style={[styles.navLabel, index === 0 && styles.navLabelActive]}>{label}</Text>
+      {tabs.map(([icon, label]) => (
+        <View key={label} style={[styles.navItem, label === active && styles.navItemActive]}>
+          <Text style={[styles.navIcon, label === active && styles.navIconActive]}>{icon}</Text>
+          <Text style={[styles.navLabel, label === active && styles.navLabelActive]}>{label}</Text>
         </View>
       ))}
     </View>
@@ -1945,5 +2091,177 @@ const styles = StyleSheet.create({
     lineHeight: 16,
     fontWeight: '700',
     letterSpacing: 0.5,
+  },
+  homeHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  riderSwitch: {
+    borderRadius: 999,
+    backgroundColor: colors.secondaryContainer,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginRight: 8,
+  },
+  riderSwitchText: {
+    color: colors.onSecondaryContainer,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  riderShell: {
+    flex: 1,
+    backgroundColor: '#f6f8f3',
+  },
+  riderTop: {
+    paddingHorizontal: 18,
+    paddingTop: 10,
+    paddingBottom: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.surfaceContainerLowest,
+  },
+  riderBrand: {
+    color: '#163225',
+    fontSize: 20,
+    fontWeight: '900',
+  },
+  onlinePill: {
+    borderRadius: 999,
+    backgroundColor: '#dcf8e8',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  onlinePillText: {
+    color: '#126d3d',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  riderContent: {
+    padding: 18,
+    paddingBottom: 104,
+  },
+  riderStats: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 16,
+  },
+  riderStat: {
+    flex: 1,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 12,
+  },
+  riderStatValue: {
+    marginTop: 6,
+    color: colors.onSurface,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  riderMapCard: {
+    height: 330,
+    borderRadius: 20,
+    overflow: 'hidden',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+  },
+  riderMapImage: {
+    borderRadius: 20,
+  },
+  surgeBadge: {
+    marginTop: 16,
+    borderRadius: 999,
+    backgroundColor: colors.tertiaryFixedDim,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  surgeText: {
+    color: colors.onTertiaryFixed,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  deliveryRequestCard: {
+    marginTop: -58,
+    borderRadius: 20,
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 18,
+    shadowColor: '#2d3446',
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  countdownText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  deliveryPoint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 12,
+    paddingVertical: 10,
+  },
+  payoutRow: {
+    borderTopWidth: 1,
+    borderTopColor: colors.outlineVariant,
+    paddingTop: 14,
+    marginBottom: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  activeDeliveryHeader: {
+    paddingHorizontal: 18,
+    paddingVertical: 14,
+    backgroundColor: colors.surfaceContainerLowest,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  deliveryProgress: {
+    height: 6,
+    backgroundColor: colors.surfaceContainerHigh,
+  },
+  deliveryProgressFill: {
+    height: '100%',
+    backgroundColor: colors.primaryContainer,
+  },
+  fullMap: {
+    flex: 1,
+    minHeight: 340,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fullMapImage: {
+    resizeMode: 'cover',
+  },
+  destinationMarker: {
+    borderRadius: 999,
+    backgroundColor: colors.surfaceContainerLowest,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+  },
+  destinationText: {
+    color: colors.onSurface,
+    fontWeight: '900',
+  },
+  vendorPickupCard: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    bottom: 158,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    shadowColor: '#2d3446',
+    shadowOpacity: 0.14,
+    shadowRadius: 20,
+    elevation: 8,
+  },
+  disabledButton: {
+    opacity: 0.45,
   },
 });
