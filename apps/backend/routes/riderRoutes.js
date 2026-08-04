@@ -1,10 +1,15 @@
 import { Router } from 'express';
-import { acceptDeliveryRequest, activeDelivery, confirmPickup, incidentConfirmation, liveChatSupport, markArrived, quizResultsFeedback, referralRewards, requestRiderPayout, resolvedTicketDetails, riderEarnings, riderHelpCenter, riderHome, riderLeaderboard, riderOnboarding, riderOrderDetails, riderPayoutConfirmation, riderProfileRatings, riderReferralSuite, riderSupportTrainingSuite, riderTrainingDashboard, riderTrainingLesson, riderTrainingQuiz, safetyIncidentReport, sendReferralInvitations, sendRiderChatMessage, submitSafetyIncident, submitTrainingQuiz, supportTicketHistory, updateRiderOnboardingStep } from '../controllers/riderController.js';
+import { acceptDeliveryRequest, activeDelivery, confirmPickup, confirmScanPayment, incidentConfirmation, liveChatSupport, markArrived, quizResultsFeedback, referralRewards, requestRiderPayout, resolvedTicketDetails, riderEarnings, riderHelpCenter, riderHome, riderLeaderboard, riderOnboarding, riderOrderDetails, riderPayoutConfirmation, riderProfileRatings, riderReferralSuite, riderSupportTrainingSuite, riderTrainingDashboard, riderTrainingLesson, riderTrainingQuiz, safetyIncidentReport, sendReferralInvitations, sendRiderChatMessage, submitSafetyIncident, submitTrainingQuiz, supportTicketHistory, topUpWallet, transactionHistory, updateRiderOnboardingStep, walletPaymentSuite, withdrawWallet } from '../controllers/riderController.js';
 import { validate } from '../validators/validate.js';
-import { incidentReportSchema, quizSubmissionSchema, referralInvitationsSchema, riderChatMessageSchema, riderOnboardingStepSchema } from '../validators/interactionValidator.js';
+import { incidentReportSchema, quizSubmissionSchema, referralInvitationsSchema, riderChatMessageSchema, riderOnboardingStepSchema, scanPaymentSchema, walletTopUpSchema, walletWithdrawSchema } from '../validators/interactionValidator.js';
 
 const router = Router();
 router.get('/rider/home', riderHome);
+router.get('/wallet/payment-suite', walletPaymentSuite);
+router.post('/wallet/top-ups', validate(walletTopUpSchema), topUpWallet);
+router.post('/wallet/withdrawals', validate(walletWithdrawSchema), withdrawWallet);
+router.post('/wallet/scan-payments', validate(scanPaymentSchema), confirmScanPayment);
+router.get('/wallet/transactions', transactionHistory);
 router.get('/rider/referrals-suite', riderReferralSuite);
 router.post('/rider/referrals/invitations', validate(referralInvitationsSchema), sendReferralInvitations);
 router.get('/rider/referrals/rewards', referralRewards);

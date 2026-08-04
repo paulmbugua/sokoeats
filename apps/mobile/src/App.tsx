@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 
-type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
+type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
 type PaymentMethod = 'mpesa' | 'card';
 
 const colors = {
@@ -132,6 +132,20 @@ const stitchFilesUsed = [
   'support_ticket_history/screen.png',
   'resolved_ticket_details_inc_82941/code.html',
   'resolved_ticket_details_inc_82941/screen.png',
+  'sokoeats_wallet/code.html',
+  'sokoeats_wallet/screen.png',
+  'top_up_wallet/code.html',
+  'top_up_wallet/screen.png',
+  'withdraw_to_m_pesa/code.html',
+  'withdraw_to_m_pesa/screen.png',
+  'scan_qr_code/code.html',
+  'scan_qr_code/screen.png',
+  'confirm_payment/code.html',
+  'confirm_payment/screen.png',
+  'payment_successful/code.html',
+  'payment_successful/screen.png',
+  'full_transaction_history/code.html',
+  'full_transaction_history/screen.png',
   'quiz_results_feedback/code.html',
   'quiz_results_feedback/screen.png',
   'vendor_order_history/code.html',
@@ -290,6 +304,240 @@ const fallbackActiveDelivery: ActiveDeliveryPayload = {
 
 type GenericPayload = Record<string, any>;
 const fallbackRiderBatch: Record<string, GenericPayload> = {
+  "sokoeats_wallet": {
+    "sourceFiles": [
+      "sokoeats_wallet/code.html",
+      "sokoeats_wallet/screen.png"
+    ],
+    "title": "Soko Wallet",
+    "profile": {
+      "name": "Juma Bakari",
+      "level": "Harambee Level: Gold"
+    },
+    "balance": "KES 3,450",
+    "points": "1,240 Points",
+    "actions": [
+      "Top Up",
+      "Withdraw",
+      "Scan Pay"
+    ],
+    "vouchers": [
+      {
+        "title": "Free Delivery",
+        "tag": "Exclusive",
+        "body": "On orders over KES 500",
+        "expiry": "Expires in 2 days"
+      },
+      {
+        "title": "10% Off",
+        "tag": "Harambee Reward",
+        "body": "Valid for Mama Njeri's Kitchen",
+        "expiry": "Expires in 5 days"
+      }
+    ],
+    "referral": {
+      "title": "Harambee Referral Earnings",
+      "body": "You've earned KES 1,200 this month."
+    },
+    "activity": [
+      {
+        "label": "Referral Bonus - Jabari O.",
+        "time": "Today, 10:45 AM",
+        "amount": "+ KES 500",
+        "tone": "credit"
+      },
+      {
+        "label": "Lunch Order - Mama Njeri's",
+        "time": "Yesterday, 1:20 PM",
+        "amount": "- KES 850",
+        "tone": "debit"
+      },
+      {
+        "label": "M-Pesa Top Up",
+        "time": "Oct 24, 08:30 AM",
+        "amount": "+ KES 1,000",
+        "tone": "credit"
+      },
+      {
+        "label": "Refund - Missing Item",
+        "time": "Oct 23, 04:15 PM",
+        "amount": "+ KES 200",
+        "tone": "credit"
+      }
+    ],
+    "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuBNt9wLZ28EYBKOB-n321wIVQAjOvWEr6W0PVo0D-XfEHUzUbnwuO4MPD9LyPd7We0Zed8DpKanq1JHlsJCui6m9lJMiSjIosVvBYeH52Yug_anROe8C2raMn2mI3PbwXYkKhmwF9TIu72x-O8-Tn85lNomIUEFNTrQB_7ZXE-V1Dpff3Q4xOo35JMRCNZ2bqseXo2IyYlsIfKb0uIRuV-_TO3fq4e61H9a_hy0wRuO9qmwsGqXtNwr"
+  },
+  "top_up_wallet": {
+    "sourceFiles": [
+      "top_up_wallet/code.html",
+      "top_up_wallet/screen.png"
+    ],
+    "title": "Top Up Wallet",
+    "currentBalance": "KES 1,240.00",
+    "memberLevel": "Harambee Gold Member",
+    "presets": [
+      "KES 200",
+      "KES 500",
+      "KES 1000",
+      "KES 2000"
+    ],
+    "methods": [
+      {
+        "title": "M-Pesa Express",
+        "body": "0712 *** 456",
+        "badge": "Recommended"
+      },
+      {
+        "title": "Linked Credit/Debit Card",
+        "body": "Visa / Mastercard"
+      },
+      {
+        "title": "Promotional Code",
+        "body": "Redeem gift cards or coupons"
+      }
+    ],
+    "tip": "You will receive an STK Push on your phone to enter your PIN after clicking top up.",
+    "bonus": "Earn KES 100 bonus when you invite a friend to top up.",
+    "fee": "KES 0.00",
+    "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuB1km8jEujS2iLfnyiweIApuFkJZCvI4-dc8TnDakrMjEoiYT7hlQtwmFycGtkLfas5Z3OPHIgra8U8lN2B63ia9Hgvrsx5mWYm_DG_6cfdLQxXAHpdTg6Mg0nziCy9Ycs7EXLbxQCBKkAJ-p20B69jLNyam53X1nYmYFEQoFeSMdPzFWfxljE8LZKfqqWXoI0zVcMQfp3JgIv3cWyVRQpFpzxsAbvnkv64tOjdVKt-yY219B3cie0n"
+  },
+  "withdraw_to_m_pesa": {
+    "sourceFiles": [
+      "withdraw_to_m_pesa/code.html",
+      "withdraw_to_m_pesa/screen.png"
+    ],
+    "title": "Withdraw to M-Pesa",
+    "currentBalance": "KES 3,450",
+    "presets": [
+      "KES 500",
+      "KES 1000",
+      "KES 2000"
+    ],
+    "destination": {
+      "title": "M-Pesa Account",
+      "phone": "+254 712 *** 678"
+    },
+    "summary": {
+      "amount": "KES 0",
+      "fee": "KES 0.00",
+      "total": "KES 0"
+    },
+    "assurance": "Funds will be sent instantly via M-Pesa. Ensure your number is active and correct before confirming.",
+    "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuBen9qtqa392Y2fBAoIq92CtzTe24Jq3PuIuS5VD-p0_Kz-1KwkkiDL3TRJy2m8OsK-KeRhStKIT70nl_ieWaoS9F6MTA_NaySwU0Dq2NZilN5EsmrVXZyoEJZSs_uaBrptw0dJKmrovOD5-iffU0zwk2S70XqPI9GiE9oguONvRwk_Y0WTQiI4L6u69yR1fla97_o-3WvxRA1onONi_UoAahUzJfsmK6vjB6LEkIzbcfnvYT0yye8J"
+  },
+  "scan_qr_code": {
+    "sourceFiles": [
+      "scan_qr_code/code.html",
+      "scan_qr_code/screen.png"
+    ],
+    "title": "Scan to Pay",
+    "subtitle": "Point your camera at the vendor's code",
+    "frameLabel": "Align QR Code",
+    "actions": [
+      "Flashlight",
+      "Upload"
+    ],
+    "fallback": "Can't scan? Enter the Till Number manually",
+    "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuCfYwCanj2m3_EZchdFGeK4gzIS238BPiEkHDdazNLxIBRzpSO4xPZrFBPdXjygWE2MFoLES2Uz98hU3A6osCn4_8AYTqUuTPfxipvs9Im-naI6wS11V_TSkeqJQBjSfPiYBTxWRlYa_J8b4g9kRAApbE_dWFH0KNOYdvcgAfijuKG4uTvBOSZGYiFXIZvKCQEdau4Xz74XyvXOEmDIiEwZ3-JgGbAPTrnklnKb5K4uSy48-Q8P8B2d"
+  },
+  "confirm_payment": {
+    "sourceFiles": [
+      "confirm_payment/code.html",
+      "confirm_payment/screen.png"
+    ],
+    "title": "Confirm Payment",
+    "vendor": {
+      "name": "Mama Njeri's Kitchen",
+      "location": "Kenyatta Market, Stall 42B, Nairobi"
+    },
+    "amount": "KES 1,450.00",
+    "balance": "KES 14,250.00",
+    "points": {
+      "earn": "120 Points",
+      "next": "80 points away from a free drink!"
+    },
+    "noteLabel": "Notes for Mama Njeri (Optional)",
+    "assurance": "Zero transaction fees for community-vetted merchants. Soko Pay supports local business growth.",
+    "secure": "Securely encrypted by Soko Community Security",
+    "images": [
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuBL9Lgi3dE62h6fhX8SAUYbxbRYj4__BtGcoMECxuaQo9QtdmOGEfpnagO8fbXKpcc86f0hIawG-ZSynG7Jffe3FrttnkI3EOAcmWuKukkh2Xu2JmvctxoYdUUs2R2cpADF6a-nAK3TAeyZCrzgVzXoee1aM8X45Zd4e3EaB6YFUaugQIlZs0G3K8QoWjtVswObrqinAsXd0OlYD1YIWNKl-_TdgeYMPryFvaDKaMY7i63bzMlvhP38",
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuDQopzAUt1crEQWe2n6ZC_JOvCsRouvJ85wVeJ2shfqTi4-nDvLvQhxIOab7ttTWVOu8kQ1rgyto8ZKoEVobQkGDEt0yweJ5Om6IQYJ57lyyh0UUZ86uQSVpR085zrmnBcM2rMWqzgckAzbR2HSUSTiobBlE6LgitDO4u8Hf4B5uaDcErzpvs676G_XrN0OnmyFrlPUP1TI-naW6xpTWQMA7OeGjKkjqVxprryG8BkDfJcfPLeWIzIi"
+    ]
+  },
+  "payment_successful": {
+    "sourceFiles": [
+      "payment_successful/code.html",
+      "payment_successful/screen.png"
+    ],
+    "title": "Payment Successful",
+    "body": "Your transaction was completed instantly",
+    "amount": "KSh 1,450.00",
+    "vendor": "Mama Njeri's Kitchen",
+    "points": "+45 Points",
+    "transactionId": "TXN-88294401",
+    "message": "Mama Njeri says thanks! You've supported a local business today. Your community status is rising!",
+    "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuBFuP-ofe3a31pCQxkmydTuk9eMNhSnP6lxSSuEhJHe3iprmbip8aS8WoF3WqJZSNfS8JMpyIBkF_VP11yD92sAKXOLlXm4HbhO4MizCLqmI8nJKShknVYYVKxbhRYAmdcDrNkdDNbsGhnnycMyBt-gGkZ4pkbZJyHU3iicWDdFFa78htDfhCRzJA5ygJF4sJ_wE0S8rGpvbm75ovgt2H-sEaMrbKvYtaIyrXz0ilzgvekzvhESf6Nu"
+  },
+  "full_transaction_history": {
+    "sourceFiles": [
+      "full_transaction_history/code.html",
+      "full_transaction_history/screen.png"
+    ],
+    "title": "Transaction History",
+    "tabs": [
+      "All Transactions",
+      "Income",
+      "Spending"
+    ],
+    "ranges": [
+      "This Month",
+      "Last 3 Months",
+      "Custom Range"
+    ],
+    "transactions": [
+      {
+        "label": "Referral Bonus - Juma B.",
+        "time": "Oct 24, 2023 • 02:15 PM",
+        "id": "TXN-88291040",
+        "status": "Completed",
+        "amount": "+1,200.00",
+        "tone": "credit"
+      },
+      {
+        "label": "Order #5529 - Mama Ngina Foods",
+        "time": "Oct 23, 2023 • 12:40 PM",
+        "id": "TXN-77401211",
+        "status": "Completed",
+        "amount": "-850.00",
+        "tone": "debit"
+      },
+      {
+        "label": "M-PESA Top-up",
+        "time": "Oct 22, 2023 • 09:10 AM",
+        "id": "TXN-00129388",
+        "status": "Pending",
+        "amount": "+5,000.00",
+        "tone": "credit"
+      },
+      {
+        "label": "Withdrawal to Bank",
+        "time": "Oct 21, 2023 • 05:30 PM",
+        "id": "TXN-FAILED-1",
+        "status": "Failed",
+        "amount": "-2,500.00",
+        "tone": "debit"
+      },
+      {
+        "label": "Harambee Milestone Reward",
+        "time": "Oct 20, 2023 • 11:15 AM",
+        "id": "RWD-SOKO-777",
+        "status": "Completed",
+        "amount": "+500.00",
+        "tone": "credit"
+      }
+    ],
+    "footer": "History is available up to 12 months"
+  },
   "invite_friends_earn_rewards": {
     "sourceFiles": [
       "invite_friends_earn_rewards/code.html",
@@ -1420,6 +1668,10 @@ export default function App() {
     }).start();
   }, [fade]);
 
+  useEffect(() => {
+    sokoeatsApi<{ wallet: Record<string, GenericPayload> }>('/api/wallet/payment-suite').then((r) => setRiderBatch((prev) => ({ ...prev, ...r.wallet }))).catch(() => {});
+  }, []);
+
   const openScreen = (next: Screen) => {
     fade.setValue(0);
     setScreen(next);
@@ -1447,8 +1699,17 @@ export default function App() {
             activeChip={activeChip}
             onChipChange={setActiveChip}
             onCheckout={() => openScreen('checkout')}
+            onWallet={() => openScreen('walletHome')}
+            onScan={() => openScreen('scanQr')}
           />
         )}
+        {screen === 'walletHome' && <WalletHomeScreen data={riderBatch.sokoeats_wallet} onBack={() => openScreen('home')} onTopUp={() => openScreen('walletTopUp')} onWithdraw={() => openScreen('walletWithdraw')} onScan={() => openScreen('scanQr')} onHistory={() => openScreen('transactionHistory')} />}
+        {screen === 'walletTopUp' && <WalletTopUpScreen data={riderBatch.top_up_wallet} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ topUp: GenericPayload; history: GenericPayload }>('/api/wallet/top-ups', { method: 'POST', body: JSON.stringify({ amount, method: 'M-Pesa Express' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, top_up_wallet: next.topUp, full_transaction_history: next.history })); openScreen('walletHome'); }} />}
+        {screen === 'walletWithdraw' && <WalletWithdrawScreen data={riderBatch.withdraw_to_m_pesa} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ withdrawal: GenericPayload }>('/api/wallet/withdrawals', { method: 'POST', body: JSON.stringify({ amount, destination: 'M-Pesa Account' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, withdraw_to_m_pesa: next.withdrawal })); openScreen('walletHome'); }} />}
+        {screen === 'scanQr' && <ScanQrScreen data={riderBatch.scan_qr_code} onBack={() => openScreen('walletHome')} onContinue={() => openScreen('confirmPayment')} />}
+        {screen === 'confirmPayment' && <ConfirmPaymentScreen data={riderBatch.confirm_payment} onBack={() => openScreen('scanQr')} onConfirm={async () => { const next = await sokoeatsApi<{ success: GenericPayload; history: GenericPayload }>('/api/wallet/scan-payments', { method: 'POST', body: JSON.stringify({ amount: 1450, vendor: "Mama Njeri's Kitchen", notes: 'Community lunch pickup' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, payment_successful: next.success, full_transaction_history: next.history })); openScreen('paymentSuccessful'); }} />}
+        {screen === 'paymentSuccessful' && <PaymentSuccessfulScreen data={riderBatch.payment_successful} onBack={() => openScreen('walletHome')} onHistory={() => openScreen('transactionHistory')} />}
+        {screen === 'transactionHistory' && <TransactionHistoryScreen data={riderBatch.full_transaction_history} onBack={() => openScreen('walletHome')} />}
         {screen === 'riderHome' && <RiderHomeScreen data={riderHome} onBack={() => openScreen('home')} onOnboarding={() => openScreen('riderOnboardingWelcome')} onEarnings={() => openScreen('riderEarnings')} onLeaderboard={() => openScreen('riderLeaderboard')} onProfile={() => openScreen('riderProfile')} onHelp={() => openScreen('riderHelpCenter')} onIncident={() => openScreen('riderIncidentReport')} onTraining={() => openScreen('riderTraining')} onOrderDetail={() => openScreen('riderOrderDetail')} onReferral={() => openScreen('referralHome')} onTickets={() => openScreen('supportTicketHistory')} onAccept={async () => { try { const next = await sokoeatsApi<{ riderHome: RiderHomePayload; delivery: ActiveDeliveryPayload }>(`/api/rider/requests/${riderHome.request.id}/accept`, { method: 'POST' }); setRiderHome(next.riderHome); setActiveDelivery(next.delivery); } catch {} openScreen('activeDelivery'); }} />}
         {screen === 'activeDelivery' && <ActiveDeliveryScreen data={activeDelivery} onBack={() => openScreen('riderHome')} onArrived={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/arrived`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} onPickup={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/pickup`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} />}
         {screen === 'riderOnboardingWelcome' && <RiderWelcomeScreen data={riderBatch.welcome_to_sokoeats_rider} onBack={() => openScreen('riderHome')} onNext={() => openScreen('riderPersonal')} />}
@@ -1617,10 +1878,14 @@ function HomeScreen({
   activeChip,
   onChipChange,
   onCheckout,
+  onWallet,
+  onScan,
 }: {
   activeChip: string;
   onChipChange: (chip: string) => void;
   onCheckout: () => void;
+  onWallet: () => void;
+  onScan: () => void;
 }) {
   return (
     <View style={styles.shell}>
@@ -1649,7 +1914,12 @@ function HomeScreen({
             style={styles.searchInput}
           />
           <Text style={styles.searchAction}>mic</Text>
-          <Text style={styles.searchAction}>qr</Text>
+          <Text style={styles.searchAction} onPress={onScan}>qr</Text>
+        </View>
+
+        <View style={styles.riderQuickGrid}>
+          <TouchableOpacity style={styles.riderQuickButton} onPress={onWallet}><Text style={styles.riderQuickTitle}>Soko Wallet</Text><Text style={styles.riderQuickText}>Balance, vouchers, referrals</Text></TouchableOpacity>
+          <TouchableOpacity style={styles.riderQuickButton} onPress={onScan}><Text style={styles.riderQuickTitle}>Scan to Pay</Text><Text style={styles.riderQuickText}>QR payments for local merchants</Text></TouchableOpacity>
         </View>
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoScroller}>
@@ -1947,6 +2217,37 @@ function RestaurantCard({
       </View>
     </TouchableOpacity>
   );
+}
+
+
+function WalletHomeScreen({ data, onBack, onTopUp, onWithdraw, onScan, onHistory }: { data: GenericPayload; onBack: () => void; onTopUp: () => void; onWithdraw: () => void; onScan: () => void; onHistory: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><ImageBackground source={{ uri: data.imageUrl }} style={styles.balanceCard} imageStyle={styles.riderMapImage}><Text style={styles.upperLabel}>Wallet Balance</Text><Text style={styles.balanceText}>{data.balance}</Text><Text style={styles.countdownText}>{data.points}</Text></ImageBackground><View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onTopUp}><Text style={styles.riderQuickTitle}>Top Up</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onWithdraw}><Text style={styles.riderQuickTitle}>Withdraw</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onScan}><Text style={styles.riderQuickTitle}>Scan Pay</Text></TouchableOpacity></View><View style={styles.sectionHeadingRow}><Text style={styles.checkoutSectionTitle}>Active Vouchers</Text><Text style={styles.changeText}>View All</Text></View>{data.vouchers.map((voucher: GenericPayload) => <View style={styles.uploadCard} key={voucher.title}><View style={{ flex: 1 }}><Text style={styles.upperLabel}>{voucher.tag}</Text><Text style={styles.vendorName}>{voucher.title}</Text><Text style={styles.restaurantMeta}>{voucher.body}</Text><Text style={styles.secureText}>{voucher.expiry}</Text></View><Text style={styles.discountText}>Apply</Text></View>)}<TouchableOpacity style={styles.smsCard} onPress={onHistory}><Text style={styles.vendorName}>{data.referral.title}</Text><Text style={styles.smsBody}>{data.referral.body}</Text><Text style={styles.changeText}>See History</Text></TouchableOpacity><Text style={styles.checkoutSectionTitle}>Recent Activity</Text>{data.activity.map((tx: GenericPayload) => <View style={styles.priceLine} key={tx.label}><View><Text style={styles.vendorName}>{tx.label}</Text><Text style={styles.restaurantMeta}>{tx.time}</Text></View><Text style={tx.tone === 'credit' ? styles.discountText : styles.priceValue}>{tx.amount}</Text></View>)}</ScrollView><BottomNav active="Wallet" /><SourceLedger /></View>;
+}
+
+function WalletTopUpScreen({ data, onBack, onSubmit }: { data: GenericPayload; onBack: () => void; onSubmit: (amount: number) => void }) {
+  const [amount, setAmount] = useState('1000');
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.balanceCard}><Text style={styles.upperLabel}>Current Balance</Text><Text style={styles.balanceText}>{data.currentBalance}</Text><Text style={styles.countdownText}>{data.memberLevel}</Text></View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>Enter Amount</Text><TextInput style={styles.formFieldInput} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="KES" placeholderTextColor={colors.outline} /></View><View style={styles.tabsRow}>{data.presets.map((preset: string) => <Text style={styles.tabPillActive} onPress={() => setAmount(preset.replace(/\D/g, ''))} key={preset}>{preset}</Text>)}</View><Text style={styles.checkoutSectionTitle}>Select Payment Method</Text>{data.methods.map((method: GenericPayload) => <View style={styles.uploadCard} key={method.title}><View style={{ flex: 1 }}><Text style={styles.vendorName}>{method.title}</Text><Text style={styles.restaurantMeta}>{method.body}</Text></View><Text style={method.badge ? styles.discountText : styles.changeText}>{method.badge || 'Select'}</Text></View>)}<View style={styles.smsCard}><Text style={styles.smsBody}>{data.tip}</Text><Text style={styles.secureText}>{data.bonus}</Text></View><View style={styles.priceLine}><Text style={styles.priceLabel}>Transaction Fee</Text><Text style={styles.priceValue}>{data.fee}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={() => onSubmit(Number(amount) || 1000)}><Text style={styles.placeOrderText}>Top Up Now</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
+}
+
+function WalletWithdrawScreen({ data, onBack, onSubmit }: { data: GenericPayload; onBack: () => void; onSubmit: (amount: number) => void }) {
+  const [amount, setAmount] = useState('500');
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.balanceCard}><Text style={styles.upperLabel}>Current Balance</Text><Text style={styles.balanceText}>{data.currentBalance}</Text></View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>Withdrawal Amount</Text><TextInput style={styles.formFieldInput} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="KES" placeholderTextColor={colors.outline} /></View><View style={styles.tabsRow}>{data.presets.map((preset: string) => <Text style={styles.tabPillActive} onPress={() => setAmount(preset.replace(/\D/g, ''))} key={preset}>{preset}</Text>)}</View><View style={styles.deliveryRequestCard}><Text style={styles.upperLabel}>Withdraw To</Text><Text style={styles.vendorName}>{data.destination.title}</Text><Text style={styles.restaurantMeta}>{data.destination.phone}</Text><Text style={styles.changeText}>Change</Text></View><View style={styles.breakdownCard}>{Object.entries(data.summary).map(([label, value]) => <View style={styles.priceLine} key={label}><Text style={styles.priceLabel}>{label}</Text><Text style={styles.priceValue}>{String(value)}</Text></View>)}</View><Text style={styles.secureText}>{data.assurance}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={() => onSubmit(Number(amount) || 500)}><Text style={styles.placeOrderText}>Confirm Withdrawal</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
+}
+
+function ScanQrScreen({ data, onBack, onContinue }: { data: GenericPayload; onBack: () => void; onContinue: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ImageBackground source={{ uri: data.imageUrl }} style={[styles.riderContent, styles.centerPanel]} imageStyle={styles.riderMapImage}><View style={styles.deliveryRequestCard}><Text style={styles.checkoutTitle}>{data.frameLabel}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text><View style={styles.riderQuickGrid}>{data.actions.map((action: string) => <View style={styles.riderQuickButton} key={action}><Text style={styles.riderQuickTitle}>{action}</Text></View>)}</View></View><View style={styles.smsCard}><Text style={styles.vendorName}>{data.fallback}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={onContinue}><Text style={styles.placeOrderText}>Continue</Text></TouchableOpacity></ImageBackground><BottomNav active="Wallet" /><SourceLedger /></View>;
+}
+
+function ConfirmPaymentScreen({ data, onBack, onConfirm }: { data: GenericPayload; onBack: () => void; onConfirm: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.images[0] }} style={styles.successImage} /><Text style={styles.checkoutTitle}>{data.vendor.name}</Text><Text style={styles.restaurantMeta}>{data.vendor.location}</Text><View style={styles.balanceCard}><Text style={styles.upperLabel}>Amount to Pay</Text><Text style={styles.balanceText}>{data.amount}</Text><Text style={styles.restaurantMeta}>Available Balance {data.balance}</Text></View><View style={styles.smsCard}><Text style={styles.vendorName}>Soko Points</Text><Text style={styles.totalAmount}>You'll earn {data.points.earn}</Text><Text style={styles.secureText}>{data.points.next}</Text></View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>{data.noteLabel}</Text><TextInput style={styles.formFieldInput} placeholder="Add a note" placeholderTextColor={colors.outline} /></View><Text style={styles.secureText}>{data.assurance}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={onConfirm}><Text style={styles.placeOrderText}>Confirm Payment</Text></TouchableOpacity><Text style={styles.secureText}>{data.secure}</Text></ScrollView><SourceLedger /></View>;
+}
+
+function PaymentSuccessfulScreen({ data, onBack, onHistory }: { data: GenericPayload; onBack: () => void; onHistory: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Scan to Pay" onBack={onBack} /><ScrollView contentContainerStyle={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.imageUrl }} style={styles.successImage} /><Text style={styles.successIcon}>check_circle</Text><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><Text style={styles.balanceText}>{data.amount}</Text><Text style={styles.vendorName}>{data.vendor}</Text><Text style={styles.discountText}>{data.points}</Text><Text style={styles.totalAmount}>{data.transactionId}</Text><Text style={styles.smsBody}>{data.message}</Text><TouchableOpacity style={styles.primaryButton} onPress={onHistory}><Text style={styles.primaryButtonText}>View Receipt</Text></TouchableOpacity><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Return to Wallet</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
+}
+
+function TransactionHistoryScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.tabsRow}>{data.tabs.map((tab: string, index: number) => <Text style={index === 0 ? styles.tabPillActive : styles.tabPill} key={tab}>{tab}</Text>)}</View><View style={styles.tabsRow}>{data.ranges.map((range: string, index: number) => <Text style={index === 0 ? styles.tabPillActive : styles.tabPill} key={range}>{range}</Text>)}</View>{data.transactions.map((tx: GenericPayload) => <View style={styles.deliveryRequestCard} key={tx.id}><View style={styles.sectionHeadingRow}><Text style={styles.vendorName}>{tx.label}</Text><Text style={tx.tone === 'credit' ? styles.discountText : styles.priceValue}>{tx.amount}</Text></View><Text style={styles.restaurantMeta}>{tx.time}</Text><Text style={styles.secureText}>ID: {tx.id} - {tx.status}</Text></View>)}<TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Download Statement</Text></TouchableOpacity><Text style={styles.secureText}>{data.footer}</Text></ScrollView><BottomNav active="Wallet" /><SourceLedger /></View>;
 }
 
 function BottomNav({ active = 'Home' }: { active?: string } = {}) {

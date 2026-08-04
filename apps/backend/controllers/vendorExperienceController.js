@@ -112,3 +112,35 @@ export async function campaignPerformance(_req, res, next) {
 export async function campaignHistory(_req, res, next) {
   try { res.json({ history: await getScreenPayload('campaign_history_logs') }); } catch (err) { next(err); }
 }
+
+
+export async function vendorFinanceSuite(_req, res, next) {
+  try {
+    const screens = {};
+    for (const key of ["payout_dashboard","request_payout","payout_history","tax_billing_statements","monthly_statement_detail","marketing_assets_library"]) screens[key] = await getScreenPayload(key);
+    res.json({ finance: screens });
+  } catch (err) { next(err); }
+}
+
+export async function requestMerchantPayout(req, res, next) {
+  try {
+    const payout = await getScreenPayload('request_payout');
+    payout.lastRequest = { ...req.body, status: 'processing', requestedAt: new Date().toISOString() };
+    const history = await getScreenPayload('payout_history');
+    history.payouts.unshift({ date: 'Just now', amount: 'KES ' + Number(req.body.amount).toLocaleString('en-KE') + '.00', destination: req.body.destination, status: 'Processing', action: 'Details' });
+    await saveScreenPayload('payout_history', history);
+    res.status(201).json({ payout: await saveScreenPayload('request_payout', payout), history });
+  } catch (err) { next(err); }
+}
+
+export async function taxBillingStatements(_req, res, next) {
+  try { res.json({ statements: await getScreenPayload('tax_billing_statements') }); } catch (err) { next(err); }
+}
+
+export async function monthlyStatementDetail(_req, res, next) {
+  try { res.json({ statement: await getScreenPayload('monthly_statement_detail') }); } catch (err) { next(err); }
+}
+
+export async function marketingAssetsLibrary(_req, res, next) {
+  try { res.json({ assets: await getScreenPayload('marketing_assets_library') }); } catch (err) { next(err); }
+}

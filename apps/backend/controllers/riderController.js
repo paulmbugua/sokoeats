@@ -201,3 +201,50 @@ export async function supportTicketHistory(_req, res, next) {
 export async function resolvedTicketDetails(_req, res, next) {
   try { res.json({ resolvedTicket: await getScreenPayload('resolved_ticket_details_inc_82941') }); } catch (err) { next(err); }
 }
+
+
+export async function walletPaymentSuite(_req, res, next) {
+  try {
+    const screens = {};
+    for (const key of ["sokoeats_wallet","top_up_wallet","withdraw_to_m_pesa","scan_qr_code","confirm_payment","payment_successful","full_transaction_history"]) screens[key] = await getScreenPayload(key);
+    res.json({ wallet: screens });
+  } catch (err) { next(err); }
+}
+
+export async function topUpWallet(req, res, next) {
+  try {
+    const topUp = await getScreenPayload('top_up_wallet');
+    topUp.lastTopUp = { ...req.body, status: 'stk_push_sent', requestedAt: new Date().toISOString() };
+    const history = await getScreenPayload('full_transaction_history');
+    history.transactions.unshift({ label: 'M-Pesa Top Up', time: 'Just now', id: 'TXN-TOPUP-' + Date.now(), status: 'Pending', amount: '+' + Number(req.body.amount).toLocaleString('en-KE') + '.00', tone: 'credit' });
+    await saveScreenPayload('full_transaction_history', history);
+    res.status(201).json({ topUp: await saveScreenPayload('top_up_wallet', topUp), history });
+  } catch (err) { next(err); }
+}
+
+export async function withdrawWallet(req, res, next) {
+  try {
+    const withdrawal = await getScreenPayload('withdraw_to_m_pesa');
+    withdrawal.lastWithdrawal = { ...req.body, status: 'processing', requestedAt: new Date().toISOString() };
+    withdrawal.summary = { amount: 'KES ' + Number(req.body.amount).toLocaleString('en-KE'), fee: 'KES 0.00', total: 'KES ' + Number(req.body.amount).toLocaleString('en-KE') };
+    res.status(201).json({ withdrawal: await saveScreenPayload('withdraw_to_m_pesa', withdrawal) });
+  } catch (err) { next(err); }
+}
+
+export async function confirmScanPayment(req, res, next) {
+  try {
+    const success = await getScreenPayload('payment_successful');
+    success.paidAt = new Date().toISOString();
+    success.notes = req.body.notes || '';
+    success.amount = 'KSh ' + Number(req.body.amount).toLocaleString('en-KE') + '.00';
+    if (req.body.vendor) success.vendor = req.body.vendor;
+    const history = await getScreenPayload('full_transaction_history');
+    history.transactions.unshift({ label: 'Soko Pay - ' + success.vendor, time: 'Just now', id: success.transactionId, status: 'Completed', amount: '-' + Number(req.body.amount).toLocaleString('en-KE') + '.00', tone: 'debit' });
+    await saveScreenPayload('full_transaction_history', history);
+    res.status(201).json({ success: await saveScreenPayload('payment_successful', success), history });
+  } catch (err) { next(err); }
+}
+
+export async function transactionHistory(_req, res, next) {
+  try { res.json({ history: await getScreenPayload('full_transaction_history') }); } catch (err) { next(err); }
+}

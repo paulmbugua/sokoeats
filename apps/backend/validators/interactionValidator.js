@@ -68,3 +68,25 @@ export const campaignCreateSchema = Joi.object({
   offerType: Joi.string().required(),
   budget: Joi.number().min(0).required(),
 }).unknown(true);
+
+
+export const walletTopUpSchema = Joi.object({
+  amount: Joi.number().min(1).required(),
+  method: Joi.string().default('M-Pesa Express'),
+}).unknown(true);
+
+export const walletWithdrawSchema = Joi.object({
+  amount: Joi.number().min(1).required(),
+  destination: Joi.string().default('M-Pesa Account'),
+}).unknown(true);
+
+export const scanPaymentSchema = Joi.object({
+  amount: Joi.number().min(1).required(),
+  vendor: Joi.string().allow('', null),
+  notes: Joi.string().allow('', null),
+}).unknown(true);
+
+export const merchantPayoutRequestSchema = Joi.object({
+  amount: Joi.number().min(1).required(),
+  destination: Joi.string().required(),
+}).unknown(true);
