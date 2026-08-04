@@ -37,3 +37,28 @@ export async function updateVendorOrderStatus(req, res, next) {
     return res.status(404).json({ message: 'Vendor order not found' });
   } catch (err) { next(err); }
 }
+
+
+export async function vendorAnalytics(_req, res, next) {
+  try {
+    res.json({ analytics: await getScreenPayload('vendor_analytics_dashboard') });
+  } catch (err) { next(err); }
+}
+
+export async function vendorInventory(_req, res, next) {
+  try {
+    res.json({ inventory: await getScreenPayload('vendor_inventory_management') });
+  } catch (err) { next(err); }
+}
+
+export async function updateInventoryStock(req, res, next) {
+  try {
+    const inventory = await getScreenPayload('vendor_inventory_management');
+    const item = inventory.items.find((entry) => entry.id === req.params.id);
+    if (!item) return res.status(404).json({ message: 'Inventory item not found' });
+    item.numericStock = Number(req.body.numericStock);
+    item.stock = req.body.stock || String(req.body.numericStock);
+    item.status = item.numericStock <= 0 ? 'Out of Stock' : item.numericStock <= 8.5 ? 'Low Stock' : 'In Stock';
+    res.json({ inventory: await saveScreenPayload('vendor_inventory_management', inventory) });
+  } catch (err) { next(err); }
+}

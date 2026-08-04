@@ -7,14 +7,20 @@ import './styles.css';
 type Metric = { label: string; value: string; delta: string };
 type Portal = { vendor: { name: string; shortName: string; status: string; merchantId: string; avatarUrl: string }; merchantAvatarUrl: string; greeting: { title: string; subtitle: string }; metrics: Metric[]; liveOrders: { new: any[]; preparing: any[]; ready: any[] }; performance: { day: string; value: number }[]; stats: Metric[]; bestSellers: any[]; sourceFiles: string[] };
 type Menu = { title: string; categories: string[]; items: { id: string; name: string; price: string; badge?: string; stock?: string; available: boolean; imageUrl: string }[]; sourceFiles: string[] };
+type Analytics = { title: string; subtitle: string; metrics: any[]; sales: any; customers: any; peakHours: string[]; tip: string; popularItems: any[]; sourceFiles: string[] };
+type Inventory = { title: string; alert: { title: string; body: string; items: string[] }; filters: string[]; items: any[]; sourceFiles: string[] };
 
 function App() {
   const [portal, setPortal] = useState<Portal | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [activeCategory, setActiveCategory] = useState('Popular');
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [inventory, setInventory] = useState<Inventory | null>(null);
   useEffect(() => {
     api<{ portal: Portal }>('/api/vendor/portal').then((r) => setPortal(r.portal)).catch(() => {});
     api<{ menu: Menu }>('/api/vendor/menu').then((r) => { setMenu(r.menu); setActiveCategory(r.menu.categories[0]); }).catch(() => {});
+    api<{ analytics: Analytics }>('/api/vendor/analytics').then((r) => setAnalytics(r.analytics)).catch(() => {});
+    api<{ inventory: Inventory }>('/api/vendor/inventory').then((r) => setInventory(r.inventory)).catch(() => {});
   }, []);
   const activeOrders = useMemo(() => portal ? portal.liveOrders.new.length + portal.liveOrders.preparing.length + portal.liveOrders.ready.length : 0, [portal]);
   const toggleItem = async (id: string, available: boolean) => {
@@ -27,7 +33,7 @@ function App() {
       if (previous) setMenu(previous);
     }
   };
-  if (!portal || !menu) return <div className="empty">Loading Nairobi Grill House...</div>;
+  if (!portal || !menu || !analytics || !inventory) return <div className="empty">Loading Nairobi Grill House...</div>;
   return <main className="app">
     <aside className="sidebar">
       <div className="brand"><Store /> <span>Vendor Portal</span></div>
@@ -50,7 +56,9 @@ function App() {
         <section className="panel"><h2><MenuIcon /> Menu Management</h2><div className="tabs">{menu.categories.map((cat) => <button className={cat === activeCategory ? 'tab active' : 'tab'} onClick={() => setActiveCategory(cat)} key={cat}>{cat}</button>)}</div>{menu.items.map((item) => <div className="menu-item" key={item.id}><img className="thumb" src={item.imageUrl} /><div style={{ flex: 1 }}><b>{item.name}</b><div className="muted">{item.price}</div><div className="actions">{item.badge && <span className="pill">{item.badge}</span>}{item.stock && <span className="pill red">{item.stock}</span>}</div></div><button className={item.available ? 'toggle on' : 'toggle'} onClick={() => toggleItem(item.id, !item.available)}>{item.available ? 'Available' : 'Paused'}</button></div>)}</section>
         <section className="panel"><h2><Utensils /> Best Sellers</h2>{portal.bestSellers.map((item) => <div className="seller" key={item.name}><img className="thumb" src={item.imageUrl} /><div style={{ flex: 1 }}><b>{item.name}</b><div className="muted">{item.meta}</div></div><div><b>{item.price}</b><span className="pill green">{item.trend}</span></div></div>)}</section>
       </div>
-      <div className="source">Built from: {[...portal.sourceFiles, ...menu.sourceFiles].join(' | ')}</div>
+      <section className="panel" style={{ marginTop: 16 }}><h2><LayoutDashboard /> {analytics.title}</h2><p className="muted">{analytics.subtitle}</p><div className="metrics">{analytics.metrics.map((metric) => <article className="metric" key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><em>{metric.direction === 'down' ? '-' : '+'}{metric.delta}</em><div className="muted">{metric.helper}</div></article>)}</div><div className="grid"><div><h2>{analytics.sales.title}</h2><p className="muted">{analytics.sales.subtitle}</p><div className="chart">{analytics.sales.days.map((day: any) => <div className="barcol" key={day.day + day.value}><i style={{ height: String(day.value) + '%' }} /><span>{day.day}</span></div>)}</div></div><div><h2>Customer Insights</h2><article className="metric"><span>Returning</span><strong>{analytics.customers.returningPercent}%</strong><div className="muted">{analytics.customers.returning}</div><div className="muted">{analytics.customers.newCustomers}</div></article><h2>Peak Hours</h2><div className="tabs">{analytics.peakHours.map((hour) => <span className="tab active" key={hour}>{hour}</span>)}</div><div className="note">{analytics.tip}</div></div></div><h2>Most Popular Items</h2>{analytics.popularItems.map((item) => <div className="seller" key={item.name}><img className="thumb" src={item.imageUrl} /><div><b>{item.name}</b><div className="muted">{item.sales}</div></div></div>)}</section>
+      <section className="panel" style={{ marginTop: 16 }}><h2><PackageCheck /> {inventory.title}</h2><div className="alert"><b>{inventory.alert.title}</b><div className="muted">{inventory.alert.body}</div><div className="tabs">{inventory.alert.items.map((item) => <span className="pill red" key={item}>{item}</span>)}</div></div><div className="tabs">{inventory.filters.map((filter, index) => <span className={index === 0 ? 'tab active' : 'tab'} key={filter}>{filter}</span>)}</div>{inventory.items.map((item) => <div className="menu-item" key={item.id}><img className="thumb" src={item.imageUrl} /><div style={{ flex: 1 }}><b>{item.name}</b><div className="muted">{item.category}</div></div><span className={item.status === 'Out of Stock' ? 'pill red' : 'pill green'}>{item.stock} - {item.status}</span><button className="action" onClick={async () => { const nextStock = Number(item.numericStock) + 5; const next = await api<{ inventory: Inventory }>(`/api/vendor/inventory/${item.id}`, { method: 'PATCH', body: JSON.stringify({ numericStock: nextStock, stock: String(nextStock) + ' units' }) }); setInventory(next.inventory); }}>Update Stock</button></div>)}</section>
+      <div className="source">Built from: {[...portal.sourceFiles, ...menu.sourceFiles, ...analytics.sourceFiles, ...inventory.sourceFiles].join(' | ')}</div>
     </section>
   </main>;
 }

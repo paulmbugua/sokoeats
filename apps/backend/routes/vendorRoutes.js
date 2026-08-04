@@ -1,13 +1,16 @@
 import { Router } from 'express';
 import { createVendor, vendorDashboard } from '../controllers/vendorController.js';
-import { updateMenuAvailability, updateVendorOrderStatus, vendorMenu, vendorPortal } from '../controllers/vendorExperienceController.js';
+import { updateInventoryStock, updateMenuAvailability, updateVendorOrderStatus, vendorAnalytics, vendorInventory, vendorMenu, vendorPortal } from '../controllers/vendorExperienceController.js';
 import { validate } from '../validators/validate.js';
 import { vendorSchema } from '../validators/vendorValidator.js';
-import { menuAvailabilitySchema, vendorOrderStatusSchema } from '../validators/interactionValidator.js';
+import { inventoryStockSchema, menuAvailabilitySchema, vendorOrderStatusSchema } from '../validators/interactionValidator.js';
 const router = Router();
 router.get('/vendor-dashboard', vendorDashboard);
 router.get('/vendor/portal', vendorPortal);
 router.get('/vendor/menu', vendorMenu);
+router.get('/vendor/analytics', vendorAnalytics);
+router.get('/vendor/inventory', vendorInventory);
+router.patch('/vendor/inventory/:id', validate(inventoryStockSchema), updateInventoryStock);
 router.patch('/vendor/menu/:id/availability', validate(menuAvailabilitySchema), updateMenuAvailability);
 router.patch('/vendor/orders/:code/status', validate(vendorOrderStatusSchema), updateVendorOrderStatus);
 router.post('/vendors', validate(vendorSchema), createVendor);

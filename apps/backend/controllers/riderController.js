@@ -49,3 +49,54 @@ export async function confirmPickup(req, res, next) {
     res.json({ delivery: await saveScreenPayload('active_delivery_to_vendor', delivery) });
   } catch (err) { next(err); }
 }
+
+
+export async function riderOnboarding(_req, res, next) {
+  try {
+    const screens = {};
+    for (const key of ['welcome_to_sokoeats_rider', 'personal_information', 'vehicle_verification', 'document_uploads', 'application_success']) {
+      screens[key] = await getScreenPayload(key);
+    }
+    res.json({ onboarding: screens });
+  } catch (err) { next(err); }
+}
+
+export async function updateRiderOnboardingStep(req, res, next) {
+  try {
+    const payload = await getScreenPayload(req.params.screenKey);
+    payload.submission = { ...(payload.submission || {}), ...req.body, updatedAt: new Date().toISOString() };
+    res.json({ screen: await saveScreenPayload(req.params.screenKey, payload) });
+  } catch (err) { next(err); }
+}
+
+export async function riderEarnings(_req, res, next) {
+  try {
+    res.json({ earnings: await getScreenPayload('rider_earnings_dashboard') });
+  } catch (err) { next(err); }
+}
+
+export async function riderPayoutConfirmation(_req, res, next) {
+  try {
+    res.json({ payout: await getScreenPayload('m_pesa_payout_confirmation') });
+  } catch (err) { next(err); }
+}
+
+export async function requestRiderPayout(_req, res, next) {
+  try {
+    const payout = await getScreenPayload('m_pesa_payout_confirmation');
+    payout.requestedAt = new Date().toISOString();
+    res.status(201).json({ payout: await saveScreenPayload('m_pesa_payout_confirmation', payout) });
+  } catch (err) { next(err); }
+}
+
+export async function riderLeaderboard(_req, res, next) {
+  try {
+    res.json({ leaderboard: await getScreenPayload('rider_leaderboard') });
+  } catch (err) { next(err); }
+}
+
+export async function riderProfileRatings(_req, res, next) {
+  try {
+    res.json({ profile: await getScreenPayload('rider_profile_ratings') });
+  } catch (err) { next(err); }
+}

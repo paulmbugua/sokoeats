@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 
-type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'riderHome' | 'activeDelivery';
+type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile';
 type PaymentMethod = 'mpesa' | 'card';
 
 const colors = {
@@ -80,6 +80,28 @@ const stitchFilesUsed = [
   'rider_home_delivery_request/screen.png',
   'active_delivery_to_vendor/code.html',
   'active_delivery_to_vendor/screen.png',
+  'welcome_to_sokoeats_rider/code.html',
+  'welcome_to_sokoeats_rider/screen.png',
+  'personal_information/code.html',
+  'personal_information/screen.png',
+  'vehicle_verification/code.html',
+  'vehicle_verification/screen.png',
+  'document_uploads/code.html',
+  'document_uploads/screen.png',
+  'application_success/code.html',
+  'application_success/screen.png',
+  'rider_earnings_dashboard/code.html',
+  'rider_earnings_dashboard/screen.png',
+  'm_pesa_payout_confirmation/code.html',
+  'm_pesa_payout_confirmation/screen.png',
+  'rider_leaderboard/code.html',
+  'rider_leaderboard/screen.png',
+  'rider_profile_ratings/code.html',
+  'rider_profile_ratings/screen.png',
+  'vendor_analytics_dashboard/code.html',
+  'vendor_analytics_dashboard/screen.png',
+  'vendor_inventory_management/code.html',
+  'vendor_inventory_management/screen.png',
 ];
 
 const images = {
@@ -229,6 +251,576 @@ const fallbackActiveDelivery: ActiveDeliveryPayload = {
     "Account"
   ]
 };
+
+type GenericPayload = Record<string, any>;
+const fallbackRiderBatch: Record<string, GenericPayload> = {
+  "welcome_to_sokoeats_rider": {
+    "sourceFiles": [
+      "welcome_to_sokoeats_rider/code.html",
+      "welcome_to_sokoeats_rider/screen.png"
+    ],
+    "title": "Earn more with SokoEats",
+    "subtitle": "Join Nairobi's most reliable delivery fleet and take control of your financial future.",
+    "heroImageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAgdzl8yH4baSo2e9K0scCtDC1YBE8HE8qpZgs2UWdfoBlSDFrMJSYhj7DnFC19Q9mcoG0-D6vZX_Wb4mxn3YzoiNIdfxLACRmG68GsCfpGb4mDvlOlKdXLcsOmnwd4HwJ2gMpX8_5X6bfTsJw7z8a5LsLHAS6aY-xJrZB6eTVtP0XE7c96AyoYzI7InK3crmph78Sn7yQ2KJWXj4cyOyhS22b0cseCO64dhy3LVQZw0cee5t8EqWxa",
+    "benefits": [
+      {
+        "icon": "schedule",
+        "title": "Flexible hours",
+        "body": "Work when you want, where you want."
+      },
+      {
+        "icon": "payments",
+        "title": "Weekly M-Pesa payouts",
+        "body": "Get paid every Monday directly to your phone."
+      },
+      {
+        "icon": "health_and_safety",
+        "title": "Comprehensive insurance",
+        "body": "We've got your back on every single delivery."
+      }
+    ],
+    "actions": [
+      "Get Started",
+      "Log In"
+    ],
+    "footer": "Trusted Partners"
+  },
+  "personal_information": {
+    "sourceFiles": [
+      "personal_information/code.html",
+      "personal_information/screen.png"
+    ],
+    "step": "Step 1 of 4",
+    "title": "Personal Details",
+    "subtitle": "Tell us about yourself",
+    "helper": "Enter your details as they appear on your ID.",
+    "fields": [
+      {
+        "id": "fullName",
+        "label": "Full Name",
+        "icon": "badge",
+        "value": ""
+      },
+      {
+        "id": "phoneNumber",
+        "label": "Phone Number",
+        "prefix": "+254",
+        "icon": "phone_iphone",
+        "value": ""
+      },
+      {
+        "id": "city",
+        "label": "Operating City",
+        "value": "Nairobi",
+        "options": [
+          "Nairobi",
+          "Mombasa"
+        ]
+      }
+    ],
+    "tip": "Having your ID or passport nearby will help speed up the background check in the next step.",
+    "legal": "By tapping Next, you agree to our Privacy Policy"
+  },
+  "vehicle_verification": {
+    "sourceFiles": [
+      "vehicle_verification/code.html",
+      "vehicle_verification/screen.png"
+    ],
+    "step": "Step 2 of 4",
+    "title": "Vehicle Details",
+    "progress": "2/4",
+    "vehicleTypes": [
+      {
+        "id": "motorbike",
+        "label": "Motorbike",
+        "icon": "two_wheeler",
+        "selected": true
+      },
+      {
+        "id": "bicycle",
+        "label": "Bicycle",
+        "icon": "pedal_bike",
+        "selected": false
+      }
+    ],
+    "fields": [
+      {
+        "id": "make",
+        "label": "Vehicle Make",
+        "icon": "branding_watermark",
+        "value": ""
+      },
+      {
+        "id": "model",
+        "label": "Model Name",
+        "icon": "info",
+        "value": ""
+      },
+      {
+        "id": "plate",
+        "label": "Number Plate",
+        "icon": "license",
+        "value": ""
+      }
+    ],
+    "note": "Must match the registration documents provided."
+  },
+  "document_uploads": {
+    "sourceFiles": [
+      "document_uploads/code.html",
+      "document_uploads/screen.png"
+    ],
+    "step": "Step 3 of 4",
+    "progress": "75% Complete",
+    "title": "Upload Documents",
+    "subtitle": "Please provide clear photos of your valid identification and driving credentials.",
+    "documents": [
+      {
+        "id": "nationalId",
+        "title": "National ID",
+        "body": "Front and back view required",
+        "status": "Tap to Upload"
+      },
+      {
+        "id": "drivingLicense",
+        "title": "Driving License",
+        "body": "Valid class A/B license",
+        "status": "Tap to Upload"
+      }
+    ],
+    "security": "Your documents are stored securely. We use industry-standard encryption to protect your private data and will never share it without your consent."
+  },
+  "application_success": {
+    "sourceFiles": [
+      "application_success/code.html",
+      "application_success/screen.png"
+    ],
+    "title": "Application Submitted!",
+    "step": "Step 4 of 4 Complete",
+    "body": "We are reviewing your documents. This usually takes 24-48 hours. We'll notify you via SMS when you're ready to start earning.",
+    "illustrationUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuC-YGwKLMzHIdqVvHkEvSuxhY2VFBnbSfEy1Tx5WSt1X65VUsSMCoRlvG03DsFB6r52WhAKm-ayDnQ_w08oPWi4D4uR_l_Sw5IpNb0tNgpazSZmw33-A-UFV8v2FyBF-IKD3NOyeu1kk-lLTAEQmGV2H_NjxBLY5OkkLuzE-QcL7b_Vt4xyXDtQjPWv8kfhSYlYE6gp_Gsbp0ZS0nBupTn2M8B21BClbTkDwa1PW6J9Qs8FGr99Z5Ec",
+    "actions": [
+      "Check Status",
+      "Visit Help Center"
+    ],
+    "footer": "© 2024 Rider Onboarding. All rights reserved."
+  },
+  "rider_earnings_dashboard": {
+    "sourceFiles": [
+      "rider_earnings_dashboard/code.html",
+      "rider_earnings_dashboard/screen.png"
+    ],
+    "riderName": "Juma",
+    "title": "Earnings Dashboard",
+    "balance": "KSh 4,200.50",
+    "lastPayout": "Last payout: 2 days ago",
+    "cards": [
+      {
+        "label": "Today",
+        "value": "KSh 1,250",
+        "icon": "calendar_today"
+      },
+      {
+        "label": "This Week",
+        "value": "KSh 8,400",
+        "icon": "date_range"
+      },
+      {
+        "label": "Deliveries",
+        "value": "32",
+        "icon": "delivery_dining"
+      }
+    ],
+    "chart": {
+      "title": "Activity (Last 7 Days)",
+      "total": "KSh 21,450",
+      "days": [
+        {
+          "day": "Mon",
+          "value": 48
+        },
+        {
+          "day": "Tue",
+          "value": 58
+        },
+        {
+          "day": "Wed",
+          "value": 42
+        },
+        {
+          "day": "Thu",
+          "value": 76
+        },
+        {
+          "day": "Fri",
+          "value": 64
+        },
+        {
+          "day": "Sat",
+          "value": 92
+        },
+        {
+          "day": "Sun",
+          "value": 72
+        }
+      ]
+    },
+    "transactions": [
+      {
+        "label": "Delivery Order #4829",
+        "time": "Today, 12:45 PM",
+        "amount": "+KSh 350.00",
+        "tone": "credit"
+      },
+      {
+        "label": "M-Pesa Withdrawal",
+        "time": "Yesterday, 08:20 PM",
+        "amount": "-KSh 2,500.00",
+        "tone": "debit"
+      },
+      {
+        "label": "Delivery Order #4821",
+        "time": "Yesterday, 05:30 PM",
+        "amount": "+KSh 420.00",
+        "tone": "credit"
+      },
+      {
+        "label": "Weekend Quest Bonus",
+        "time": "22 Oct, 10:00 AM",
+        "amount": "+KSh 1,000.00",
+        "tone": "credit"
+      }
+    ],
+    "activity": "Live Activity: High Demand in CBD",
+    "location": "Nairobi, Kenya",
+    "mapImageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuDRp8ar5hd6Cv7DtkigRk9Gwu_lqnR0WA1Kmvt-evI2ONj6XyNEo7oE1O4H_NeNp8wz2e8WJrmrY6FvjuoaeOXL6U2iLRJnQYbSo-7oasfdWKB1HWer1DG3m9EwSQvP2Z2rRXJMUkfkS-aunoSQBIir4sHzGiqgc2McQ4hMKQ_K8hjNe2RsbMRLpLoe9_mBRuN_a9qVCi6VDKldNA68_miR01dk0o_R8i9WCwfBKwIndeXH0-v5I3ES"
+  },
+  "m_pesa_payout_confirmation": {
+    "sourceFiles": [
+      "m_pesa_payout_confirmation/code.html",
+      "m_pesa_payout_confirmation/screen.png"
+    ],
+    "title": "Money in the bank!",
+    "amount": "KSh 4,200.50",
+    "status": "Payout Successful",
+    "destination": "Sent to M-Pesa",
+    "sentTo": "+254 712 345 678",
+    "recipient": "Juma K.",
+    "transactionId": "RCK892L0P",
+    "dateTime": "Oct 24, 2023, 2:45 PM",
+    "fee": "KSh 0.00",
+    "feeLabel": "Free"
+  },
+  "rider_leaderboard": {
+    "sourceFiles": [
+      "rider_leaderboard/code.html",
+      "rider_leaderboard/screen.png"
+    ],
+    "tabs": [
+      "Weekly",
+      "All Time"
+    ],
+    "podium": [
+      {
+        "rank": 2,
+        "name": "Sarah W.",
+        "deliveries": "142 Deliv.",
+        "avatarUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuBwMjcg6x0S_T4OAey6NGyLS2AGYgltIfDqIl1TUnWWMp2HkMhWGd5mQaKiIFXbvUt8h48mXT8ulajB3Vnp3HROLvRhmDqtIEPmQ0xe9FuUcKE7b0NKY96hHcz7oDMKSrfZQkGNJvQWqpxBz5qLYVoirCrwcGSEv_CHBp_z5b3cK5wQY2V3LmXWHC_kRMiFG3es_6sdBYPXVc2yn9oUjWyWMXuooLz-0VI0qr12JIrX5DuOpK-X8lFp"
+      },
+      {
+        "rank": 1,
+        "name": "Mwangi J.",
+        "badge": "Speed Star",
+        "deliveries": "156 Deliveries",
+        "avatarUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAqhggCIjE608y-oDQkSbM2JyKWsTr_ehAYr83eRiKiLdkTW2sko2W9RlFqVRx3c04dL84jJcR1dhbKg6lwhmV5UJjr7bTyygiz2ZHKOEBpjjmXx14unVbhnwjKrdIVB-pFsOKmHP7q9-rBXvnfj92hRHMW9Hb_typ0lOqHtKgTEL4QnWfjkWIUKxFklNpIOEjyVfOYC2xyK5RrAxg6kULQMeCIkNC6OGXg5PtXyi9HrBvgw0_u3vTj"
+      },
+      {
+        "rank": 3,
+        "name": "Otieno P.",
+        "deliveries": "138 Deliv.",
+        "avatarUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAfNg1Y-FOz-npDdEbRw--Q6Alr17SMZN86nS37JphcE_xX22jmuuZavd-XKXw5b2fdTCh-iD4cx6dU2anDa2fOI3rPr--Qmfj65YBWEGzgfmqkIlNOPKhK-AZjupc8ToznaBC7-zOso-gk4D3qEmxGFTRP3KYYILdyXmKEdGMdywWIa7yZ4kqrDfIzVuYrWKvs4owNyJkkJ4GZ4MsnZOjeQISKkJs90ZOc-Clk2xS04iJACM2f3zOd"
+      }
+    ],
+    "riders": [
+      {
+        "rank": 12,
+        "name": "David K. (You)",
+        "badge": "PRO",
+        "quality": "Quality Score: 4.9 ★",
+        "orders": 88,
+        "verified": true
+      },
+      {
+        "rank": 4,
+        "name": "Jane M.",
+        "quality": "Quality Score: 4.8 ★",
+        "orders": 112
+      },
+      {
+        "rank": 5,
+        "name": "Kibet S.",
+        "quality": "Quality Score: 4.7 ★",
+        "orders": 105
+      },
+      {
+        "rank": 6,
+        "name": "Amani L.",
+        "badge": "Elite",
+        "quality": "Quality Score: 5.0 ★",
+        "orders": 98
+      }
+    ],
+    "encouragement": "Keep it up, David!",
+    "target": "12 more deliveries to reach Rank 10",
+    "weeklyEarnings": "KSh 12,450.00"
+  },
+  "rider_profile_ratings": {
+    "sourceFiles": [
+      "rider_profile_ratings/code.html",
+      "rider_profile_ratings/screen.png"
+    ],
+    "rider": {
+      "name": "Juma K.",
+      "since": "Member since Oct 2021",
+      "vehicle": "Honda Ace 125 (KMD 482L)",
+      "rating": "4.85",
+      "reviews": "1.2k+ reviews",
+      "avatarUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuBW4jErV9oNKhhTXnYF1_fvbD8aTXKmLfmaMFHKasqPPARMOiRzaOhiAgwjmVrKjbXdmNWLeGzk68Gb1LXWsz4vuBO_JqJEx8iQ7tgjxF7Arn8ZgYtQEBfPjv-LO4gATPeKU8lz5b_IxNjY5XTJnUSqnZAlb25jIWo798B5n_uo5DIBHy-glrU1U4eMtK-PqV5JaFugHj60QjAFi1Pdpc8HLZWZadPsk6MAPeMjRe9nztF5p9xXFTLg"
+    },
+    "stats": [
+      {
+        "label": "Success Rate",
+        "value": "98%"
+      },
+      {
+        "label": "Deliveries",
+        "value": "3,420"
+      }
+    ],
+    "ratingBreakdown": [
+      {
+        "stars": 5,
+        "value": 84
+      },
+      {
+        "stars": 4,
+        "value": 11
+      },
+      {
+        "stars": 3,
+        "value": 3
+      },
+      {
+        "stars": 2,
+        "value": 1
+      },
+      {
+        "stars": 1,
+        "value": 1
+      }
+    ],
+    "qualities": [
+      {
+        "label": "Timeliness",
+        "value": "Exceptional"
+      },
+      {
+        "label": "Professional",
+        "value": "Top Rated"
+      },
+      {
+        "label": "Order Care",
+        "value": "Flawless"
+      }
+    ],
+    "achievements": [
+      "Speed Demon",
+      "Customer Favorite",
+      "Night Owl"
+    ],
+    "feedback": [
+      {
+        "customer": "Sarah W.",
+        "initials": "S",
+        "age": "2 days ago",
+        "body": "Always on time! Juma is super professional and handles the food with great care."
+      },
+      {
+        "customer": "Otieno P.",
+        "initials": "O",
+        "age": "1 week ago",
+        "body": "Very polite and followed instructions perfectly. Even navigated the complex gate entry with no issues."
+      }
+    ]
+  },
+  "vendor_analytics_dashboard": {
+    "sourceFiles": [
+      "vendor_analytics_dashboard/code.html",
+      "vendor_analytics_dashboard/screen.png"
+    ],
+    "title": "Analytics Overview",
+    "subtitle": "Performance summary for Mama Njeri's Kitchen",
+    "metrics": [
+      {
+        "label": "Total Sales",
+        "value": "KSh 142,500",
+        "delta": "12%",
+        "direction": "up",
+        "helper": "vs. KSh 127,230 last month"
+      },
+      {
+        "label": "Total Orders",
+        "value": "842",
+        "delta": "5%",
+        "direction": "up",
+        "helper": "Last 30 days period"
+      },
+      {
+        "label": "Avg Order Value",
+        "value": "KSh 1,692",
+        "delta": "2%",
+        "direction": "down",
+        "helper": "Optimization recommended"
+      }
+    ],
+    "sales": {
+      "title": "Sales Growth",
+      "subtitle": "Daily revenue for the last 7 days",
+      "filters": [
+        "Last 7 Days",
+        "This Month"
+      ],
+      "days": [
+        {
+          "day": "M",
+          "value": 42
+        },
+        {
+          "day": "T",
+          "value": 66
+        },
+        {
+          "day": "W",
+          "value": 58
+        },
+        {
+          "day": "T",
+          "value": 74
+        },
+        {
+          "day": "F",
+          "value": 88
+        },
+        {
+          "day": "S",
+          "value": 72
+        },
+        {
+          "day": "S",
+          "value": 61
+        }
+      ]
+    },
+    "customers": {
+      "returningPercent": 64,
+      "returning": "Returning Customers (538)",
+      "newCustomers": "New Customers (304)"
+    },
+    "peakHours": [
+      "08-10",
+      "12-14",
+      "14-16",
+      "18-20",
+      "21-23",
+      "00-06"
+    ],
+    "tip": "Tip: 18:00 - 20:00 is your busiest window. Increase kitchen staff during this time.",
+    "popularItems": [
+      {
+        "name": "Nyama Choma",
+        "sales": "342 Sales this week",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuChQCM3O79BVWVa8s50R1-5y8_NDls9Idiutix2WdMMMNVICZh6HafCdsfWWldtY0RETAkizKzuidVXX57fehtvDst6FeL7bLW7PI28xKTbQkfJKQjvB8sFO2VoUbHFvR0CRTv2BE0jpJP4fHXcKnwInnpweZFWsunt5UMZ1vbBe4DCqzjUKFuhi_BzdAVA2K-MpBCcKj2gZu6hNoldJXveLpg3YR4WApkFzSaZ-Z3U0vcAhUTxIpF6"
+      },
+      {
+        "name": "Ugali Special",
+        "sales": "218 Sales this week",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuCz65oF2hbTXcwXl3zaBcwo7izumMVbeeEkWwubtdVFkBi5sXoEnqBf2OqkBNaTnHSz9xc5lxcGFsM1_ojJbsfyLvOWsu7uyDsjaPcbz_HczVQ5vC7D5eR0vo7-ShnAikeqk2HtB8wBY7oCF9EbBSoxjuHJF-Kve6L2k3gl1TFGXSPhbHJ8vaEA3Kzc_IfQGMzTRs8YI30PCO9YF7mtNKy4Gk26z5McSzsbdATe8GgTbc7ao2g6ziWw"
+      },
+      {
+        "name": "Swahili Samosas",
+        "sales": "195 Sales this week",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuDd_pzw_is27p-wMiZsAY-PCcqO69Wi3kUFkueZ5rohsYKrgNpnfwuOXkHkJ_d2Tf0DX2PmcvVIF7t65ktNuGnDPpgGhG65M8I775XnVlz4dmmAq1_EWD6gzMN0lyQkvqiPy247eg_2d1OVZDZRjoQG2zluIqX3Fot5gPHHImNyX4T94AL7qD8FrlVNiTwxsHux7A9d1ENWRMJHEGrLzHlsmuFywYUc8-yoXKPEeIY2qxJkfsqmTokP"
+      },
+      {
+        "name": "Fruit Platter",
+        "sales": "104 Sales this week",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuBoIxkY0M0vaCUYmhtfdCGjXI2sr1TSnRL-ylGix4iDyDKbqbuMC5q2ludNvJzLnpksCoxwy8MgDkhw41vZdkkclf_XqRTjV7s1F-PbUGLl4A8bh7wMfzr_Ront0l_rw_WZDIEihEAt9lzBbLYs5SVSjuwps3wdqTxgRhQLmaBEWk4MuQGZrdDu5-vNdKGbRzROM9tnphrt9zvBneyI9Tl_hyrT_1a8v661iovFRoj5bZxg54mDgFCS"
+      }
+    ]
+  },
+  "vendor_inventory_management": {
+    "sourceFiles": [
+      "vendor_inventory_management/code.html",
+      "vendor_inventory_management/screen.png"
+    ],
+    "title": "Inventory Management",
+    "alert": {
+      "title": "Immediate Attention Required",
+      "body": "3 items are below your minimum stock threshold.",
+      "items": [
+        "Fresh Spinach",
+        "Goat Meat",
+        "Charcoal (4kg)"
+      ]
+    },
+    "filters": [
+      "All",
+      "Low Stock",
+      "Out of Stock",
+      "Food",
+      "Groceries"
+    ],
+    "items": [
+      {
+        "id": "spinach-bundle",
+        "name": "Fresh Spinach",
+        "category": "Groceries • Bundle",
+        "stock": "5 units",
+        "numericStock": 5,
+        "status": "Available",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuC2X-PiGJ_xRZahTACSKY9lYFFJUcHrZJtz-UODUXL43RTzPT0Sk9aIx19Huc79l_9yUivIBFBQs_7jACLtR87vG7RNXmAOq2iC-w0uOHnSlsKEmRrMdYZR52R2eupjR2cRsCTUziAHxZqD1dqIMO9ZwnMkIP5CThWP0R7T9dLya2mqsOMCqDthVva_GgNdLvf4OnOi49JtEHTJhkdkZxPvwnpJM1oWiVmgKy8CTtqsUgRGuzGtQJQu"
+      },
+      {
+        "id": "maize-flour",
+        "name": "Premium Maize Flour",
+        "category": "Groceries • 2kg Bag",
+        "stock": "42 units",
+        "numericStock": 42,
+        "status": "In Stock",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuA2LpSMayjtwFao0yRoDOCcW61czk8vbgnav3D3uZDKhnWOj2_QnmMXfxb2zW8bhCF6AwLTUwDl-YsAchgKrXnbHvfjFJwumnpjnnSU5LmfUbgTi4_aJLhv1ZE_XJLXbLSKuUCswP8dwp0HfDq7uvigmla19fX0NBcDHpfLAlqlVx16QXWvf6yEkirK5KJz8irpTkc4hzWLHzHWK8pDGlBVyHghnRuGcpjuc06YJcjkiWL-FKVdtM6o"
+      },
+      {
+        "id": "goat-meat",
+        "name": "Goat Meat",
+        "category": "Food • per KG",
+        "stock": "8.5 kg",
+        "numericStock": 8.5,
+        "status": "Low Stock",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuB778aTaH2LrsBjH1LryuIxqySSN6dPWh_w3i8-fUlm36x_M1-nu87Z-uyEu2VtziyzgADEx3KLk1vYaZRUl8oIfNkix3TMuIRzJEZXerUyjITjcNC80O7AbymTCoOvQLLj8I4OD_ALadWwsZ95Y54deys5XDMZx4re5-xl45Wy9_Wizb64PZGoRItfwl56jfUXGwNFFVrrE-XpY_lvQE8YeckCy3a5xuJBQjFpr9cxZ6-VM8GMco3k"
+      },
+      {
+        "id": "charcoal-4kg",
+        "name": "Charcoal (4kg)",
+        "category": "Essentials • Bag",
+        "stock": "0 units",
+        "numericStock": 0,
+        "status": "Out of Stock",
+        "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuBUUVH2qf5LsN1SYaPhsLp_fIPR7NxGvZSHA_C3p9VttxrVOrRN_PtUMMPeVGpDzv_PXz-JNAjwviQGuaUpbMt8iB3f6A7p2loPri9bbGELXaTGgTfp1Xb6Ast1jBAnlxk0qx5W7-kRgb8lswgVkl8qIIh5Ecbcr4Y5pA-krGAt215-fedSUW5hOe4gAB-qr4MXfexibhwoESDtxwi3hAzWI4q-CViwoJcwNAS16M9fIfZWLqD4sod4"
+      }
+    ]
+  }
+};
+
 async function sokoeatsApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...(init.headers || {}) } });
   if (!res.ok) throw new Error('Sokoeats mobile API request failed');
@@ -253,6 +845,7 @@ export default function App() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mpesa');
   const [riderHome, setRiderHome] = useState<RiderHomePayload>(fallbackRiderHome);
   const [activeDelivery, setActiveDelivery] = useState<ActiveDeliveryPayload>(fallbackActiveDelivery);
+  const [riderBatch, setRiderBatch] = useState<Record<string, GenericPayload>>(fallbackRiderBatch);
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -292,8 +885,17 @@ export default function App() {
             onCheckout={() => openScreen('checkout')}
           />
         )}
-        {screen === 'riderHome' && <RiderHomeScreen data={riderHome} onBack={() => openScreen('home')} onAccept={async () => { try { const next = await sokoeatsApi<{ riderHome: RiderHomePayload; delivery: ActiveDeliveryPayload }>(`/api/rider/requests/${riderHome.request.id}/accept`, { method: 'POST' }); setRiderHome(next.riderHome); setActiveDelivery(next.delivery); } catch {} openScreen('activeDelivery'); }} />}
+        {screen === 'riderHome' && <RiderHomeScreen data={riderHome} onBack={() => openScreen('home')} onOnboarding={() => openScreen('riderOnboardingWelcome')} onEarnings={() => openScreen('riderEarnings')} onLeaderboard={() => openScreen('riderLeaderboard')} onProfile={() => openScreen('riderProfile')} onAccept={async () => { try { const next = await sokoeatsApi<{ riderHome: RiderHomePayload; delivery: ActiveDeliveryPayload }>(`/api/rider/requests/${riderHome.request.id}/accept`, { method: 'POST' }); setRiderHome(next.riderHome); setActiveDelivery(next.delivery); } catch {} openScreen('activeDelivery'); }} />}
         {screen === 'activeDelivery' && <ActiveDeliveryScreen data={activeDelivery} onBack={() => openScreen('riderHome')} onArrived={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/arrived`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} onPickup={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/pickup`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} />}
+        {screen === 'riderOnboardingWelcome' && <RiderWelcomeScreen data={riderBatch.welcome_to_sokoeats_rider} onBack={() => openScreen('riderHome')} onNext={() => openScreen('riderPersonal')} />}
+        {screen === 'riderPersonal' && <RiderFormScreen data={riderBatch.personal_information} onBack={() => openScreen('riderOnboardingWelcome')} onNext={() => openScreen('riderVehicle')} />}
+        {screen === 'riderVehicle' && <RiderFormScreen data={riderBatch.vehicle_verification} onBack={() => openScreen('riderPersonal')} onNext={() => openScreen('riderDocuments')} />}
+        {screen === 'riderDocuments' && <RiderDocumentsScreen data={riderBatch.document_uploads} onBack={() => openScreen('riderVehicle')} onSubmit={() => openScreen('riderApplicationSuccess')} />}
+        {screen === 'riderApplicationSuccess' && <RiderSuccessScreen data={riderBatch.application_success} onBack={() => openScreen('riderHome')} />}
+        {screen === 'riderEarnings' && <RiderEarningsScreen data={riderBatch.rider_earnings_dashboard} onBack={() => openScreen('riderHome')} onCashOut={async () => { const next = await sokoeatsApi<{ payout: GenericPayload }>('/api/rider/payouts', { method: 'POST' }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, m_pesa_payout_confirmation: next.payout })); openScreen('riderPayout'); }} />}
+        {screen === 'riderPayout' && <RiderPayoutScreen data={riderBatch.m_pesa_payout_confirmation} onBack={() => openScreen('riderEarnings')} />}
+        {screen === 'riderLeaderboard' && <RiderLeaderboardScreen data={riderBatch.rider_leaderboard} onBack={() => openScreen('riderHome')} />}
+        {screen === 'riderProfile' && <RiderProfileScreen data={riderBatch.rider_profile_ratings} onBack={() => openScreen('riderHome')} />}
         {screen === 'checkout' && (
           <CheckoutScreen
             subtotal={subtotal}
@@ -533,7 +1135,7 @@ function HomeScreen({
 }
 
 
-function RiderHomeScreen({ data, onBack, onAccept }: { data: RiderHomePayload; onBack: () => void; onAccept: () => void }) {
+function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onLeaderboard, onProfile }: { data: RiderHomePayload; onBack: () => void; onAccept: () => void; onOnboarding: () => void; onEarnings: () => void; onLeaderboard: () => void; onProfile: () => void }) {
   return (
     <View style={styles.riderShell}>
       <View style={styles.riderTop}>
@@ -547,6 +1149,7 @@ function RiderHomeScreen({ data, onBack, onAccept }: { data: RiderHomePayload; o
           <View style={styles.riderStat}><Text style={styles.upperLabel}>Current Zone</Text><Text style={styles.riderStatValue}>{data.rider.zone}</Text></View>
           <View style={styles.riderStat}><Text style={styles.upperLabel}>Today's Earnings</Text><Text style={styles.riderStatValue}>{data.rider.earningsToday}</Text></View>
         </View>
+        <View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onOnboarding}><Text style={styles.riderQuickTitle}>Onboarding</Text><Text style={styles.riderQuickText}>Finish rider verification</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onEarnings}><Text style={styles.riderQuickTitle}>Earnings</Text><Text style={styles.riderQuickText}>Cash out to M-Pesa</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onLeaderboard}><Text style={styles.riderQuickTitle}>Leaderboard</Text><Text style={styles.riderQuickText}>Weekly rider rank</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onProfile}><Text style={styles.riderQuickTitle}>Profile</Text><Text style={styles.riderQuickText}>Ratings and reviews</Text></TouchableOpacity></View>
         <ImageBackground source={{ uri: data.heatmapUrl }} style={styles.riderMapCard} imageStyle={styles.riderMapImage}>
           <View style={styles.surgeBadge}><Text style={styles.surgeText}>{data.surge.label}</Text></View>
         </ImageBackground>
@@ -592,6 +1195,43 @@ function ActiveDeliveryScreen({ data, onBack, onArrived, onPickup }: { data: Act
       <SourceLedger />
     </View>
   );
+}
+
+
+function RiderScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
+  return <View style={styles.riderTop}><TouchableOpacity style={styles.backButton} onPress={onBack}><Text style={styles.backButtonText}>back</Text></TouchableOpacity><Text style={styles.riderBrand}>{title}</Text><View style={styles.onlinePill}><Text style={styles.onlinePillText}>ONLINE</Text></View></View>;
+}
+
+function RiderWelcomeScreen({ data, onBack, onNext }: { data: GenericPayload; onBack: () => void; onNext: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Rider Onboarding" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.heroImageUrl }} style={styles.riderHeroImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text>{data.benefits.map((benefit: GenericPayload) => <View style={styles.onboardingInfoRow} key={benefit.title}><Text style={styles.locationIcon}>{benefit.icon}</Text><View><Text style={styles.vendorName}>{benefit.title}</Text><Text style={styles.restaurantMeta}>{benefit.body}</Text></View></View>)}<TouchableOpacity style={styles.placeOrderButton} onPress={onNext}><Text style={styles.placeOrderText}>Get Started</Text></TouchableOpacity><Text style={styles.secureText}>{data.footer}</Text></ScrollView><SourceLedger /></View>;
+}
+
+function RiderFormScreen({ data, onBack, onNext }: { data: GenericPayload; onBack: () => void; onNext: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Rider Onboarding" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Text style={styles.upperLabel}>{data.step}</Text><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle || data.progress}</Text>{data.vehicleTypes && <View style={styles.riderQuickGrid}>{data.vehicleTypes.map((type: GenericPayload) => <View style={[styles.riderQuickButton, type.selected && styles.riderQuickButtonActive]} key={type.id}><Text style={styles.riderQuickTitle}>{type.label}</Text></View>)}</View>}{data.fields.map((field: GenericPayload) => <View style={styles.formFieldCard} key={field.id}><Text style={styles.upperLabel}>{field.label}</Text><TextInput style={styles.formFieldInput} placeholder={field.prefix ? String(field.prefix) + ' 712 345 678' : field.value || field.label} placeholderTextColor={colors.outline} /></View>)}{data.tip || data.note ? <View style={styles.smsCard}><Text style={styles.smsBody}>{data.tip || data.note}</Text></View> : null}<TouchableOpacity style={styles.placeOrderButton} onPress={onNext}><Text style={styles.placeOrderText}>Next Step</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
+}
+
+function RiderDocumentsScreen({ data, onBack, onSubmit }: { data: GenericPayload; onBack: () => void; onSubmit: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Rider Onboarding" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Text style={styles.upperLabel}>{data.step} - {data.progress}</Text><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text>{data.documents.map((doc: GenericPayload) => <View style={styles.uploadCard} key={doc.id}><View><Text style={styles.vendorName}>{doc.title}</Text><Text style={styles.restaurantMeta}>{doc.body}</Text></View><Text style={styles.changeText}>{doc.status}</Text></View>)}<View style={styles.smsCard}><Text style={styles.smsBody}>{data.security}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={onSubmit}><Text style={styles.placeOrderText}>Submit Application</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
+}
+
+function RiderSuccessScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Application Success" onBack={onBack} /><View style={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.illustrationUrl }} style={styles.successImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.upperLabel}>{data.step}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Check Status</Text></TouchableOpacity><Text style={styles.secureText}>{data.footer}</Text></View><SourceLedger /></View>;
+}
+
+function RiderEarningsScreen({ data, onBack, onCashOut }: { data: GenericPayload; onBack: () => void; onCashOut: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Earnings" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Text style={styles.checkoutSubtitle}>Habari, {data.riderName}!</Text><Text style={styles.checkoutTitle}>{data.title}</Text><View style={styles.balanceCard}><Text style={styles.upperLabel}>Available Balance</Text><Text style={styles.balanceText}>{data.balance}</Text><Text style={styles.restaurantMeta}>{data.lastPayout}</Text><TouchableOpacity style={styles.primaryButton} onPress={onCashOut}><Text style={styles.primaryButtonText}>Cash Out</Text></TouchableOpacity></View><View style={styles.riderStats}>{data.cards.map((card: GenericPayload) => <View style={styles.riderStat} key={card.label}><Text style={styles.upperLabel}>{card.label}</Text><Text style={styles.riderStatValue}>{card.value}</Text></View>)}</View><View style={styles.deliveryRequestCard}><Text style={styles.vendorName}>{data.chart.title}</Text><Text style={styles.restaurantMeta}>Total: {data.chart.total}</Text><View style={styles.mobileChart}>{data.chart.days.map((day: GenericPayload) => <View style={styles.mobileChartBar} key={day.day + day.value}><View style={[styles.mobileChartFill, { height: String(day.value) + '%' as any }]} /><Text style={styles.categoryLabel}>{day.day}</Text></View>)}</View></View>{data.transactions.map((tx: GenericPayload) => <View style={styles.priceLine} key={tx.label}><View><Text style={styles.vendorName}>{tx.label}</Text><Text style={styles.restaurantMeta}>{tx.time}</Text></View><Text style={[styles.priceValue, tx.tone === 'credit' && styles.discountText]}>{tx.amount}</Text></View>)}<ImageBackground source={{ uri: data.mapImageUrl }} style={styles.riderMiniMap} imageStyle={styles.riderMapImage}><Text style={styles.surgeText}>{data.activity}</Text><Text style={styles.secureText}>{data.location}</Text></ImageBackground></ScrollView><BottomNav active="Earnings" /><SourceLedger /></View>;
+}
+
+function RiderPayoutScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.status} onBack={onBack} /><View style={[styles.riderContent, styles.centerPanel]}><Text style={styles.successIcon}>check_circle</Text><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.balanceText}>{data.amount}</Text>{[['Sent to', data.sentTo], ['Recipient', data.recipient], ['Transaction ID', data.transactionId], ['Date & Time', data.dateTime], ['Fee', String(data.fee) + ' ' + String(data.feeLabel)]].map(([label, value]) => <View style={styles.priceLine} key={label}><Text style={styles.priceLabel}>{label}</Text><Text style={styles.priceValue}>{value}</Text></View>)}<TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Share Receipt</Text></TouchableOpacity><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Back to Dashboard</Text></TouchableOpacity></View><BottomNav active="Earnings" /><SourceLedger /></View>;
+}
+
+function RiderLeaderboardScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Leaderboard" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.tabsRow}>{data.tabs.map((tab: string, index: number) => <Text style={[styles.tabPill, index === 0 && styles.tabPillActive]} key={tab}>{tab}</Text>)}</View><View style={styles.podium}>{data.podium.map((rider: GenericPayload) => <View style={styles.podiumCard} key={rider.name}><Image source={{ uri: rider.avatarUrl }} style={styles.avatar} /><Text style={styles.totalAmount}>{rider.rank}</Text><Text style={styles.vendorName}>{rider.name}</Text><Text style={styles.restaurantMeta}>{rider.badge || rider.deliveries}</Text></View>)}</View><Text style={styles.checkoutSectionTitle}>Top Riders</Text>{data.riders.map((rider: GenericPayload) => <View style={styles.leaderRow} key={rider.name}><Text style={styles.totalAmount}>{rider.rank}</Text><View style={{ flex: 1 }}><Text style={styles.vendorName}>{rider.name} {rider.badge || ''}</Text><Text style={styles.restaurantMeta}>{rider.quality}</Text></View><Text style={styles.priceValue}>{rider.orders}</Text></View>)}<View style={styles.smsCard}><Text style={styles.vendorName}>{data.encouragement}</Text><Text style={styles.smsBody}>{data.target}</Text><Text style={styles.totalAmount}>{data.weeklyEarnings}</Text></View></ScrollView><BottomNav active="Earnings" /><SourceLedger /></View>;
+}
+
+function RiderProfileScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Rider Profile" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.profileHero}><Image source={{ uri: data.rider.avatarUrl }} style={styles.profileAvatar} /><Text style={styles.checkoutTitle}>{data.rider.name}</Text><Text style={styles.restaurantMeta}>{data.rider.since}</Text><Text style={styles.restaurantMeta}>{data.rider.vehicle}</Text><Text style={styles.balanceText}>{data.rider.rating}</Text><Text style={styles.upperLabel}>{data.rider.reviews}</Text></View><View style={styles.riderStats}>{data.stats.map((stat: GenericPayload) => <View style={styles.riderStat} key={stat.label}><Text style={styles.riderStatValue}>{stat.value}</Text><Text style={styles.upperLabel}>{stat.label}</Text></View>)}</View><View style={styles.deliveryRequestCard}><Text style={styles.vendorName}>Ratings Breakdown</Text>{data.ratingBreakdown.map((row: GenericPayload) => <View style={styles.ratingLine} key={row.stars}><Text>{row.stars}</Text><View style={styles.deliveryProgress}><View style={[styles.deliveryProgressFill, { width: String(row.value) + '%' as any }]} /></View></View>)}</View><View style={styles.riderQuickGrid}>{data.qualities.map((item: GenericPayload) => <View style={styles.riderQuickButton} key={item.label}><Text style={styles.riderQuickTitle}>{item.label}</Text><Text style={styles.riderQuickText}>{item.value}</Text></View>)}</View><Text style={styles.checkoutSectionTitle}>Achievements</Text><View style={styles.tabsRow}>{data.achievements.map((item: string) => <Text style={styles.tabPillActive} key={item}>{item}</Text>)}</View><Text style={styles.checkoutSectionTitle}>Recent Feedback</Text>{data.feedback.map((entry: GenericPayload) => <View style={styles.uploadCard} key={entry.customer}><Text style={styles.avatarInitial}>{entry.initials}</Text><View style={{ flex: 1 }}><Text style={styles.vendorName}>{entry.customer}</Text><Text style={styles.restaurantMeta}>{entry.age}</Text><Text style={styles.smsBody}>{entry.body}</Text></View></View>)}</ScrollView><BottomNav active="Account" /><SourceLedger /></View>;
 }
 
 function PromoBanner({
@@ -2264,4 +2904,33 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.45,
   },
+  riderQuickGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  riderQuickButton: { width: '48%', borderRadius: 14, backgroundColor: colors.surfaceContainerLowest, padding: 14 },
+  riderQuickButtonActive: { borderWidth: 2, borderColor: colors.primaryContainer },
+  riderQuickTitle: { color: colors.onSurface, fontSize: 14, fontWeight: '900' },
+  riderQuickText: { color: colors.onSurfaceVariant, fontSize: 12, lineHeight: 17, marginTop: 4 },
+  riderHeroImage: { width: '100%', height: 230, borderRadius: 22, marginBottom: 18, backgroundColor: colors.surfaceContainerHigh },
+  onboardingInfoRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12, paddingVertical: 12 },
+  formFieldCard: { borderRadius: 14, backgroundColor: colors.surfaceContainerLowest, padding: 14, marginBottom: 12 },
+  formFieldInput: { color: colors.onSurface, fontSize: 16, paddingTop: 8 },
+  uploadCard: { borderRadius: 14, backgroundColor: colors.surfaceContainerLowest, padding: 14, marginBottom: 12, flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'space-between' },
+  centerPanel: { flex: 1, justifyContent: 'center' },
+  successImage: { width: 210, height: 170, alignSelf: 'center', resizeMode: 'contain', marginBottom: 20 },
+  successIcon: { color: colors.secondary, fontSize: 54, textAlign: 'center', fontWeight: '900' },
+  balanceCard: { borderRadius: 20, backgroundColor: colors.primaryContainer, padding: 18, marginVertical: 16 },
+  balanceText: { color: colors.primary, fontSize: 34, lineHeight: 40, fontWeight: '900', marginVertical: 8 },
+  mobileChart: { height: 150, flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 14 },
+  mobileChartBar: { flex: 1, height: '100%', justifyContent: 'flex-end', alignItems: 'center' },
+  mobileChartFill: { width: '100%', borderRadius: 8, backgroundColor: colors.primaryContainer },
+  riderMiniMap: { height: 148, borderRadius: 16, overflow: 'hidden', marginTop: 12, padding: 14, justifyContent: 'flex-end' },
+  tabsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 },
+  tabPill: { borderRadius: 999, backgroundColor: colors.surfaceContainerHigh, color: colors.onSurfaceVariant, paddingHorizontal: 14, paddingVertical: 8, fontWeight: '800' },
+  tabPillActive: { borderRadius: 999, backgroundColor: colors.primaryContainer, color: colors.onPrimaryContainer, paddingHorizontal: 14, paddingVertical: 8, fontWeight: '900', overflow: 'hidden' },
+  podium: { flexDirection: 'row', gap: 10, alignItems: 'flex-end', marginBottom: 22 },
+  podiumCard: { flex: 1, borderRadius: 16, backgroundColor: colors.surfaceContainerLowest, padding: 12, alignItems: 'center' },
+  leaderRow: { borderRadius: 14, backgroundColor: colors.surfaceContainerLowest, padding: 14, marginBottom: 10, flexDirection: 'row', gap: 12, alignItems: 'center' },
+  profileHero: { alignItems: 'center', borderRadius: 20, backgroundColor: colors.surfaceContainerLowest, padding: 18, marginBottom: 16 },
+  profileAvatar: { width: 92, height: 92, borderRadius: 46, marginBottom: 12 },
+  ratingLine: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
+  avatarInitial: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primaryContainer, color: colors.onPrimaryContainer, textAlign: 'center', textAlignVertical: 'center', fontWeight: '900' },
 });
