@@ -57,3 +57,14 @@ export const vendorProfileSettingsSchema = Joi.object({
   business: Joi.object().unknown(true),
   operations: Joi.array().items(Joi.object().unknown(true)),
 }).unknown(true);
+
+
+export const referralInvitationsSchema = Joi.object({
+  contactIds: Joi.array().items(Joi.string()).min(1).required(),
+});
+
+export const campaignCreateSchema = Joi.object({
+  goal: Joi.string().required(),
+  offerType: Joi.string().required(),
+  budget: Joi.number().min(0).required(),
+}).unknown(true);

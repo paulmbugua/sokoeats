@@ -87,3 +87,28 @@ export async function updateVendorProfileSettings(req, res, next) {
     res.json({ profileSettings: await saveScreenPayload('vendor_profile_settings', settings) });
   } catch (err) { next(err); }
 }
+
+
+export async function merchantGrowthSuite(_req, res, next) {
+  try {
+    const screens = {};
+    for (const key of ["merchant_growth_portal","create_new_campaign","campaign_performance_analytics","campaign_history_logs"]) screens[key] = await getScreenPayload(key);
+    res.json({ growth: screens });
+  } catch (err) { next(err); }
+}
+
+export async function createCampaign(req, res, next) {
+  try {
+    const create = await getScreenPayload('create_new_campaign');
+    create.lastCampaign = { ...req.body, status: 'draft', createdAt: new Date().toISOString() };
+    res.status(201).json({ campaign: await saveScreenPayload('create_new_campaign', create) });
+  } catch (err) { next(err); }
+}
+
+export async function campaignPerformance(_req, res, next) {
+  try { res.json({ performance: await getScreenPayload('campaign_performance_analytics') }); } catch (err) { next(err); }
+}
+
+export async function campaignHistory(_req, res, next) {
+  try { res.json({ history: await getScreenPayload('campaign_history_logs') }); } catch (err) { next(err); }
+}

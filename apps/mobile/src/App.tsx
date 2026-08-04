@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 
-type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults';
+type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
 type PaymentMethod = 'mpesa' | 'card';
 
 const colors = {
@@ -116,6 +116,22 @@ const stitchFilesUsed = [
   'customer_service_lesson/screen.png',
   'rider_training_quiz/code.html',
   'rider_training_quiz/screen.png',
+  'invite_friends_earn_rewards/code.html',
+  'invite_friends_earn_rewards/screen.png',
+  'select_contacts/code.html',
+  'select_contacts/screen.png',
+  'invitations_sent_success/code.html',
+  'invitations_sent_success/screen.png',
+  'whatsapp_sharing_template/code.html',
+  'whatsapp_sharing_template/screen.png',
+  'my_referral_rewards/code.html',
+  'my_referral_rewards/screen.png',
+  'incident_confirmation_next_steps/code.html',
+  'incident_confirmation_next_steps/screen.png',
+  'support_ticket_history/code.html',
+  'support_ticket_history/screen.png',
+  'resolved_ticket_details_inc_82941/code.html',
+  'resolved_ticket_details_inc_82941/screen.png',
   'quiz_results_feedback/code.html',
   'quiz_results_feedback/screen.png',
   'vendor_order_history/code.html',
@@ -274,6 +290,254 @@ const fallbackActiveDelivery: ActiveDeliveryPayload = {
 
 type GenericPayload = Record<string, any>;
 const fallbackRiderBatch: Record<string, GenericPayload> = {
+  "invite_friends_earn_rewards": {
+    "sourceFiles": [
+      "invite_friends_earn_rewards/code.html",
+      "invite_friends_earn_rewards/screen.png"
+    ],
+    "title": "Feed Your Community",
+    "subtitle": "Invite friends to SokoEats and you both get KES 500 off your next order.",
+    "code": "SOKO-JUMA-254",
+    "progress": "3/5 Referrals",
+    "nextReward": "KES 1,000 bonus at 5 referrals",
+    "earnedTotal": "KES 1,500",
+    "activeMembers": "3 Active",
+    "heroImages": [
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuAmnpkpZGuZT0N5e34mKUKNYt7lmZXC3SBQgfIK8NvqKJdumc-OyFIajQYjfIm_AI-O_DKgiGWU4m7-48-LSlAA0UOgbWMACqronrWQ1hexZsEVEhKo__3sq-ayFSEcknX5-ycXvkuunlFQFqHo9pS0JvMNhd-KQ1_SyjvLwOw776PhRbI3mwbuQzE3sA1hd22Ebh_21UexHHmoN6p3tyyJNDkMKyhYPsjX59gIda4dEZyIn65xTT2f",
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuCg-amds2XMHeqtkmv094t0d7t3Wt6848k7wpwkspm5sjKKdXo0KfZw8OIs5zScKi3FPHgCKXC0VcO2gqpOxJfvyUp0DAebYvCyNL5QFfpYvRKPM0yZ9zxrR3NTiv-vnmx3sZUBGofgcF-kOCOaBVq59JemQYzESpPl-ukp5EWS91xqLTgmkjVZEh21e2LW4Dvs-Br_jrl6nIRChPxe-jF7ZI0SA31cbKJhmehZavZaMhRcPVbWvDuk",
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuCIEjwFC6eV7tF_aCnitYATcFgFSYOl04MsRDxHkHHQJe0vXhdFo31-zMIfqLeZQolwNc1BXAlL-7pnSxtt6Wz8fO417mP2ijsfXHsQsKB-rPM8R3ulzT7SsYZwxaofVd0dRz7eAlWAVCYd22a1nBOO30CbTDEfqLe2EVa-M1l73fZAr3ATB5PPA1PcBT40zd0SV9Ddu-nat7FLpZiLfqx546f4GF7RJsMEd4U5-TFW2cGVK7XGDSY0"
+    ],
+    "activity": [
+      {
+        "name": "Amani",
+        "body": "joined using your code!",
+        "age": "2 hours ago",
+        "reward": "+500"
+      },
+      {
+        "name": "Kev",
+        "body": "just placed his first order",
+        "age": "Yesterday"
+      }
+    ],
+    "rewards": [
+      {
+        "title": "Free Delivery",
+        "status": "Available now"
+      },
+      {
+        "title": "KES 1,000 Gift Card",
+        "status": "2 more invites"
+      },
+      {
+        "title": "Dinner for Two",
+        "status": "7 more invites"
+      }
+    ]
+  },
+  "select_contacts": {
+    "sourceFiles": [
+      "select_contacts/code.html",
+      "select_contacts/screen.png"
+    ],
+    "title": "Choose Friends to Invite",
+    "contacts": [
+      {
+        "id": "jabari",
+        "name": "Jabari Omondi",
+        "phone": "+254 712 345 678",
+        "avatarUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuBtJGyOZuxGHCp_88d_VOP_6N1IH2okD2FSZSe9LuhMw-8KGmlRoBay8Wq5OuPcVIj3D1m-3RRN6xKRBN27-fqbDCh-DNDWl0KrcnVJ_WB6ol5qv9A3LgCVe6Go9S0ApScWPhf1GY_1ixesvEbETVd5Fz_tOuC0PbgJOCuHtRgv5PHm8bMjG29VUapyrfFZ3Auv0Eq4uW549TAKE4r1ZJA5muoMgXXkTbRDqN-gu-RT2R4cyB_a8kIL"
+      },
+      {
+        "id": "zuri",
+        "name": "Zuri Wanjiku",
+        "phone": "+254 723 456 789",
+        "avatarUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAcxFkoGwJTXxGJykA0Wv-FFtNxwpbcKpLjuO6TZWpQzF7urMpkuP4j0BNS2-wjSAOuUUbbpwX74iMLIlseWraJaOLvWuQhceRRnOiOUMskREu7OpZur147JF9kA60x4R64XymJqhSHL-PJJh2bAhpDxNpocK1mnp4pEQXX60b3497Y8RfXU5Ilj9L7Tbdhwz0EYTM5a-FsG6_n4pjXxuJTsDxuuuPq936cT8PfMHploPDCsTzXUkS2"
+      },
+      {
+        "id": "kwame",
+        "name": "Kwame Musyoka",
+        "phone": "+254 734 567 890",
+        "initials": "KM"
+      },
+      {
+        "id": "amani",
+        "name": "Amani Adhiambo",
+        "phone": "+254 745 678 901",
+        "avatarUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuCE8rAr6vSOvJh8eAQpbn4u1PRak6oChPqsUShroWVhJChxp0tDqFLPrzZdHf_pyxo7et3qJtf_FY8HrCwN6YaLXJmTxi21ZuYziqdknJKP8qo90QWqboU_ifpVtOPBYAmQXA7TdcUoHTvtQf5hgd-hEtR8Efqdz6IGYykRHaddinfyJ5Ps4bUm5T0nWaHAVKpNNqZzfpOoKCxgs5MwzLuoOkUNgBLa8DYjCy5v676qCxBxx1ZlSzYJ"
+      },
+      {
+        "id": "sasha",
+        "name": "Sasha Njeri",
+        "phone": "+254 756 789 012",
+        "initials": "SN"
+      }
+    ]
+  },
+  "invitations_sent_success": {
+    "sourceFiles": [
+      "invitations_sent_success/code.html",
+      "invitations_sent_success/screen.png"
+    ],
+    "title": "Invitations Sent!",
+    "body": "We've sent your referral link to 3 friends. You'll get KES 500 when they complete their first order.",
+    "potentialReward": "KES 1,500 total available",
+    "community": "12,400+ people joined this week",
+    "images": [
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuCrkkfEgbIipqHwjG_7GlU21o_e9WBmKbiFjFtqE5yRHIb3oDSLu5KOTbdIYVx7x4QbyAPO6ITEuXYjeOaJ611DDUrJeeWyReUNdaTlBenY_jBEPAgPci4oUXbAZRVX53TY7eHI2m0Si7cDeNK5RsqZPwADUu9xFLbLVJ5w36aY5kTtGTqII4irQc4VtJ6vI15z76Di0Sw63Sk9SW0IjZRmxUHsSWpmCH6KkEB96_X2RnroH9iWOOaw",
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuA_FcrKu46CuyJiyfvlJO_l2hAFVZQEVd_an3eTLubWvK53DvtvwXFWc4DY89VAg-L7eTa20-xuNyj2a8lrsXI7xvB7ao7vy0zgiq6zJiRcwA2xBhNw9pGJoy807X855WHLf4s4vU_zgiGuBntxgnmXlEnZFcD31zLl65v9nz2Vkvng4lJLY4aKxSQXUvaCvjW0MbZwc-v6BerV4wQqYYfZ3trvzjX7XEB19VHflPe7Scg5hTGAR5Gl",
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuBrP3hDeK_I1aj2u2T2-fVL7ky3Y8NJNbZRORs8Ss5tXdqovnF4xqfgs63HETU5zJy82H4Q3_BR0RIl9LV28Oykf9FOsbnhoN4QCWaoUJYR459HcLv1B3KfIw22-vgvuIHgpeSz6_4xgZ-qD62u8K0jaCAh0Fm8ZvLihQW3IRV-DcwvPhectp0tXHLoSvMtGdD_rD5RPd0H0fc44JG16gkbsmVjeQq0AJcqScUbnSyO9hpYK5VJ9Vrt"
+    ]
+  },
+  "whatsapp_sharing_template": {
+    "sourceFiles": [
+      "whatsapp_sharing_template/code.html",
+      "whatsapp_sharing_template/screen.png"
+    ],
+    "title": "Bring your squad to the table",
+    "badge": "Harambee Bonus Active",
+    "subtitle": "Get KES 500 for every friend who orders!",
+    "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuAnv_X3WFO6YrGQLVqbCMxQkxw-4DA9q8xuXaW6xspPaJo4jK_Hm5yAjkX4hvXokC7hjaaOolgRd-NB4V_-BEO9U5y678RWdcNSh4jN7uHoYhy5hozITXggXJ4ooF-GXWtlmR9McENnokJTm16bcXbt1uagorOel-VSv0huFhxHM6SUZuj3ggMPNHXIQNtcdTHNopOfKe3QqqsOnZW9IiiuYQ9jHRqnohNyUZwMt_D-sFSf8gT8zaoq",
+    "message": "Jambo! I'm using SokoEats to get my favorite Kenyan meals delivered. Use my code SOKO-JUMA-254 to get KES 500 off your first order!",
+    "code": "SOKO-JUMA-254",
+    "link": "soko.eats/invite",
+    "channels": [
+      "Share to WhatsApp",
+      "SMS",
+      "Telegram",
+      "Messenger",
+      "Copy Link"
+    ],
+    "reward": "Your friends get KES 500, and you get KES 500 after their first order."
+  },
+  "my_referral_rewards": {
+    "sourceFiles": [
+      "my_referral_rewards/code.html",
+      "my_referral_rewards/screen.png"
+    ],
+    "title": "Your Rewards",
+    "totalEarned": "KES 2,500",
+    "successfulReferrals": "3",
+    "pendingRewards": "2",
+    "images": [
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuAsHbMlW8IN7XvCBjABLv1In4xkXvzK7o7fgMC_OYN2BiyIz810W_l7JJlwqdQXQ8DkM3R588Z2E1V5ildZwYFsMkZcbHKCUerQl2_YbVIJKcF-V2tmH4hdzON_60oJAGSqkdP-SO3knb80Nu3Xxq878iNQ_rQ_T9bbC8QNwbMhOwc3iZefsCQd8wABLIyAtcJNPCFdtqzAJxDLqKFzvJaltkHxUbr4MLLq7aeNs02WtpcoXnOdhHay",
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuAV4C-YwoPZAiJK7iSnAi_hmxE5WAUbqVTPCJkmhFZ2_VUOqL0p3J3klI0DuhA9oDiOotcxEf4QSUZCBw0E_Bt_ER_bRmyfHL6zZMYyMU98ZOgpLXfX0QHG647_3r0OFom855AGG8ChVrvVLf2TPKfq8f5q1PHY8acBiPpXyjGsLizXkfqcqo8g33q0YdeBh99qv65LsNOfinE-YEJmLy2EaSOFtisbxejsAiR_hwm4vwI-V2oo8AJf",
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuCl5CXJWvrpeUkt8EJZrAm71gXDUDZvVvP_i811dAMy2UXpj-RIJH1Z46scbOzUtEN3GCG7Z5VZ-OVpYAM71WxsZGMrde9LKOtJLQdCGqbQYt9T5QFrAv9YJ6CiBvpK1zH2TFNLrTpRijLMH146gvGJuivrJZ9wQbj9iH3CSX57Aq7YoLuQcfzQmxoeRnr8wxUkA-xZQ6rs58XPV5DXgWAhcbydnLzkrQcLVYRsSzjGczAmgByHHWl1",
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuBIHIotCvy7ZiakQ_4cYqxVdqD2fM1z4v46b0sbvPDIqpd6H3rmps1VTbxD3IgJZz2sPtqyNe2p-Vk1M1ELnqOkZWbG6zmJHhSbgBgVAMFKdupScc2OuEERVl7WADcrgy6eYBYpo-vPpIzn5BdrnQAHFHr9X116Mx-qVJkhwaKaxi8G9VbAqTpW9iZUvZ_r8qQoDlIOX9sTbdhdLRxFqiaixTiGlCZBM78ICNmlBiv7xDsCHFWKeiby",
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuCVApV7XhU7IxR860KNLpSTyFgT2Je5eXLqFGSvYdMsmwS5ywN5cHa5-u4C232bpY5YekRAk9zzZiK4gVvm7FiEFe_X-8kuU5PosPTELZ3noVLbz15qzZv-jLC9qTUoLUZtddKnpPTS53b58sYh7emuvO2sxr2xKj4Z60mPM8yvJcQ-xCg532bWsjZiNS_O80BNstZ8h0QqPWwpdMImqG8xLb5Xnmg6tN_a3aC6zxkZnyS3XUHjIJYY"
+    ],
+    "friends": [
+      {
+        "name": "Mwangi K.",
+        "status": "Reward Earned",
+        "reward": "+KES 500"
+      },
+      {
+        "name": "Zainab A.",
+        "status": "Order Placed"
+      },
+      {
+        "name": "David O.",
+        "status": "Joined"
+      }
+    ],
+    "nextReward": "Invite 2 more friends to unlock a KES 1,000 bonus voucher!",
+    "progress": "3/5 Referrals",
+    "activity": [
+      "Sarah M. just joined via Mwangi link! Welcome to the table!",
+      "Brian L. redeemed KES 1,000 for lunch! Enjoy!"
+    ]
+  },
+  "incident_confirmation_next_steps": {
+    "sourceFiles": [
+      "incident_confirmation_next_steps/code.html",
+      "incident_confirmation_next_steps/screen.png"
+    ],
+    "title": "We've Got Your Back",
+    "body": "Your safety is our top priority. We've received your report.",
+    "refId": "#INC-82941",
+    "imageUrl": "https://lh3.googleusercontent.com/aida-public/AB6AXuA_WQacu1asPubExZ8QvtHZdM7R1iWTXXjFyCNM2CrQl_1EEaFfyrmB0qg978ULC21dsmwzrflIIH-_Pou0tA1mKN1IwOv7lN57doTkfSevRJJiC9jq4MuHHtHKwONlkGwtNsWstAU3d6qKz918gCTm70hmY9DqtMIamNG2LhL15ovfYmwX85YiqpT4dT_-3u9Kexx6Cbc-EKnK4eHp_Dr2XVXT4fIx0U1dG7tGvAdvxe-ToikninUY",
+    "steps": [
+      "A safety agent will call you within 5 minutes to verify your status.",
+      "Dispatch has been notified of your current location at Nairobi Central.",
+      "Law enforcement or medical services will be dispatched if requested during the call."
+    ],
+    "tip": "Please move to a well-lit area and keep your phone charged. If you feel unsafe, find a secure location immediately."
+  },
+  "support_ticket_history": {
+    "sourceFiles": [
+      "support_ticket_history/code.html",
+      "support_ticket_history/screen.png"
+    ],
+    "title": "Ticket History",
+    "tabs": [
+      "Active (3)",
+      "Resolved"
+    ],
+    "tickets": [
+      {
+        "category": "Safety Incident",
+        "status": "IN PROGRESS",
+        "title": "Issue with Pickup Location access",
+        "code": "#INC-82941",
+        "updated": "Updated 2 hours ago",
+        "body": "The gate security mentioned they need a specific code for SokoEats riders to enter the premises..."
+      },
+      {
+        "category": "Earnings Query",
+        "status": "PENDING",
+        "title": "Missing Peak Hour Bonus",
+        "code": "#INC-82810",
+        "updated": "Updated 5 hours ago",
+        "body": "I completed 5 orders during the Sunday lunch rush but the 200 KES bonus hasn't reflected yet."
+      },
+      {
+        "category": "Order Issue",
+        "status": "ACTIVE",
+        "title": "Customer unreachable at delivery",
+        "code": "#INC-82755",
+        "updated": "Updated 1 day ago",
+        "body": "Agent: We are still trying to contact the customer via their secondary number. Please wait..."
+      },
+      {
+        "category": "Insurance Info",
+        "status": "RESOLVED",
+        "title": "Update on Medical Cover",
+        "code": "#INC-81022",
+        "updated": "Resolved 3 days ago",
+        "body": "Issue resolved. Documentation sent to your email."
+      },
+      {
+        "category": "Technical",
+        "status": "RESOLVED",
+        "title": "App crashing during GPS sync",
+        "code": "#INC-79441",
+        "updated": "Resolved 1 week ago",
+        "body": "Fixed in Version 4.2.1"
+      }
+    ],
+    "support": "Our support team is available 24/7 to assist with any challenges on the road."
+  },
+  "resolved_ticket_details_inc_82941": {
+    "sourceFiles": [
+      "resolved_ticket_details_inc_82941/code.html",
+      "resolved_ticket_details_inc_82941/screen.png"
+    ],
+    "code": "INC-82941",
+    "status": "RESOLVED",
+    "title": "Issue with Pickup Location access",
+    "resolvedAt": "Resolved Today, 10:30 AM",
+    "agent": {
+      "label": "Customer Support Agent",
+      "time": "10:30 AM"
+    },
+    "message": "Jambo! We have updated the gate access codes for this location in our system. You should now see the specific code in your 'Order Notes' for all future deliveries to this estate. Thank you for flagging this!",
+    "images": [
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuCMT2wDg0o-9vyqgVgg5QEt8G11Usbvh6aQeuWMZ7kQWwdZ6a9MGWzy0zhmee0FrBDi-XycaY0gzPtXSQixGIlXX_NJDQ90Dc0qlPnbMXfUMyKq5SRxlsN6_u2RAREh71Kjh5tFqANOZ8_67mAfRXI9gPoMHoGTF69cXQJWycxiuqqdqr3HP8WA5YkJOe6xrF9q-A5qxIdyEfGd0zWDnG7t4LcFGuAxBCPIUS82c9zjgbfo_PsqhXx3",
+      "https://lh3.googleusercontent.com/aida-public/AB6AXuDvCtyvXrZI_sYnMZZ8Zy55TK-B7wTzZibpXpSYK3mVva1eFgTvATphHj3xI7nuW7qTmaRYLM8ciVC-L0dvZ_4rUu6Cdai7_UAwzre4L0QGryU-_dRxvGLIyB303fwCB98BkztggdS6aLqX1WvjkzHxfek4YZl4WgIiTJD9-dEKlLh8xpbPG5U9SI6Eenx-RU5gK9QTckl2HzFUG2W7P4Uv6S7si3XFU_a617C5VylipJ97TwXfeJ0m"
+    ],
+    "originalReport": "I'm at the Kilimani Heights gate but the guard says the old code 4455 is no longer working. I had to wait 10 minutes for the customer to pick up."
+  },
   "safety_incident_report": {
     "sourceFiles": [
       "safety_incident_report/code.html",
@@ -1185,7 +1449,7 @@ export default function App() {
             onCheckout={() => openScreen('checkout')}
           />
         )}
-        {screen === 'riderHome' && <RiderHomeScreen data={riderHome} onBack={() => openScreen('home')} onOnboarding={() => openScreen('riderOnboardingWelcome')} onEarnings={() => openScreen('riderEarnings')} onLeaderboard={() => openScreen('riderLeaderboard')} onProfile={() => openScreen('riderProfile')} onHelp={() => openScreen('riderHelpCenter')} onIncident={() => openScreen('riderIncidentReport')} onTraining={() => openScreen('riderTraining')} onOrderDetail={() => openScreen('riderOrderDetail')} onAccept={async () => { try { const next = await sokoeatsApi<{ riderHome: RiderHomePayload; delivery: ActiveDeliveryPayload }>(`/api/rider/requests/${riderHome.request.id}/accept`, { method: 'POST' }); setRiderHome(next.riderHome); setActiveDelivery(next.delivery); } catch {} openScreen('activeDelivery'); }} />}
+        {screen === 'riderHome' && <RiderHomeScreen data={riderHome} onBack={() => openScreen('home')} onOnboarding={() => openScreen('riderOnboardingWelcome')} onEarnings={() => openScreen('riderEarnings')} onLeaderboard={() => openScreen('riderLeaderboard')} onProfile={() => openScreen('riderProfile')} onHelp={() => openScreen('riderHelpCenter')} onIncident={() => openScreen('riderIncidentReport')} onTraining={() => openScreen('riderTraining')} onOrderDetail={() => openScreen('riderOrderDetail')} onReferral={() => openScreen('referralHome')} onTickets={() => openScreen('supportTicketHistory')} onAccept={async () => { try { const next = await sokoeatsApi<{ riderHome: RiderHomePayload; delivery: ActiveDeliveryPayload }>(`/api/rider/requests/${riderHome.request.id}/accept`, { method: 'POST' }); setRiderHome(next.riderHome); setActiveDelivery(next.delivery); } catch {} openScreen('activeDelivery'); }} />}
         {screen === 'activeDelivery' && <ActiveDeliveryScreen data={activeDelivery} onBack={() => openScreen('riderHome')} onArrived={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/arrived`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} onPickup={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/pickup`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} />}
         {screen === 'riderOnboardingWelcome' && <RiderWelcomeScreen data={riderBatch.welcome_to_sokoeats_rider} onBack={() => openScreen('riderHome')} onNext={() => openScreen('riderPersonal')} />}
         {screen === 'riderPersonal' && <RiderFormScreen data={riderBatch.personal_information} onBack={() => openScreen('riderOnboardingWelcome')} onNext={() => openScreen('riderVehicle')} />}
@@ -1196,7 +1460,7 @@ export default function App() {
         {screen === 'riderPayout' && <RiderPayoutScreen data={riderBatch.m_pesa_payout_confirmation} onBack={() => openScreen('riderEarnings')} />}
         {screen === 'riderLeaderboard' && <RiderLeaderboardScreen data={riderBatch.rider_leaderboard} onBack={() => openScreen('riderHome')} />}
         {screen === 'riderProfile' && <RiderProfileScreen data={riderBatch.rider_profile_ratings} onBack={() => openScreen('riderHome')} />}
-        {screen === 'riderIncidentReport' && <RiderIncidentScreen data={riderBatch.safety_incident_report} onBack={() => openScreen('riderHome')} />}
+        {screen === 'riderIncidentReport' && <RiderIncidentScreen data={riderBatch.safety_incident_report} onBack={() => openScreen('riderHome')} onSubmitted={() => openScreen('riderIncidentConfirmation')} />}
         {screen === 'riderHelpCenter' && <RiderHelpCenterScreen data={riderBatch.rider_help_center} onBack={() => openScreen('riderHome')} onChat={() => openScreen('riderLiveChat')} onIncident={() => openScreen('riderIncidentReport')} />}
         {screen === 'riderLiveChat' && <RiderLiveChatScreen data={riderBatch.live_chat_support} onBack={() => openScreen('riderHelpCenter')} onSend={async (body) => { const next = await sokoeatsApi<{ chat: GenericPayload }>('/api/rider/live-chat/messages', { method: 'POST', body: JSON.stringify({ body }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, live_chat_support: next.chat })); }} />}
         {screen === 'riderOrderDetail' && <RiderOrderDetailScreen data={riderBatch.order_details_sko_1294} onBack={() => openScreen('riderHome')} />}
@@ -1204,6 +1468,14 @@ export default function App() {
         {screen === 'riderLesson' && <RiderLessonScreen data={riderBatch.customer_service_lesson} onBack={() => openScreen('riderTraining')} onQuiz={() => openScreen('riderQuiz')} />}
         {screen === 'riderQuiz' && <RiderQuizScreen data={riderBatch.rider_training_quiz} onBack={() => openScreen('riderLesson')} onSubmit={async (selectedIndex) => { const next = await sokoeatsApi<{ results: GenericPayload }>('/api/rider/training/quiz/submissions', { method: 'POST', body: JSON.stringify({ selectedIndex }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, quiz_results_feedback: next.results })); openScreen('riderQuizResults'); }} />}
         {screen === 'riderQuizResults' && <RiderQuizResultsScreen data={riderBatch.quiz_results_feedback} onBack={() => openScreen('riderTraining')} />}
+        {screen === 'riderIncidentConfirmation' && <IncidentConfirmationScreen data={riderBatch.incident_confirmation_next_steps} onBack={() => openScreen('riderHome')} onTicket={() => openScreen('resolvedTicketDetail')} />}
+        {screen === 'referralHome' && <ReferralHomeScreen data={riderBatch.invite_friends_earn_rewards} onBack={() => openScreen('riderHome')} onInvite={() => openScreen('referralContacts')} onShare={() => openScreen('referralShare')} onRewards={() => openScreen('referralRewards')} />}
+        {screen === 'referralContacts' && <SelectContactsScreen data={riderBatch.select_contacts} onBack={() => openScreen('referralHome')} onSent={async (ids) => { const next = await sokoeatsApi<{ success: GenericPayload }>('/api/rider/referrals/invitations', { method: 'POST', body: JSON.stringify({ contactIds: ids }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, invitations_sent_success: next.success })); openScreen('referralSent'); }} />}
+        {screen === 'referralSent' && <ReferralSentScreen data={riderBatch.invitations_sent_success} onBack={() => openScreen('referralHome')} />}
+        {screen === 'referralShare' && <ReferralShareScreen data={riderBatch.whatsapp_sharing_template} onBack={() => openScreen('referralHome')} />}
+        {screen === 'referralRewards' && <ReferralRewardsScreen data={riderBatch.my_referral_rewards} onBack={() => openScreen('referralHome')} />}
+        {screen === 'supportTicketHistory' && <SupportTicketHistoryScreen data={riderBatch.support_ticket_history} onBack={() => openScreen('riderHome')} onTicket={() => openScreen('resolvedTicketDetail')} />}
+        {screen === 'resolvedTicketDetail' && <ResolvedTicketScreen data={riderBatch.resolved_ticket_details_inc_82941} onBack={() => openScreen('supportTicketHistory')} />}
         {screen === 'checkout' && (
           <CheckoutScreen
             subtotal={subtotal}
@@ -1443,7 +1715,7 @@ function HomeScreen({
 }
 
 
-function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onLeaderboard, onProfile, onHelp, onIncident, onTraining, onOrderDetail }: { data: RiderHomePayload; onBack: () => void; onAccept: () => void; onOnboarding: () => void; onEarnings: () => void; onLeaderboard: () => void; onProfile: () => void; onHelp: () => void; onIncident: () => void; onTraining: () => void; onOrderDetail: () => void }) {
+function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onLeaderboard, onProfile, onHelp, onIncident, onTraining, onOrderDetail, onReferral, onTickets }: { data: RiderHomePayload; onBack: () => void; onAccept: () => void; onOnboarding: () => void; onEarnings: () => void; onLeaderboard: () => void; onProfile: () => void; onHelp: () => void; onIncident: () => void; onTraining: () => void; onOrderDetail: () => void; onReferral: () => void; onTickets: () => void }) {
   return (
     <View style={styles.riderShell}>
       <View style={styles.riderTop}>
@@ -1457,7 +1729,7 @@ function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onL
           <View style={styles.riderStat}><Text style={styles.upperLabel}>Current Zone</Text><Text style={styles.riderStatValue}>{data.rider.zone}</Text></View>
           <View style={styles.riderStat}><Text style={styles.upperLabel}>Today's Earnings</Text><Text style={styles.riderStatValue}>{data.rider.earningsToday}</Text></View>
         </View>
-        <View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onOnboarding}><Text style={styles.riderQuickTitle}>Onboarding</Text><Text style={styles.riderQuickText}>Finish rider verification</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onEarnings}><Text style={styles.riderQuickTitle}>Earnings</Text><Text style={styles.riderQuickText}>Cash out to M-Pesa</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onLeaderboard}><Text style={styles.riderQuickTitle}>Leaderboard</Text><Text style={styles.riderQuickText}>Weekly rider rank</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onProfile}><Text style={styles.riderQuickTitle}>Profile</Text><Text style={styles.riderQuickText}>Ratings and reviews</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onHelp}><Text style={styles.riderQuickTitle}>Help</Text><Text style={styles.riderQuickText}>Support and FAQs</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onIncident}><Text style={styles.riderQuickTitle}>Incident</Text><Text style={styles.riderQuickText}>Report safety issues</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onTraining}><Text style={styles.riderQuickTitle}>Training</Text><Text style={styles.riderQuickText}>Lessons and quiz</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onOrderDetail}><Text style={styles.riderQuickTitle}>Order #1294</Text><Text style={styles.riderQuickText}>Customer and items</Text></TouchableOpacity></View>
+        <View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onOnboarding}><Text style={styles.riderQuickTitle}>Onboarding</Text><Text style={styles.riderQuickText}>Finish rider verification</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onEarnings}><Text style={styles.riderQuickTitle}>Earnings</Text><Text style={styles.riderQuickText}>Cash out to M-Pesa</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onLeaderboard}><Text style={styles.riderQuickTitle}>Leaderboard</Text><Text style={styles.riderQuickText}>Weekly rider rank</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onProfile}><Text style={styles.riderQuickTitle}>Profile</Text><Text style={styles.riderQuickText}>Ratings and reviews</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onHelp}><Text style={styles.riderQuickTitle}>Help</Text><Text style={styles.riderQuickText}>Support and FAQs</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onIncident}><Text style={styles.riderQuickTitle}>Incident</Text><Text style={styles.riderQuickText}>Report safety issues</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onTraining}><Text style={styles.riderQuickTitle}>Training</Text><Text style={styles.riderQuickText}>Lessons and quiz</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onOrderDetail}><Text style={styles.riderQuickTitle}>Order #1294</Text><Text style={styles.riderQuickText}>Customer and items</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onReferral}><Text style={styles.riderQuickTitle}>Referrals</Text><Text style={styles.riderQuickText}>Invite and earn</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onTickets}><Text style={styles.riderQuickTitle}>Tickets</Text><Text style={styles.riderQuickText}>History and resolved</Text></TouchableOpacity></View>
         <ImageBackground source={{ uri: data.heatmapUrl }} style={styles.riderMapCard} imageStyle={styles.riderMapImage}>
           <View style={styles.surgeBadge}><Text style={styles.surgeText}>{data.surge.label}</Text></View>
         </ImageBackground>
@@ -1543,11 +1815,11 @@ function RiderProfileScreen({ data, onBack }: { data: GenericPayload; onBack: ()
 }
 
 
-function RiderIncidentScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+function RiderIncidentScreen({ data, onBack, onSubmitted }: { data: GenericPayload; onBack: () => void; onSubmitted?: () => void }) {
   const [category, setCategory] = useState(data.categories[0]);
   const [urgency, setUrgency] = useState(data.urgencyLevels[1]);
   const [description, setDescription] = useState('');
-  const submit = async () => { await sokoeatsApi('/api/rider/incidents', { method: 'POST', body: JSON.stringify({ category, urgency, description: description || 'Reported from mobile incident form.' }) }).catch(() => null); onBack(); };
+  const submit = async () => { await sokoeatsApi('/api/rider/incidents', { method: 'POST', body: JSON.stringify({ category, urgency, description: description || 'Reported from mobile incident form.' }) }).catch(() => null); onSubmitted ? onSubmitted() : onBack(); };
   return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.emergencyCard}><Text style={styles.checkoutSectionTitle}>{data.dangerTitle}</Text><Text style={styles.smsBody}>{data.dangerBody}</Text><TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Call Dispatch</Text></TouchableOpacity></View><Text style={styles.upperLabel}>Category</Text><View style={styles.tabsRow}>{data.categories.map((item: string) => <Text onPress={() => setCategory(item)} style={item === category ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><Text style={styles.upperLabel}>Urgency Level</Text><View style={styles.tabsRow}>{data.urgencyLevels.map((item: string) => <Text onPress={() => setUrgency(item)} style={item === urgency ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>Detailed Description</Text><TextInput style={styles.formFieldInput} value={description} onChangeText={setDescription} multiline placeholder="Tell dispatch what happened" placeholderTextColor={colors.outline} /></View><View style={styles.riderQuickGrid}>{data.evidenceImages.map((uri: string) => <Image source={{ uri }} style={styles.evidenceThumb} key={uri} />)}</View><Text style={styles.secureText}>{data.legal}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={submit}><Text style={styles.placeOrderText}>Submit Report</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" /><SourceLedger /></View>;
 }
 
@@ -1579,6 +1851,41 @@ function RiderQuizScreen({ data, onBack, onSubmit }: { data: GenericPayload; onB
 
 function RiderQuizResultsScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
   return <View style={styles.riderShell}><RiderScreenHeader title="Rider Training" onBack={onBack} /><ScrollView contentContainerStyle={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.imageUrl }} style={styles.successImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><Text style={styles.balanceText}>{data.score}</Text><Text style={styles.discountText}>{data.accuracy}</Text><View style={styles.smsCard}><Text style={styles.vendorName}>New Badge Earned</Text><Text style={styles.totalAmount}>{data.badge}</Text></View><Text style={styles.checkoutSectionTitle}>Knowledge Check</Text>{data.mastered.map((item: string) => <Text style={styles.helpQuestion} key={item}>Mastered: {item}</Text>)}<View style={styles.emergencyCard}><Text style={styles.vendorName}>Quick Review Needed</Text><Text style={styles.smsBody}>{data.review}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Return to Dashboard</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
+}
+
+
+function ReferralHomeScreen({ data, onBack, onInvite, onShare, onRewards }: { data: GenericPayload; onBack: () => void; onInvite: () => void; onShare: () => void; onRewards: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="SokoEats Referrals" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.heroImages[0] }} style={styles.riderHeroImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text><View style={styles.balanceCard}><Text style={styles.upperLabel}>Your Personal Code</Text><Text style={styles.balanceText}>{data.code}</Text></View><View style={styles.riderStats}><View style={styles.riderStat}><Text style={styles.riderStatValue}>{data.earnedTotal}</Text><Text style={styles.upperLabel}>Earned Total</Text></View><View style={styles.riderStat}><Text style={styles.riderStatValue}>{data.activeMembers}</Text><Text style={styles.upperLabel}>Community Members</Text></View></View><Text style={styles.vendorName}>Community Progress</Text><Text style={styles.restaurantMeta}>{data.progress} - Next Reward: {data.nextReward}</Text><View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onInvite}><Text style={styles.riderQuickTitle}>Invite Friends</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onShare}><Text style={styles.riderQuickTitle}>Share Template</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onRewards}><Text style={styles.riderQuickTitle}>Rewards</Text></TouchableOpacity></View><Text style={styles.checkoutSectionTitle}>Community Activity</Text>{data.activity.map((item: GenericPayload) => <View style={styles.uploadCard} key={item.name}><View><Text style={styles.vendorName}>{item.name}</Text><Text style={styles.restaurantMeta}>{item.body}</Text></View><Text style={styles.discountText}>{item.reward || item.age}</Text></View>)}</ScrollView><BottomNav active="Account" /><SourceLedger /></View>;
+}
+
+function SelectContactsScreen({ data, onBack, onSent }: { data: GenericPayload; onBack: () => void; onSent: (ids: string[]) => void }) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const toggle = (id: string) => setSelected((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]);
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}>{data.contacts.map((contact: GenericPayload) => <TouchableOpacity style={styles.uploadCard} key={contact.id} onPress={() => toggle(contact.id)}>{contact.avatarUrl ? <Image source={{ uri: contact.avatarUrl }} style={styles.avatar} /> : <Text style={styles.avatarInitial}>{contact.initials}</Text>}<View style={{ flex: 1 }}><Text style={styles.vendorName}>{contact.name}</Text><Text style={styles.restaurantMeta}>{contact.phone}</Text></View><Text style={selected.includes(contact.id) ? styles.discountText : styles.changeText}>{selected.includes(contact.id) ? 'Selected' : 'Invite'}</Text></TouchableOpacity>)}</ScrollView><View style={styles.placeOrderBar}><TouchableOpacity style={styles.placeOrderButton} onPress={() => onSent(selected.length ? selected : ['jabari', 'zuri', 'amani'])}><Text style={styles.placeOrderText}>Send Invitations ({selected.length})</Text></TouchableOpacity></View><SourceLedger /></View>;
+}
+
+function ReferralSentScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Referral Sent" onBack={onBack} /><ScrollView contentContainerStyle={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.images[0] }} style={styles.successImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><View style={styles.smsCard}><Text style={styles.vendorName}>Potential Reward</Text><Text style={styles.totalAmount}>{data.potentialReward}</Text></View><Text style={styles.secureText}>JOIN THE COMMUNITY</Text><Text style={styles.balanceText}>{data.community}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Back to Home</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
+}
+
+function ReferralShareScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Share the Vibe" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.imageUrl }} style={styles.riderHeroImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.countdownText}>{data.badge}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text><View style={styles.deliveryRequestCard}><Text style={styles.smsBody}>{data.message}</Text><Text style={styles.totalAmount}>{data.code}</Text><Text style={styles.changeText}>{data.link}</Text></View><View style={styles.riderQuickGrid}>{data.channels.map((channel: string) => <TouchableOpacity style={styles.riderQuickButton} key={channel}><Text style={styles.riderQuickTitle}>{channel}</Text></TouchableOpacity>)}</View><Text style={styles.secureText}>{data.reward}</Text></ScrollView><BottomNav active="Account" /><SourceLedger /></View>;
+}
+
+function ReferralRewardsScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.images[0] }} style={styles.riderHeroImage} /><View style={styles.balanceCard}><Text style={styles.upperLabel}>Total Earned</Text><Text style={styles.balanceText}>{data.totalEarned}</Text><TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Redeem to Wallet</Text></TouchableOpacity></View><View style={styles.riderStats}><View style={styles.riderStat}><Text style={styles.riderStatValue}>{data.successfulReferrals}</Text><Text style={styles.upperLabel}>Successful Referrals</Text></View><View style={styles.riderStat}><Text style={styles.riderStatValue}>{data.pendingRewards}</Text><Text style={styles.upperLabel}>Pending Rewards</Text></View></View>{data.friends.map((friend: GenericPayload) => <View style={styles.uploadCard} key={friend.name}><View><Text style={styles.vendorName}>{friend.name}</Text><Text style={styles.restaurantMeta}>{friend.status}</Text></View><Text style={styles.discountText}>{friend.reward || 'Pending'}</Text></View>)}<View style={styles.smsCard}><Text style={styles.vendorName}>Next Reward: Gold Tier</Text><Text style={styles.smsBody}>{data.nextReward}</Text><Text style={styles.countdownText}>{data.progress}</Text></View><Text style={styles.checkoutSectionTitle}>Harambee Activity</Text>{data.activity.map((item: string) => <Text style={styles.helpQuestion} key={item}>{item}</Text>)}</ScrollView><SourceLedger /></View>;
+}
+
+function IncidentConfirmationScreen({ data, onBack, onTicket }: { data: GenericPayload; onBack: () => void; onTicket: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title="Incident Reporting" onBack={onBack} /><ScrollView contentContainerStyle={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.imageUrl }} style={styles.successImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><Text style={styles.totalAmount}>Ref ID: {data.refId}</Text><Text style={styles.checkoutSectionTitle}>Next Steps</Text>{data.steps.map((step: string, index: number) => <View style={styles.uploadCard} key={step}><Text style={styles.totalAmount}>{index + 1}</Text><Text style={[styles.smsBody, { flex: 1 }]}>{step}</Text></View>)}<View style={styles.smsCard}><Text style={styles.vendorName}>Safety First</Text><Text style={styles.smsBody}>{data.tip}</Text></View><TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Call Dispatch Now</Text></TouchableOpacity><TouchableOpacity style={styles.placeOrderButton} onPress={onTicket}><Text style={styles.placeOrderText}>View Ticket Status</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" /><SourceLedger /></View>;
+}
+
+function SupportTicketHistoryScreen({ data, onBack, onTicket }: { data: GenericPayload; onBack: () => void; onTicket: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.tabsRow}>{data.tabs.map((tab: string, index: number) => <Text style={index === 0 ? styles.tabPillActive : styles.tabPill} key={tab}>{tab}</Text>)}</View>{data.tickets.map((ticket: GenericPayload) => <TouchableOpacity style={styles.deliveryRequestCard} key={ticket.code} onPress={ticket.code === '#INC-82941' ? onTicket : undefined}><View style={styles.sectionHeadingRow}><Text style={styles.upperLabel}>{ticket.category}</Text><Text style={ticket.status === 'RESOLVED' ? styles.discountText : styles.countdownText}>{ticket.status}</Text></View><Text style={styles.vendorName}>{ticket.title}</Text><Text style={styles.restaurantMeta}>{ticket.code} - {ticket.updated}</Text><Text style={styles.smsBody}>{ticket.body}</Text></TouchableOpacity>)}<View style={styles.smsCard}><Text style={styles.vendorName}>Still need help?</Text><Text style={styles.smsBody}>{data.support}</Text><Text style={styles.changeText}>START NEW TICKET</Text></View></ScrollView><BottomNav active="Alerts" /><SourceLedger /></View>;
+}
+
+function ResolvedTicketScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  return <View style={styles.riderShell}><RiderScreenHeader title={'Ticket #' + data.code} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.profileHero}><Image source={{ uri: data.images[0] }} style={styles.profileAvatar} /><Text style={styles.discountText}>{data.status}</Text><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.restaurantMeta}>{data.resolvedAt}</Text></View><View style={styles.deliveryRequestCard}><Text style={styles.upperLabel}>{data.agent.label}</Text><Text style={styles.restaurantMeta}>{data.agent.time}</Text><Text style={styles.smsBody}>{data.message}</Text></View><Text style={styles.checkoutSectionTitle}>How was your experience?</Text><Text style={styles.balanceText}>star star star star star</Text><View style={styles.smsCard}><Text style={styles.vendorName}>View Original Report</Text><Text style={styles.smsBody}>{data.originalReport}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Back to History</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" /><SourceLedger /></View>;
 }
 
 function PromoBanner({

@@ -1,10 +1,16 @@
 import { Router } from 'express';
-import { acceptDeliveryRequest, activeDelivery, confirmPickup, liveChatSupport, markArrived, quizResultsFeedback, requestRiderPayout, riderEarnings, riderHelpCenter, riderHome, riderLeaderboard, riderOnboarding, riderOrderDetails, riderPayoutConfirmation, riderProfileRatings, riderSupportTrainingSuite, riderTrainingDashboard, riderTrainingLesson, riderTrainingQuiz, safetyIncidentReport, sendRiderChatMessage, submitSafetyIncident, submitTrainingQuiz, updateRiderOnboardingStep } from '../controllers/riderController.js';
+import { acceptDeliveryRequest, activeDelivery, confirmPickup, incidentConfirmation, liveChatSupport, markArrived, quizResultsFeedback, referralRewards, requestRiderPayout, resolvedTicketDetails, riderEarnings, riderHelpCenter, riderHome, riderLeaderboard, riderOnboarding, riderOrderDetails, riderPayoutConfirmation, riderProfileRatings, riderReferralSuite, riderSupportTrainingSuite, riderTrainingDashboard, riderTrainingLesson, riderTrainingQuiz, safetyIncidentReport, sendReferralInvitations, sendRiderChatMessage, submitSafetyIncident, submitTrainingQuiz, supportTicketHistory, updateRiderOnboardingStep } from '../controllers/riderController.js';
 import { validate } from '../validators/validate.js';
-import { incidentReportSchema, quizSubmissionSchema, riderChatMessageSchema, riderOnboardingStepSchema } from '../validators/interactionValidator.js';
+import { incidentReportSchema, quizSubmissionSchema, referralInvitationsSchema, riderChatMessageSchema, riderOnboardingStepSchema } from '../validators/interactionValidator.js';
 
 const router = Router();
 router.get('/rider/home', riderHome);
+router.get('/rider/referrals-suite', riderReferralSuite);
+router.post('/rider/referrals/invitations', validate(referralInvitationsSchema), sendReferralInvitations);
+router.get('/rider/referrals/rewards', referralRewards);
+router.get('/rider/incidents/confirmation', incidentConfirmation);
+router.get('/rider/support/tickets', supportTicketHistory);
+router.get('/rider/support/tickets/INC-82941', resolvedTicketDetails);
 router.get('/rider/support-training-suite', riderSupportTrainingSuite);
 router.get('/rider/help-center', riderHelpCenter);
 router.get('/rider/live-chat', liveChatSupport);

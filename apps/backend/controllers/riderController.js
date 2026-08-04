@@ -166,3 +166,38 @@ export async function submitTrainingQuiz(req, res, next) {
 export async function quizResultsFeedback(_req, res, next) {
   try { res.json({ results: await getScreenPayload('quiz_results_feedback') }); } catch (err) { next(err); }
 }
+
+
+export async function riderReferralSuite(_req, res, next) {
+  try {
+    const screens = {};
+    for (const key of ["invite_friends_earn_rewards","select_contacts","invitations_sent_success","whatsapp_sharing_template","my_referral_rewards","incident_confirmation_next_steps","support_ticket_history","resolved_ticket_details_inc_82941"]) screens[key] = await getScreenPayload(key);
+    res.json({ referrals: screens });
+  } catch (err) { next(err); }
+}
+
+export async function sendReferralInvitations(req, res, next) {
+  try {
+    const success = await getScreenPayload('invitations_sent_success');
+    success.sentContactIds = req.body.contactIds;
+    success.sentCount = req.body.contactIds.length;
+    success.sentAt = new Date().toISOString();
+    res.status(201).json({ success: await saveScreenPayload('invitations_sent_success', success) });
+  } catch (err) { next(err); }
+}
+
+export async function referralRewards(_req, res, next) {
+  try { res.json({ rewards: await getScreenPayload('my_referral_rewards') }); } catch (err) { next(err); }
+}
+
+export async function incidentConfirmation(_req, res, next) {
+  try { res.json({ confirmation: await getScreenPayload('incident_confirmation_next_steps') }); } catch (err) { next(err); }
+}
+
+export async function supportTicketHistory(_req, res, next) {
+  try { res.json({ ticketHistory: await getScreenPayload('support_ticket_history') }); } catch (err) { next(err); }
+}
+
+export async function resolvedTicketDetails(_req, res, next) {
+  try { res.json({ resolvedTicket: await getScreenPayload('resolved_ticket_details_inc_82941') }); } catch (err) { next(err); }
+}
