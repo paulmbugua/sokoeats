@@ -1789,8 +1789,6 @@ function SplashScreen({ onContinue }: { onContinue: () => void }) {
 
   return (
     <View style={[styles.splashPage, splashFooterLiftStyle]}>
-      <View style={[styles.blob, styles.splashBlobOne]} />
-      <View style={[styles.blob, styles.splashBlobTwo]} />
       <View style={styles.brandStack}>
         <View style={styles.logoTile}>
           <Text style={styles.logoIcon}>menu</Text>
@@ -1849,8 +1847,6 @@ function OnboardingScreen({ onNext, onSkip }: { onNext: () => void; onSkip: () =
 
   return (
     <View style={[styles.onboardingPage, onboardingFooterLiftStyle]}>
-      <View style={[styles.blob, styles.onboardingBlobOne]} />
-      <View style={[styles.blob, styles.onboardingBlobTwo]} />
       <View style={styles.onboardingHeader}>
         <Text style={styles.topBrand}>SokoEats</Text>
         <TouchableOpacity onPress={onSkip} style={styles.skipButton}>
@@ -2495,13 +2491,6 @@ const styles = StyleSheet.create({
     color: 'transparent',
     fontSize: 1,
   },
-  blob: {
-    position: 'absolute',
-    width: 320,
-    height: 320,
-    borderRadius: 160,
-    opacity: 0.28,
-  },
   splashPage: {
     flex: 1,
     paddingHorizontal: 20,
@@ -2510,16 +2499,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: colors.surface,
-  },
-  splashBlobOne: {
-    top: -115,
-    left: -115,
-    backgroundColor: colors.primaryFixed,
-  },
-  splashBlobTwo: {
-    bottom: -120,
-    right: -115,
-    backgroundColor: colors.secondaryFixed,
   },
   brandStack: {
     alignItems: 'center',
@@ -2717,16 +2696,6 @@ const styles = StyleSheet.create({
     paddingTop: 18,
     paddingBottom: 24,
     overflow: 'hidden',
-  },
-  onboardingBlobOne: {
-    top: -80,
-    right: -140,
-    backgroundColor: colors.primaryContainer,
-  },
-  onboardingBlobTwo: {
-    bottom: -120,
-    left: -110,
-    backgroundColor: colors.secondaryContainer,
   },
   onboardingHeader: {
     flexDirection: 'row',
@@ -3737,7 +3706,7 @@ const styles = StyleSheet.create({
   },
   riderShell: {
     flex: 1,
-    backgroundColor: '#f6f8f3',
+    backgroundColor: colors.surface,
   },
   riderTop: {
     paddingHorizontal: 18,
