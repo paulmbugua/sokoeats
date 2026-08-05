@@ -4,7 +4,6 @@ import {
   Image,
   ImageBackground,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -13,6 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
 type PaymentMethod = 'mpesa' | 'card';
@@ -1652,6 +1652,15 @@ function SourceLedger() {
 }
 
 export default function App() {
+  return (
+    <SafeAreaProvider>
+      <SokoEatsApp />
+    </SafeAreaProvider>
+  );
+}
+
+function SokoEatsApp() {
+  const insets = useSafeAreaInsets();
   const [screen, setScreen] = useState<Screen>('splash');
   const [activeChip, setActiveChip] = useState(chips[0]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mpesa');
@@ -1688,8 +1697,10 @@ export default function App() {
   const discount = 250;
   const total = subtotal + deliveryFee + serviceFee - discount;
 
+  const topSystemInset = Math.max(insets.top, StatusBar.currentHeight ?? 0, 10);
+
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={[styles.safe, { paddingTop: topSystemInset }]}>
       <StatusBar barStyle={screen === 'splash' ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
       <Animated.View style={[styles.root, { opacity: fade }]}>
         {screen === 'splash' && <SplashScreen onContinue={() => openScreen('onboarding')} />}
@@ -1750,7 +1761,7 @@ export default function App() {
           />
         )}
       </Animated.View>
-    </SafeAreaView>
+    </View>
   );
 
 }
@@ -2251,12 +2262,21 @@ function TransactionHistoryScreen({ data, onBack }: { data: GenericPayload; onBa
 }
 
 function BottomNav({ active = 'Home' }: { active?: string } = {}) {
+  const insets = useSafeAreaInsets();
+  const bottomSystemInset = Math.max(insets.bottom, 28);
+  const bottomNavSafeStyle = useMemo(
+    () => ({
+      minHeight: 66 + bottomSystemInset,
+      paddingBottom: bottomSystemInset,
+    }),
+    [bottomSystemInset]
+  );
   const tabs = active === 'Deliveries'
     ? [['home', 'Home'], ['bike', 'Deliveries'], ['cash', 'Earnings'], ['bell', 'Alerts'], ['person', 'Account']]
     : [['home', 'Home'], ['grid', 'Categories'], ['receipt', 'Orders'], ['heart', 'Favourites'], ['person', 'Account']];
 
   return (
-    <View style={styles.bottomNav}>
+    <View style={[styles.bottomNav, bottomNavSafeStyle]}>
       {tabs.map(([icon, label]) => (
         <View key={label} style={[styles.navItem, label === active && styles.navItemActive]}>
           <Text style={[styles.navIcon, label === active && styles.navIconActive]}>{icon}</Text>
