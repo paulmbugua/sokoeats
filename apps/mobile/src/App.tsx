@@ -13,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import nextArrowIcon from '../assets/next-arrow.png';
 
 type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
 type PaymentMethod = 'mpesa' | 'card';
@@ -1766,6 +1767,11 @@ function SokoEatsApp() {
 
 }
 function SplashScreen({ onContinue }: { onContinue: () => void }) {
+  const insets = useSafeAreaInsets();
+  const splashFooterLiftStyle = useMemo(
+    () => ({ paddingBottom: Math.max(insets.bottom + 64, 104) }),
+    [insets.bottom]
+  );
   const float = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -1782,7 +1788,7 @@ function SplashScreen({ onContinue }: { onContinue: () => void }) {
   const translateY = float.interpolate({ inputRange: [0, 1], outputRange: [0, -15] });
 
   return (
-    <View style={styles.splashPage}>
+    <View style={[styles.splashPage, splashFooterLiftStyle]}>
       <View style={[styles.blob, styles.splashBlobOne]} />
       <View style={[styles.blob, styles.splashBlobTwo]} />
       <View style={styles.brandStack}>
@@ -1835,8 +1841,14 @@ function SplashScreen({ onContinue }: { onContinue: () => void }) {
 }
 
 function OnboardingScreen({ onNext, onSkip }: { onNext: () => void; onSkip: () => void }) {
+  const insets = useSafeAreaInsets();
+  const onboardingFooterLiftStyle = useMemo(
+    () => ({ paddingBottom: Math.max(insets.bottom + 56, 96) }),
+    [insets.bottom]
+  );
+
   return (
-    <View style={styles.onboardingPage}>
+    <View style={[styles.onboardingPage, onboardingFooterLiftStyle]}>
       <View style={[styles.blob, styles.onboardingBlobOne]} />
       <View style={[styles.blob, styles.onboardingBlobTwo]} />
       <View style={styles.onboardingHeader}>
@@ -1877,7 +1889,7 @@ function OnboardingScreen({ onNext, onSkip }: { onNext: () => void; onSkip: () =
         </View>
         <TouchableOpacity style={styles.primaryButton} onPress={onNext} activeOpacity={0.86}>
           <Text style={styles.primaryButtonText}>Next</Text>
-          <Text style={styles.buttonArrow}>arrow</Text>
+          <Image source={nextArrowIcon} style={styles.buttonArrowImage} />
         </TouchableOpacity>
       </View>
       <SourceLedger />
@@ -2860,10 +2872,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     marginRight: 10,
   },
-  buttonArrow: {
-    color: colors.onPrimary,
-    fontSize: 12,
-    fontWeight: '900',
+  buttonArrowImage: {
+    width: 18,
+    height: 18,
+    resizeMode: 'contain',
   },
   shell: {
     flex: 1,
