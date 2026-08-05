@@ -2263,13 +2263,13 @@ function TransactionHistoryScreen({ data, onBack }: { data: GenericPayload; onBa
 
 function BottomNav({ active = 'Home' }: { active?: string } = {}) {
   const insets = useSafeAreaInsets();
-  const bottomSystemInset = Math.max(insets.bottom, 28);
+  const footerDeviceClearance = Math.max(insets.bottom + 16, 52);
   const bottomNavSafeStyle = useMemo(
     () => ({
-      minHeight: 66 + bottomSystemInset,
-      paddingBottom: bottomSystemInset,
+      minHeight: 78 + footerDeviceClearance,
+      paddingBottom: footerDeviceClearance,
     }),
-    [bottomSystemInset]
+    [footerDeviceClearance]
   );
   const tabs = active === 'Deliveries'
     ? [['home', 'Home'], ['bike', 'Deliveries'], ['cash', 'Earnings'], ['bell', 'Alerts'], ['person', 'Account']]
@@ -2931,7 +2931,7 @@ const styles = StyleSheet.create({
   homeContent: {
     paddingHorizontal: 20,
     paddingTop: 18,
-    paddingBottom: 104,
+    paddingBottom: 150,
   },
   searchCard: {
     height: 56,
@@ -3196,7 +3196,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     minHeight: 76,
     paddingHorizontal: 12,
-    paddingTop: 8,
+    paddingTop: 12,
     paddingBottom: 10,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
@@ -3754,7 +3754,7 @@ const styles = StyleSheet.create({
   },
   riderContent: {
     padding: 18,
-    paddingBottom: 104,
+    paddingBottom: 150,
   },
   riderStats: {
     flexDirection: 'row',
