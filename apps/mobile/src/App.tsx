@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Image,
@@ -14,9 +14,13 @@ import {
 } from 'react-native';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import nextArrowIcon from '../assets/next-arrow.png';
+import { AppIcon, type IconName } from './AppIcon';
 
-type Screen = 'splash' | 'onboarding' | 'home' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
+type Screen = 'splash' | 'onboarding' | 'home' | 'categories' | 'orders' | 'favourites' | 'accountAccess' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
 type PaymentMethod = 'mpesa' | 'card';
+type BottomNavVariant = 'customer' | 'rider';
+type BottomNavItem = { icon: IconName; label: string; screen: Screen };
+const BottomNavNavigationContext = createContext<((screen: Screen) => void) | null>(null);
 
 const colors = {
   tertiaryFixedDim: '#eec209',
@@ -1704,6 +1708,7 @@ function SokoEatsApp() {
     <View style={[styles.safe, { paddingTop: topSystemInset }]}>
       <StatusBar barStyle={screen === 'splash' ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
       <Animated.View style={[styles.root, { opacity: fade }]}>
+        <BottomNavNavigationContext.Provider value={openScreen}>
         {screen === 'splash' && <SplashScreen onContinue={() => openScreen('onboarding')} />}
         {screen === 'onboarding' && <OnboardingScreen onNext={() => openScreen('home')} onSkip={() => openScreen('home')} />}
         {screen === 'home' && (
@@ -1715,6 +1720,10 @@ function SokoEatsApp() {
             onScan={() => openScreen('scanQr')}
           />
         )}
+        {screen === 'categories' && <CategoriesScreen onBack={() => openScreen('home')} />}
+        {screen === 'orders' && <OrdersScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} />}
+        {screen === 'favourites' && <FavouritesScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} />}
+        {screen === 'accountAccess' && <AccountAccessScreen onBack={() => openScreen('home')} onRider={() => openScreen('riderHome')} />}
         {screen === 'walletHome' && <WalletHomeScreen data={riderBatch.sokoeats_wallet} onBack={() => openScreen('home')} onTopUp={() => openScreen('walletTopUp')} onWithdraw={() => openScreen('walletWithdraw')} onScan={() => openScreen('scanQr')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'walletTopUp' && <WalletTopUpScreen data={riderBatch.top_up_wallet} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ topUp: GenericPayload; history: GenericPayload }>('/api/wallet/top-ups', { method: 'POST', body: JSON.stringify({ amount, method: 'M-Pesa Express' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, top_up_wallet: next.topUp, full_transaction_history: next.history })); openScreen('walletHome'); }} />}
         {screen === 'walletWithdraw' && <WalletWithdrawScreen data={riderBatch.withdraw_to_m_pesa} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ withdrawal: GenericPayload }>('/api/wallet/withdrawals', { method: 'POST', body: JSON.stringify({ amount, destination: 'M-Pesa Account' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, withdraw_to_m_pesa: next.withdrawal })); openScreen('walletHome'); }} />}
@@ -1761,6 +1770,7 @@ function SokoEatsApp() {
             onBack={() => openScreen('home')}
           />
         )}
+        </BottomNavNavigationContext.Provider>
       </Animated.View>
     </View>
   );
@@ -1791,7 +1801,7 @@ function SplashScreen({ onContinue }: { onContinue: () => void }) {
     <View style={[styles.splashPage, splashFooterLiftStyle]}>
       <View style={styles.brandStack}>
         <View style={styles.logoTile}>
-          <Text style={styles.logoIcon}>menu</Text>
+          <AppIcon name="bag" size={42} color={colors.onPrimaryContainer} />
         </View>
         <Text style={styles.splashBrand}>SokoEats</Text>
         <Text style={styles.splashTagline}>Everything You Need, Delivered.</Text>
@@ -1803,7 +1813,7 @@ function SplashScreen({ onContinue }: { onContinue: () => void }) {
           <Image source={{ uri: images.splashRider }} style={styles.splashImage} />
           <View style={styles.fastBadge}>
             <View style={styles.fastIcon}>
-              <Text style={styles.fastIconText}>bolt</Text>
+              <AppIcon name="bolt" size={18} color={colors.onSecondaryContainer} />
             </View>
             <View>
               <Text style={styles.badgeLabel}>Hyper-Fast</Text>
@@ -1811,7 +1821,7 @@ function SplashScreen({ onContinue }: { onContinue: () => void }) {
             </View>
           </View>
           <View style={styles.heartBadge}>
-            <Text style={styles.heartBadgeText}>heart</Text>
+            <AppIcon name="heart" size={20} color={colors.error} />
           </View>
         </Animated.View>
       </View>
@@ -1858,7 +1868,7 @@ function OnboardingScreen({ onNext, onSkip }: { onNext: () => void; onSkip: () =
         <View style={styles.bentoLarge}>
           <Image source={{ uri: images.pilau }} style={styles.coverImage} />
           <View style={styles.pill}>
-            <Text style={styles.pillIcon}>fork</Text>
+            <AppIcon name="fork" size={14} color={colors.primary} style={styles.inlineIcon} />
             <Text style={styles.pillText}>Nairobi's Finest</Text>
           </View>
         </View>
@@ -1914,26 +1924,26 @@ function HomeScreen({
           <View>
             <Text style={styles.caption}>Good afternoon, Paul</Text>
             <View style={styles.locationRow}>
-              <Text style={styles.locationIcon}>pin</Text>
+              <AppIcon name="pin" size={15} color={colors.primary} style={styles.inlineIcon} />
               <Text style={styles.locationText}>Nairobi CBD</Text>
             </View>
           </View>
         </View>
         <TouchableOpacity style={styles.iconCircle}>
-          <Text style={styles.iconText}>bell</Text>
+          <AppIcon name="bell" size={19} color={colors.primary} />
         </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
         <View style={styles.searchCard}>
-          <Text style={styles.searchIcon}>search</Text>
+          <AppIcon name="search" size={19} color={colors.outline} style={styles.searchIcon} />
           <TextInput
             placeholder="Search food, shops, groceries or products"
             placeholderTextColor={colors.outline}
             style={styles.searchInput}
           />
-          <Text style={styles.searchAction}>mic</Text>
-          <Text style={styles.searchAction} onPress={onScan}>qr</Text>
+          <AppIcon name="mic" size={19} color={colors.primary} style={styles.searchActionIcon} />
+          <TouchableOpacity onPress={onScan} style={styles.searchActionButton}><AppIcon name="qr" size={19} color={colors.primary} /></TouchableOpacity>
         </View>
 
         <View style={styles.riderQuickGrid}>
@@ -1962,7 +1972,7 @@ function HomeScreen({
           {categories.map((category) => (
             <View key={category.label} style={styles.categoryItem}>
               <View style={[styles.categoryIconBox, { backgroundColor: category.bg }]}>
-                <Text style={[styles.categoryIconText, { color: category.fg }]}>{category.icon}</Text>
+                <AppIcon name={category.icon as IconName} size={24} color={category.fg} />
               </View>
               <Text style={styles.categoryLabel}>{category.label}</Text>
             </View>
@@ -1989,7 +1999,7 @@ function HomeScreen({
         <View style={styles.sectionHeadingRow}>
           <Text style={styles.sectionTitle}>Popular Near You</Text>
           <TouchableOpacity>
-            <Text style={styles.viewAll}>View all arrow</Text>
+            <View style={styles.viewAllRow}><Text style={styles.viewAll}>View all</Text><AppIcon name="chevron" size={16} color={colors.primary} /></View>
           </TouchableOpacity>
         </View>
 
@@ -2004,13 +2014,112 @@ function HomeScreen({
 }
 
 
+function CustomerScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
+  return (
+    <View style={styles.checkoutHeader}>
+      <View style={styles.checkoutHeaderLeft}>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <AppIcon name="back" size={20} color={colors.primary} />
+        </TouchableOpacity>
+        <Text style={styles.checkoutBrand}>{title}</Text>
+      </View>
+      <TouchableOpacity style={styles.iconCircle}>
+        <AppIcon name="bell" size={19} color={colors.primary} />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function CategoriesScreen({ onBack }: { onBack: () => void }) {
+  return (
+    <View style={styles.shell}>
+      <CustomerScreenHeader title="Categories" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+        <Text style={styles.checkoutTitle}>Shop by need</Text>
+        <Text style={styles.checkoutSubtitle}>Fast food, groceries, pharmacy runs, gas, and electronics in one SokoEats basket.</Text>
+        <View style={styles.categoryGrid}>
+          {categories.map((category) => (
+            <View key={category.label} style={styles.categoryItem}>
+              <View style={[styles.categoryIconBox, { backgroundColor: category.bg }]}>
+                <AppIcon name={category.icon as IconName} size={25} color={category.fg} />
+              </View>
+              <Text style={styles.categoryLabel}>{category.label}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.smsCard}><Text style={styles.vendorName}>Recommended for Nairobi CBD</Text><Text style={styles.smsBody}>Lunch plates, office snacks, and M-Pesa ready vendors are prioritized for your current location.</Text></View>
+      </ScrollView>
+      <BottomNav active="Categories" />
+      <SourceLedger />
+    </View>
+  );
+}
+
+function OrdersScreen({ onBack, onCheckout }: { onBack: () => void; onCheckout: () => void }) {
+  return (
+    <View style={styles.shell}>
+      <CustomerScreenHeader title="Orders" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+        <Text style={styles.checkoutTitle}>Your orders</Text>
+        <Text style={styles.checkoutSubtitle}>Review current baskets and recent SokoEats activity.</Text>
+        <TouchableOpacity style={styles.orderCard} onPress={onCheckout}>
+          <View style={styles.vendorRow}>
+            <Image source={{ uri: images.checkoutMeal }} style={styles.orderImage} />
+            <View style={{ flex: 1 }}><Text style={styles.vendorName}>Nairobi Grill House</Text><Text style={styles.checkoutSubtitle}>Ready to checkout - 3 items</Text></View>
+            <AppIcon name="chevron" size={20} color={colors.primary} />
+          </View>
+        </TouchableOpacity>
+        <View style={styles.deliveryRequestCard}><Text style={styles.vendorName}>Previous delivery</Text><Text style={styles.smsBody}>Mama Njeri Kitchen - Delivered yesterday to Nairobi CBD.</Text><Text style={styles.discountText}>Reorder</Text></View>
+      </ScrollView>
+      <BottomNav active="Orders" />
+      <SourceLedger />
+    </View>
+  );
+}
+
+function FavouritesScreen({ onBack, onCheckout }: { onBack: () => void; onCheckout: () => void }) {
+  return (
+    <View style={styles.shell}>
+      <CustomerScreenHeader title="Favourites" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+        <Text style={styles.checkoutTitle}>Saved vendors</Text>
+        <Text style={styles.checkoutSubtitle}>Quick access to restaurants and shops you love.</Text>
+        {restaurants.map((restaurant) => <RestaurantCard key={restaurant.name} restaurant={restaurant} onPress={onCheckout} />)}
+      </ScrollView>
+      <BottomNav active="Favourites" />
+      <SourceLedger />
+    </View>
+  );
+}
+
+function AccountAccessScreen({ onBack, onRider }: { onBack: () => void; onRider: () => void }) {
+  return (
+    <View style={styles.shell}>
+      <CustomerScreenHeader title="Account" onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+        <View style={styles.profileHero}>
+          <AppIcon name="person" size={54} color={colors.primary} />
+          <Text style={styles.checkoutTitle}>Login or create account</Text>
+          <Text style={styles.checkoutSubtitle}>Sign in to save addresses, track orders, earn rewards, and manage rider or customer services securely.</Text>
+        </View>
+        <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Phone number</Text><TextInput style={styles.formFieldInput} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+        <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Email address</Text><TextInput style={styles.formFieldInput} keyboardType="email-address" placeholder="paul@sokoeats.co.ke" placeholderTextColor={colors.outline} /></View>
+        <TouchableOpacity style={styles.placeOrderButton}><Text style={styles.placeOrderText}>Login with OTP</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Create SokoEats Account</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.smsCard} onPress={onRider}><Text style={styles.vendorName}>Rider or vendor partner?</Text><Text style={styles.smsBody}>Open your partner tools, onboarding, earnings, and support dashboards.</Text><Text style={styles.changeText}>Continue to partner mode</Text></TouchableOpacity>
+      </ScrollView>
+      <BottomNav active="Account" />
+      <SourceLedger />
+    </View>
+  );
+}
 function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onLeaderboard, onProfile, onHelp, onIncident, onTraining, onOrderDetail, onReferral, onTickets }: { data: RiderHomePayload; onBack: () => void; onAccept: () => void; onOnboarding: () => void; onEarnings: () => void; onLeaderboard: () => void; onProfile: () => void; onHelp: () => void; onIncident: () => void; onTraining: () => void; onOrderDetail: () => void; onReferral: () => void; onTickets: () => void }) {
   return (
     <View style={styles.riderShell}>
       <View style={styles.riderTop}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}><Text style={styles.backButtonText}>back</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}><AppIcon name="back" size={20} color={colors.primary} /></TouchableOpacity>
         <Text style={styles.riderBrand}>SokoEats Rider</Text>
-        <View style={styles.onlinePill}><Text style={styles.onlinePillText}>{data.rider.status}</Text></View>
+        <View style={styles.onlinePill}><AppIcon name="online" size={9} color={colors.secondary} /><Text style={styles.onlinePillText}>{data.rider.status}</Text></View>
       </View>
       <ScrollView contentContainerStyle={styles.riderContent} showsVerticalScrollIndicator={false}>
         <View style={styles.riderStats}>
@@ -2024,13 +2133,13 @@ function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onL
         </ImageBackground>
         <View style={styles.deliveryRequestCard}>
           <View style={styles.sectionHeadingRow}><Text style={styles.checkoutSectionTitle}>{data.request.title}</Text><Text style={styles.countdownText}>{data.request.countdownSeconds}s</Text></View>
-          <View style={styles.deliveryPoint}><Text style={styles.locationIcon}>pin</Text><View><Text style={styles.vendorName}>Pickup: {data.request.pickup.name}</Text><Text style={styles.restaurantMeta}>{data.request.pickup.distance}</Text></View></View>
-          <View style={styles.deliveryPoint}><Text style={styles.locationIcon}>flag</Text><View><Text style={styles.vendorName}>Drop-off: {data.request.dropoff.area}</Text><Text style={styles.restaurantMeta}>{data.request.dropoff.distance}</Text></View></View>
+          <View style={styles.deliveryPoint}><AppIcon name="pin" size={15} color={colors.primary} style={styles.inlineIcon} /><View><Text style={styles.vendorName}>Pickup: {data.request.pickup.name}</Text><Text style={styles.restaurantMeta}>{data.request.pickup.distance}</Text></View></View>
+          <View style={styles.deliveryPoint}><AppIcon name="flag" size={15} color={colors.primary} style={styles.inlineIcon} /><View><Text style={styles.vendorName}>Drop-off: {data.request.dropoff.area}</Text><Text style={styles.restaurantMeta}>{data.request.dropoff.distance}</Text></View></View>
           <View style={styles.payoutRow}><Text style={styles.upperLabel}>Estimated Payout</Text><Text style={styles.totalAmount}>{data.request.payout}</Text></View>
           <TouchableOpacity style={styles.placeOrderButton} onPress={onAccept}><Text style={styles.placeOrderText}>{data.request.status === 'accepted' ? data.request.acceptedMessage : 'Accept Order'}</Text></TouchableOpacity>
         </View>
       </ScrollView>
-      <BottomNav active="Deliveries" />
+      <BottomNav active="Deliveries" variant="rider" />
       <SourceLedger />
     </View>
   );
@@ -2040,9 +2149,9 @@ function ActiveDeliveryScreen({ data, onBack, onArrived, onPickup }: { data: Act
   return (
     <View style={styles.riderShell}>
       <View style={styles.riderTop}>
-        <TouchableOpacity style={styles.backButton} onPress={onBack}><Text style={styles.backButtonText}>back</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.backButton} onPress={onBack}><AppIcon name="back" size={20} color={colors.primary} /></TouchableOpacity>
         <Text style={styles.riderBrand}>SokoEats</Text>
-        <View style={styles.onlinePill}><Text style={styles.onlinePillText}>ONLINE</Text></View>
+        <View style={styles.onlinePill}><AppIcon name="online" size={9} color={colors.secondary} /><Text style={styles.onlinePillText}>ONLINE</Text></View>
       </View>
       <View style={styles.activeDeliveryHeader}>
         <View><Text style={styles.upperLabel}>Order #{data.order.code}</Text><Text style={styles.checkoutTitle}>ETA {data.order.eta}</Text></View>
@@ -2055,7 +2164,7 @@ function ActiveDeliveryScreen({ data, onBack, onArrived, onPickup }: { data: Act
       <View style={styles.vendorPickupCard}>
         <Image source={{ uri: data.vendor.imageUrl }} style={styles.orderImage} />
         <View style={{ flex: 1 }}><Text style={styles.vendorName}>{data.vendor.name}</Text><Text style={styles.restaurantMeta}>{data.vendor.address}</Text><View style={styles.restaurantStats}><Text style={styles.timeText}>{data.vendor.badge}</Text><Text style={styles.statText}>Prep time: {data.vendor.prepTime}</Text></View></View>
-        <TouchableOpacity style={styles.iconCircle}><Text style={styles.iconText}>call</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.iconCircle}><AppIcon name="call" size={19} color={colors.primary} /></TouchableOpacity>
       </View>
       <View style={styles.placeOrderBar}>
         <TouchableOpacity style={styles.paymentOption} onPress={onArrived}><Text style={styles.paymentName}>{data.arrived ? 'Arrived at Vendor' : 'I have Arrived'}</Text></TouchableOpacity>
@@ -2068,11 +2177,11 @@ function ActiveDeliveryScreen({ data, onBack, onArrived, onPickup }: { data: Act
 
 
 function RiderScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
-  return <View style={styles.riderTop}><TouchableOpacity style={styles.backButton} onPress={onBack}><Text style={styles.backButtonText}>back</Text></TouchableOpacity><Text style={styles.riderBrand}>{title}</Text><View style={styles.onlinePill}><Text style={styles.onlinePillText}>ONLINE</Text></View></View>;
+  return <View style={styles.riderTop}><TouchableOpacity style={styles.backButton} onPress={onBack}><AppIcon name="back" size={20} color={colors.primary} /></TouchableOpacity><Text style={styles.riderBrand}>{title}</Text><View style={styles.onlinePill}><AppIcon name="online" size={9} color={colors.secondary} /><Text style={styles.onlinePillText}>ONLINE</Text></View></View>;
 }
 
 function RiderWelcomeScreen({ data, onBack, onNext }: { data: GenericPayload; onBack: () => void; onNext: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title="Rider Onboarding" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.heroImageUrl }} style={styles.riderHeroImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text>{data.benefits.map((benefit: GenericPayload) => <View style={styles.onboardingInfoRow} key={benefit.title}><Text style={styles.locationIcon}>{benefit.icon}</Text><View><Text style={styles.vendorName}>{benefit.title}</Text><Text style={styles.restaurantMeta}>{benefit.body}</Text></View></View>)}<TouchableOpacity style={styles.placeOrderButton} onPress={onNext}><Text style={styles.placeOrderText}>Get Started</Text></TouchableOpacity><Text style={styles.secureText}>{data.footer}</Text></ScrollView><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title="Rider Onboarding" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.heroImageUrl }} style={styles.riderHeroImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text>{data.benefits.map((benefit: GenericPayload) => <View style={styles.onboardingInfoRow} key={benefit.title}><AppIcon name={String(benefit.icon || 'check') as IconName} size={16} color={colors.primary} style={styles.inlineIcon} /><View><Text style={styles.vendorName}>{benefit.title}</Text><Text style={styles.restaurantMeta}>{benefit.body}</Text></View></View>)}<TouchableOpacity style={styles.placeOrderButton} onPress={onNext}><Text style={styles.placeOrderText}>Get Started</Text></TouchableOpacity><Text style={styles.secureText}>{data.footer}</Text></ScrollView><SourceLedger /></View>;
 }
 
 function RiderFormScreen({ data, onBack, onNext }: { data: GenericPayload; onBack: () => void; onNext: () => void }) {
@@ -2088,19 +2197,19 @@ function RiderSuccessScreen({ data, onBack }: { data: GenericPayload; onBack: ()
 }
 
 function RiderEarningsScreen({ data, onBack, onCashOut }: { data: GenericPayload; onBack: () => void; onCashOut: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title="Earnings" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Text style={styles.checkoutSubtitle}>Habari, {data.riderName}!</Text><Text style={styles.checkoutTitle}>{data.title}</Text><View style={styles.balanceCard}><Text style={styles.upperLabel}>Available Balance</Text><Text style={styles.balanceText}>{data.balance}</Text><Text style={styles.restaurantMeta}>{data.lastPayout}</Text><TouchableOpacity style={styles.primaryButton} onPress={onCashOut}><Text style={styles.primaryButtonText}>Cash Out</Text></TouchableOpacity></View><View style={styles.riderStats}>{data.cards.map((card: GenericPayload) => <View style={styles.riderStat} key={card.label}><Text style={styles.upperLabel}>{card.label}</Text><Text style={styles.riderStatValue}>{card.value}</Text></View>)}</View><View style={styles.deliveryRequestCard}><Text style={styles.vendorName}>{data.chart.title}</Text><Text style={styles.restaurantMeta}>Total: {data.chart.total}</Text><View style={styles.mobileChart}>{data.chart.days.map((day: GenericPayload) => <View style={styles.mobileChartBar} key={day.day + day.value}><View style={[styles.mobileChartFill, { height: String(day.value) + '%' as any }]} /><Text style={styles.categoryLabel}>{day.day}</Text></View>)}</View></View>{data.transactions.map((tx: GenericPayload) => <View style={styles.priceLine} key={tx.label}><View><Text style={styles.vendorName}>{tx.label}</Text><Text style={styles.restaurantMeta}>{tx.time}</Text></View><Text style={[styles.priceValue, tx.tone === 'credit' && styles.discountText]}>{tx.amount}</Text></View>)}<ImageBackground source={{ uri: data.mapImageUrl }} style={styles.riderMiniMap} imageStyle={styles.riderMapImage}><Text style={styles.surgeText}>{data.activity}</Text><Text style={styles.secureText}>{data.location}</Text></ImageBackground></ScrollView><BottomNav active="Earnings" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title="Earnings" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Text style={styles.checkoutSubtitle}>Habari, {data.riderName}!</Text><Text style={styles.checkoutTitle}>{data.title}</Text><View style={styles.balanceCard}><Text style={styles.upperLabel}>Available Balance</Text><Text style={styles.balanceText}>{data.balance}</Text><Text style={styles.restaurantMeta}>{data.lastPayout}</Text><TouchableOpacity style={styles.primaryButton} onPress={onCashOut}><Text style={styles.primaryButtonText}>Cash Out</Text></TouchableOpacity></View><View style={styles.riderStats}>{data.cards.map((card: GenericPayload) => <View style={styles.riderStat} key={card.label}><Text style={styles.upperLabel}>{card.label}</Text><Text style={styles.riderStatValue}>{card.value}</Text></View>)}</View><View style={styles.deliveryRequestCard}><Text style={styles.vendorName}>{data.chart.title}</Text><Text style={styles.restaurantMeta}>Total: {data.chart.total}</Text><View style={styles.mobileChart}>{data.chart.days.map((day: GenericPayload) => <View style={styles.mobileChartBar} key={day.day + day.value}><View style={[styles.mobileChartFill, { height: String(day.value) + '%' as any }]} /><Text style={styles.categoryLabel}>{day.day}</Text></View>)}</View></View>{data.transactions.map((tx: GenericPayload) => <View style={styles.priceLine} key={tx.label}><View><Text style={styles.vendorName}>{tx.label}</Text><Text style={styles.restaurantMeta}>{tx.time}</Text></View><Text style={[styles.priceValue, tx.tone === 'credit' && styles.discountText]}>{tx.amount}</Text></View>)}<ImageBackground source={{ uri: data.mapImageUrl }} style={styles.riderMiniMap} imageStyle={styles.riderMapImage}><Text style={styles.surgeText}>{data.activity}</Text><Text style={styles.secureText}>{data.location}</Text></ImageBackground></ScrollView><BottomNav active="Earnings" variant="rider" /><SourceLedger /></View>;
 }
 
 function RiderPayoutScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title={data.status} onBack={onBack} /><View style={[styles.riderContent, styles.centerPanel]}><Text style={styles.successIcon}>check_circle</Text><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.balanceText}>{data.amount}</Text>{[['Sent to', data.sentTo], ['Recipient', data.recipient], ['Transaction ID', data.transactionId], ['Date & Time', data.dateTime], ['Fee', String(data.fee) + ' ' + String(data.feeLabel)]].map(([label, value]) => <View style={styles.priceLine} key={label}><Text style={styles.priceLabel}>{label}</Text><Text style={styles.priceValue}>{value}</Text></View>)}<TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Share Receipt</Text></TouchableOpacity><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Back to Dashboard</Text></TouchableOpacity></View><BottomNav active="Earnings" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.status} onBack={onBack} /><View style={[styles.riderContent, styles.centerPanel]}><View style={styles.successIcon}><AppIcon name="check" size={46} color={colors.secondary} /></View><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.balanceText}>{data.amount}</Text>{[['Sent to', data.sentTo], ['Recipient', data.recipient], ['Transaction ID', data.transactionId], ['Date & Time', data.dateTime], ['Fee', String(data.fee) + ' ' + String(data.feeLabel)]].map(([label, value]) => <View style={styles.priceLine} key={label}><Text style={styles.priceLabel}>{label}</Text><Text style={styles.priceValue}>{value}</Text></View>)}<TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Share Receipt</Text></TouchableOpacity><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Back to Dashboard</Text></TouchableOpacity></View><BottomNav active="Earnings" variant="rider" /><SourceLedger /></View>;
 }
 
 function RiderLeaderboardScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title="Leaderboard" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.tabsRow}>{data.tabs.map((tab: string, index: number) => <Text style={[styles.tabPill, index === 0 && styles.tabPillActive]} key={tab}>{tab}</Text>)}</View><View style={styles.podium}>{data.podium.map((rider: GenericPayload) => <View style={styles.podiumCard} key={rider.name}><Image source={{ uri: rider.avatarUrl }} style={styles.avatar} /><Text style={styles.totalAmount}>{rider.rank}</Text><Text style={styles.vendorName}>{rider.name}</Text><Text style={styles.restaurantMeta}>{rider.badge || rider.deliveries}</Text></View>)}</View><Text style={styles.checkoutSectionTitle}>Top Riders</Text>{data.riders.map((rider: GenericPayload) => <View style={styles.leaderRow} key={rider.name}><Text style={styles.totalAmount}>{rider.rank}</Text><View style={{ flex: 1 }}><Text style={styles.vendorName}>{rider.name} {rider.badge || ''}</Text><Text style={styles.restaurantMeta}>{rider.quality}</Text></View><Text style={styles.priceValue}>{rider.orders}</Text></View>)}<View style={styles.smsCard}><Text style={styles.vendorName}>{data.encouragement}</Text><Text style={styles.smsBody}>{data.target}</Text><Text style={styles.totalAmount}>{data.weeklyEarnings}</Text></View></ScrollView><BottomNav active="Earnings" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title="Leaderboard" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.tabsRow}>{data.tabs.map((tab: string, index: number) => <Text style={[styles.tabPill, index === 0 && styles.tabPillActive]} key={tab}>{tab}</Text>)}</View><View style={styles.podium}>{data.podium.map((rider: GenericPayload) => <View style={styles.podiumCard} key={rider.name}><Image source={{ uri: rider.avatarUrl }} style={styles.avatar} /><Text style={styles.totalAmount}>{rider.rank}</Text><Text style={styles.vendorName}>{rider.name}</Text><Text style={styles.restaurantMeta}>{rider.badge || rider.deliveries}</Text></View>)}</View><Text style={styles.checkoutSectionTitle}>Top Riders</Text>{data.riders.map((rider: GenericPayload) => <View style={styles.leaderRow} key={rider.name}><Text style={styles.totalAmount}>{rider.rank}</Text><View style={{ flex: 1 }}><Text style={styles.vendorName}>{rider.name} {rider.badge || ''}</Text><Text style={styles.restaurantMeta}>{rider.quality}</Text></View><Text style={styles.priceValue}>{rider.orders}</Text></View>)}<View style={styles.smsCard}><Text style={styles.vendorName}>{data.encouragement}</Text><Text style={styles.smsBody}>{data.target}</Text><Text style={styles.totalAmount}>{data.weeklyEarnings}</Text></View></ScrollView><BottomNav active="Earnings" variant="rider" /><SourceLedger /></View>;
 }
 
 function RiderProfileScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title="Rider Profile" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.profileHero}><Image source={{ uri: data.rider.avatarUrl }} style={styles.profileAvatar} /><Text style={styles.checkoutTitle}>{data.rider.name}</Text><Text style={styles.restaurantMeta}>{data.rider.since}</Text><Text style={styles.restaurantMeta}>{data.rider.vehicle}</Text><Text style={styles.balanceText}>{data.rider.rating}</Text><Text style={styles.upperLabel}>{data.rider.reviews}</Text></View><View style={styles.riderStats}>{data.stats.map((stat: GenericPayload) => <View style={styles.riderStat} key={stat.label}><Text style={styles.riderStatValue}>{stat.value}</Text><Text style={styles.upperLabel}>{stat.label}</Text></View>)}</View><View style={styles.deliveryRequestCard}><Text style={styles.vendorName}>Ratings Breakdown</Text>{data.ratingBreakdown.map((row: GenericPayload) => <View style={styles.ratingLine} key={row.stars}><Text>{row.stars}</Text><View style={styles.deliveryProgress}><View style={[styles.deliveryProgressFill, { width: String(row.value) + '%' as any }]} /></View></View>)}</View><View style={styles.riderQuickGrid}>{data.qualities.map((item: GenericPayload) => <View style={styles.riderQuickButton} key={item.label}><Text style={styles.riderQuickTitle}>{item.label}</Text><Text style={styles.riderQuickText}>{item.value}</Text></View>)}</View><Text style={styles.checkoutSectionTitle}>Achievements</Text><View style={styles.tabsRow}>{data.achievements.map((item: string) => <Text style={styles.tabPillActive} key={item}>{item}</Text>)}</View><Text style={styles.checkoutSectionTitle}>Recent Feedback</Text>{data.feedback.map((entry: GenericPayload) => <View style={styles.uploadCard} key={entry.customer}><Text style={styles.avatarInitial}>{entry.initials}</Text><View style={{ flex: 1 }}><Text style={styles.vendorName}>{entry.customer}</Text><Text style={styles.restaurantMeta}>{entry.age}</Text><Text style={styles.smsBody}>{entry.body}</Text></View></View>)}</ScrollView><BottomNav active="Account" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title="Rider Profile" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.profileHero}><Image source={{ uri: data.rider.avatarUrl }} style={styles.profileAvatar} /><Text style={styles.checkoutTitle}>{data.rider.name}</Text><Text style={styles.restaurantMeta}>{data.rider.since}</Text><Text style={styles.restaurantMeta}>{data.rider.vehicle}</Text><Text style={styles.balanceText}>{data.rider.rating}</Text><Text style={styles.upperLabel}>{data.rider.reviews}</Text></View><View style={styles.riderStats}>{data.stats.map((stat: GenericPayload) => <View style={styles.riderStat} key={stat.label}><Text style={styles.riderStatValue}>{stat.value}</Text><Text style={styles.upperLabel}>{stat.label}</Text></View>)}</View><View style={styles.deliveryRequestCard}><Text style={styles.vendorName}>Ratings Breakdown</Text>{data.ratingBreakdown.map((row: GenericPayload) => <View style={styles.ratingLine} key={row.stars}><Text>{row.stars}</Text><View style={styles.deliveryProgress}><View style={[styles.deliveryProgressFill, { width: String(row.value) + '%' as any }]} /></View></View>)}</View><View style={styles.riderQuickGrid}>{data.qualities.map((item: GenericPayload) => <View style={styles.riderQuickButton} key={item.label}><Text style={styles.riderQuickTitle}>{item.label}</Text><Text style={styles.riderQuickText}>{item.value}</Text></View>)}</View><Text style={styles.checkoutSectionTitle}>Achievements</Text><View style={styles.tabsRow}>{data.achievements.map((item: string) => <Text style={styles.tabPillActive} key={item}>{item}</Text>)}</View><Text style={styles.checkoutSectionTitle}>Recent Feedback</Text>{data.feedback.map((entry: GenericPayload) => <View style={styles.uploadCard} key={entry.customer}><Text style={styles.avatarInitial}>{entry.initials}</Text><View style={{ flex: 1 }}><Text style={styles.vendorName}>{entry.customer}</Text><Text style={styles.restaurantMeta}>{entry.age}</Text><Text style={styles.smsBody}>{entry.body}</Text></View></View>)}</ScrollView><BottomNav active="Account" variant="rider" /><SourceLedger /></View>;
 }
 
 
@@ -2109,11 +2218,11 @@ function RiderIncidentScreen({ data, onBack, onSubmitted }: { data: GenericPaylo
   const [urgency, setUrgency] = useState(data.urgencyLevels[1]);
   const [description, setDescription] = useState('');
   const submit = async () => { await sokoeatsApi('/api/rider/incidents', { method: 'POST', body: JSON.stringify({ category, urgency, description: description || 'Reported from mobile incident form.' }) }).catch(() => null); onSubmitted ? onSubmitted() : onBack(); };
-  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.emergencyCard}><Text style={styles.checkoutSectionTitle}>{data.dangerTitle}</Text><Text style={styles.smsBody}>{data.dangerBody}</Text><TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Call Dispatch</Text></TouchableOpacity></View><Text style={styles.upperLabel}>Category</Text><View style={styles.tabsRow}>{data.categories.map((item: string) => <Text onPress={() => setCategory(item)} style={item === category ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><Text style={styles.upperLabel}>Urgency Level</Text><View style={styles.tabsRow}>{data.urgencyLevels.map((item: string) => <Text onPress={() => setUrgency(item)} style={item === urgency ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>Detailed Description</Text><TextInput style={styles.formFieldInput} value={description} onChangeText={setDescription} multiline placeholder="Tell dispatch what happened" placeholderTextColor={colors.outline} /></View><View style={styles.riderQuickGrid}>{data.evidenceImages.map((uri: string) => <Image source={{ uri }} style={styles.evidenceThumb} key={uri} />)}</View><Text style={styles.secureText}>{data.legal}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={submit}><Text style={styles.placeOrderText}>Submit Report</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.emergencyCard}><Text style={styles.checkoutSectionTitle}>{data.dangerTitle}</Text><Text style={styles.smsBody}>{data.dangerBody}</Text><TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Call Dispatch</Text></TouchableOpacity></View><Text style={styles.upperLabel}>Category</Text><View style={styles.tabsRow}>{data.categories.map((item: string) => <Text onPress={() => setCategory(item)} style={item === category ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><Text style={styles.upperLabel}>Urgency Level</Text><View style={styles.tabsRow}>{data.urgencyLevels.map((item: string) => <Text onPress={() => setUrgency(item)} style={item === urgency ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>Detailed Description</Text><TextInput style={styles.formFieldInput} value={description} onChangeText={setDescription} multiline placeholder="Tell dispatch what happened" placeholderTextColor={colors.outline} /></View><View style={styles.riderQuickGrid}>{data.evidenceImages.map((uri: string) => <Image source={{ uri }} style={styles.evidenceThumb} key={uri} />)}</View><Text style={styles.secureText}>{data.legal}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={submit}><Text style={styles.placeOrderText}>Submit Report</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
 }
 
 function RiderHelpCenterScreen({ data, onBack, onChat, onIncident }: { data: GenericPayload; onBack: () => void; onChat: () => void; onIncident: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.heroImageUrl }} style={styles.riderMiniMap} /><View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onChat}><Text style={styles.riderQuickTitle}>{data.primaryActions[0].title}</Text><Text style={styles.riderQuickText}>{data.primaryActions[0].body}</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onIncident}><Text style={styles.riderQuickTitle}>{data.primaryActions[1].title}</Text><Text style={styles.riderQuickText}>{data.primaryActions[1].body}</Text></TouchableOpacity></View><Text style={styles.checkoutTitle}>{data.headline}</Text>{data.categories.map((item: GenericPayload) => <View style={styles.uploadCard} key={item.title}><View><Text style={styles.vendorName}>{item.title}</Text><Text style={styles.restaurantMeta}>{item.body}</Text></View><Text style={styles.changeText}>chevron</Text></View>)}<Text style={styles.checkoutSectionTitle}>Common Questions</Text>{data.questions.map((item: string) => <Text style={styles.helpQuestion} key={item}>{item}</Text>)}</ScrollView><BottomNav active="Alerts" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.heroImageUrl }} style={styles.riderMiniMap} /><View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onChat}><Text style={styles.riderQuickTitle}>{data.primaryActions[0].title}</Text><Text style={styles.riderQuickText}>{data.primaryActions[0].body}</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onIncident}><Text style={styles.riderQuickTitle}>{data.primaryActions[1].title}</Text><Text style={styles.riderQuickText}>{data.primaryActions[1].body}</Text></TouchableOpacity></View><Text style={styles.checkoutTitle}>{data.headline}</Text>{data.categories.map((item: GenericPayload) => <View style={styles.uploadCard} key={item.title}><View><Text style={styles.vendorName}>{item.title}</Text><Text style={styles.restaurantMeta}>{item.body}</Text></View><AppIcon name="chevron" size={18} color={colors.primary} /></View>)}<Text style={styles.checkoutSectionTitle}>Common Questions</Text>{data.questions.map((item: string) => <Text style={styles.helpQuestion} key={item}>{item}</Text>)}</ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
 }
 
 function RiderLiveChatScreen({ data, onBack, onSend }: { data: GenericPayload; onBack: () => void; onSend: (body: string) => void }) {
@@ -2144,7 +2253,7 @@ function RiderQuizResultsScreen({ data, onBack }: { data: GenericPayload; onBack
 
 
 function ReferralHomeScreen({ data, onBack, onInvite, onShare, onRewards }: { data: GenericPayload; onBack: () => void; onInvite: () => void; onShare: () => void; onRewards: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title="SokoEats Referrals" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.heroImages[0] }} style={styles.riderHeroImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text><View style={styles.balanceCard}><Text style={styles.upperLabel}>Your Personal Code</Text><Text style={styles.balanceText}>{data.code}</Text></View><View style={styles.riderStats}><View style={styles.riderStat}><Text style={styles.riderStatValue}>{data.earnedTotal}</Text><Text style={styles.upperLabel}>Earned Total</Text></View><View style={styles.riderStat}><Text style={styles.riderStatValue}>{data.activeMembers}</Text><Text style={styles.upperLabel}>Community Members</Text></View></View><Text style={styles.vendorName}>Community Progress</Text><Text style={styles.restaurantMeta}>{data.progress} - Next Reward: {data.nextReward}</Text><View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onInvite}><Text style={styles.riderQuickTitle}>Invite Friends</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onShare}><Text style={styles.riderQuickTitle}>Share Template</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onRewards}><Text style={styles.riderQuickTitle}>Rewards</Text></TouchableOpacity></View><Text style={styles.checkoutSectionTitle}>Community Activity</Text>{data.activity.map((item: GenericPayload) => <View style={styles.uploadCard} key={item.name}><View><Text style={styles.vendorName}>{item.name}</Text><Text style={styles.restaurantMeta}>{item.body}</Text></View><Text style={styles.discountText}>{item.reward || item.age}</Text></View>)}</ScrollView><BottomNav active="Account" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title="SokoEats Referrals" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.heroImages[0] }} style={styles.riderHeroImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text><View style={styles.balanceCard}><Text style={styles.upperLabel}>Your Personal Code</Text><Text style={styles.balanceText}>{data.code}</Text></View><View style={styles.riderStats}><View style={styles.riderStat}><Text style={styles.riderStatValue}>{data.earnedTotal}</Text><Text style={styles.upperLabel}>Earned Total</Text></View><View style={styles.riderStat}><Text style={styles.riderStatValue}>{data.activeMembers}</Text><Text style={styles.upperLabel}>Community Members</Text></View></View><Text style={styles.vendorName}>Community Progress</Text><Text style={styles.restaurantMeta}>{data.progress} - Next Reward: {data.nextReward}</Text><View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onInvite}><Text style={styles.riderQuickTitle}>Invite Friends</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onShare}><Text style={styles.riderQuickTitle}>Share Template</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onRewards}><Text style={styles.riderQuickTitle}>Rewards</Text></TouchableOpacity></View><Text style={styles.checkoutSectionTitle}>Community Activity</Text>{data.activity.map((item: GenericPayload) => <View style={styles.uploadCard} key={item.name}><View><Text style={styles.vendorName}>{item.name}</Text><Text style={styles.restaurantMeta}>{item.body}</Text></View><Text style={styles.discountText}>{item.reward || item.age}</Text></View>)}</ScrollView><BottomNav active="Account" variant="rider" /><SourceLedger /></View>;
 }
 
 function SelectContactsScreen({ data, onBack, onSent }: { data: GenericPayload; onBack: () => void; onSent: (ids: string[]) => void }) {
@@ -2158,7 +2267,7 @@ function ReferralSentScreen({ data, onBack }: { data: GenericPayload; onBack: ()
 }
 
 function ReferralShareScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title="Share the Vibe" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.imageUrl }} style={styles.riderHeroImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.countdownText}>{data.badge}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text><View style={styles.deliveryRequestCard}><Text style={styles.smsBody}>{data.message}</Text><Text style={styles.totalAmount}>{data.code}</Text><Text style={styles.changeText}>{data.link}</Text></View><View style={styles.riderQuickGrid}>{data.channels.map((channel: string) => <TouchableOpacity style={styles.riderQuickButton} key={channel}><Text style={styles.riderQuickTitle}>{channel}</Text></TouchableOpacity>)}</View><Text style={styles.secureText}>{data.reward}</Text></ScrollView><BottomNav active="Account" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title="Share the Vibe" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.imageUrl }} style={styles.riderHeroImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.countdownText}>{data.badge}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text><View style={styles.deliveryRequestCard}><Text style={styles.smsBody}>{data.message}</Text><Text style={styles.totalAmount}>{data.code}</Text><Text style={styles.changeText}>{data.link}</Text></View><View style={styles.riderQuickGrid}>{data.channels.map((channel: string) => <TouchableOpacity style={styles.riderQuickButton} key={channel}><Text style={styles.riderQuickTitle}>{channel}</Text></TouchableOpacity>)}</View><Text style={styles.secureText}>{data.reward}</Text></ScrollView><BottomNav active="Account" variant="rider" /><SourceLedger /></View>;
 }
 
 function ReferralRewardsScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
@@ -2166,15 +2275,15 @@ function ReferralRewardsScreen({ data, onBack }: { data: GenericPayload; onBack:
 }
 
 function IncidentConfirmationScreen({ data, onBack, onTicket }: { data: GenericPayload; onBack: () => void; onTicket: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title="Incident Reporting" onBack={onBack} /><ScrollView contentContainerStyle={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.imageUrl }} style={styles.successImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><Text style={styles.totalAmount}>Ref ID: {data.refId}</Text><Text style={styles.checkoutSectionTitle}>Next Steps</Text>{data.steps.map((step: string, index: number) => <View style={styles.uploadCard} key={step}><Text style={styles.totalAmount}>{index + 1}</Text><Text style={[styles.smsBody, { flex: 1 }]}>{step}</Text></View>)}<View style={styles.smsCard}><Text style={styles.vendorName}>Safety First</Text><Text style={styles.smsBody}>{data.tip}</Text></View><TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Call Dispatch Now</Text></TouchableOpacity><TouchableOpacity style={styles.placeOrderButton} onPress={onTicket}><Text style={styles.placeOrderText}>View Ticket Status</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title="Incident Reporting" onBack={onBack} /><ScrollView contentContainerStyle={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.imageUrl }} style={styles.successImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><Text style={styles.totalAmount}>Ref ID: {data.refId}</Text><Text style={styles.checkoutSectionTitle}>Next Steps</Text>{data.steps.map((step: string, index: number) => <View style={styles.uploadCard} key={step}><Text style={styles.totalAmount}>{index + 1}</Text><Text style={[styles.smsBody, { flex: 1 }]}>{step}</Text></View>)}<View style={styles.smsCard}><Text style={styles.vendorName}>Safety First</Text><Text style={styles.smsBody}>{data.tip}</Text></View><TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Call Dispatch Now</Text></TouchableOpacity><TouchableOpacity style={styles.placeOrderButton} onPress={onTicket}><Text style={styles.placeOrderText}>View Ticket Status</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
 }
 
 function SupportTicketHistoryScreen({ data, onBack, onTicket }: { data: GenericPayload; onBack: () => void; onTicket: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.tabsRow}>{data.tabs.map((tab: string, index: number) => <Text style={index === 0 ? styles.tabPillActive : styles.tabPill} key={tab}>{tab}</Text>)}</View>{data.tickets.map((ticket: GenericPayload) => <TouchableOpacity style={styles.deliveryRequestCard} key={ticket.code} onPress={ticket.code === '#INC-82941' ? onTicket : undefined}><View style={styles.sectionHeadingRow}><Text style={styles.upperLabel}>{ticket.category}</Text><Text style={ticket.status === 'RESOLVED' ? styles.discountText : styles.countdownText}>{ticket.status}</Text></View><Text style={styles.vendorName}>{ticket.title}</Text><Text style={styles.restaurantMeta}>{ticket.code} - {ticket.updated}</Text><Text style={styles.smsBody}>{ticket.body}</Text></TouchableOpacity>)}<View style={styles.smsCard}><Text style={styles.vendorName}>Still need help?</Text><Text style={styles.smsBody}>{data.support}</Text><Text style={styles.changeText}>START NEW TICKET</Text></View></ScrollView><BottomNav active="Alerts" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.tabsRow}>{data.tabs.map((tab: string, index: number) => <Text style={index === 0 ? styles.tabPillActive : styles.tabPill} key={tab}>{tab}</Text>)}</View>{data.tickets.map((ticket: GenericPayload) => <TouchableOpacity style={styles.deliveryRequestCard} key={ticket.code} onPress={ticket.code === '#INC-82941' ? onTicket : undefined}><View style={styles.sectionHeadingRow}><Text style={styles.upperLabel}>{ticket.category}</Text><Text style={ticket.status === 'RESOLVED' ? styles.discountText : styles.countdownText}>{ticket.status}</Text></View><Text style={styles.vendorName}>{ticket.title}</Text><Text style={styles.restaurantMeta}>{ticket.code} - {ticket.updated}</Text><Text style={styles.smsBody}>{ticket.body}</Text></TouchableOpacity>)}<View style={styles.smsCard}><Text style={styles.vendorName}>Still need help?</Text><Text style={styles.smsBody}>{data.support}</Text><Text style={styles.changeText}>START NEW TICKET</Text></View></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
 }
 
 function ResolvedTicketScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title={'Ticket #' + data.code} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.profileHero}><Image source={{ uri: data.images[0] }} style={styles.profileAvatar} /><Text style={styles.discountText}>{data.status}</Text><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.restaurantMeta}>{data.resolvedAt}</Text></View><View style={styles.deliveryRequestCard}><Text style={styles.upperLabel}>{data.agent.label}</Text><Text style={styles.restaurantMeta}>{data.agent.time}</Text><Text style={styles.smsBody}>{data.message}</Text></View><Text style={styles.checkoutSectionTitle}>How was your experience?</Text><Text style={styles.balanceText}>star star star star star</Text><View style={styles.smsCard}><Text style={styles.vendorName}>View Original Report</Text><Text style={styles.smsBody}>{data.originalReport}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Back to History</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title={'Ticket #' + data.code} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.profileHero}><Image source={{ uri: data.images[0] }} style={styles.profileAvatar} /><Text style={styles.discountText}>{data.status}</Text><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.restaurantMeta}>{data.resolvedAt}</Text></View><View style={styles.deliveryRequestCard}><Text style={styles.upperLabel}>{data.agent.label}</Text><Text style={styles.restaurantMeta}>{data.agent.time}</Text><Text style={styles.smsBody}>{data.message}</Text></View><Text style={styles.checkoutSectionTitle}>How was your experience?</Text><View style={styles.ratingStars}>{[0, 1, 2, 3, 4].map((star) => <AppIcon key={star} name="star" size={25} color={colors.tertiary} />)}</View><View style={styles.smsCard}><Text style={styles.vendorName}>View Original Report</Text><Text style={styles.smsBody}>{data.originalReport}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Back to History</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
 }
 
 function PromoBanner({
@@ -2262,14 +2371,15 @@ function ConfirmPaymentScreen({ data, onBack, onConfirm }: { data: GenericPayloa
 }
 
 function PaymentSuccessfulScreen({ data, onBack, onHistory }: { data: GenericPayload; onBack: () => void; onHistory: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title="Scan to Pay" onBack={onBack} /><ScrollView contentContainerStyle={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.imageUrl }} style={styles.successImage} /><Text style={styles.successIcon}>check_circle</Text><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><Text style={styles.balanceText}>{data.amount}</Text><Text style={styles.vendorName}>{data.vendor}</Text><Text style={styles.discountText}>{data.points}</Text><Text style={styles.totalAmount}>{data.transactionId}</Text><Text style={styles.smsBody}>{data.message}</Text><TouchableOpacity style={styles.primaryButton} onPress={onHistory}><Text style={styles.primaryButtonText}>View Receipt</Text></TouchableOpacity><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Return to Wallet</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title="Scan to Pay" onBack={onBack} /><ScrollView contentContainerStyle={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.imageUrl }} style={styles.successImage} /><View style={styles.successIcon}><AppIcon name="check" size={46} color={colors.secondary} /></View><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><Text style={styles.balanceText}>{data.amount}</Text><Text style={styles.vendorName}>{data.vendor}</Text><Text style={styles.discountText}>{data.points}</Text><Text style={styles.totalAmount}>{data.transactionId}</Text><Text style={styles.smsBody}>{data.message}</Text><TouchableOpacity style={styles.primaryButton} onPress={onHistory}><Text style={styles.primaryButtonText}>View Receipt</Text></TouchableOpacity><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Return to Wallet</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
 }
 
 function TransactionHistoryScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
   return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.tabsRow}>{data.tabs.map((tab: string, index: number) => <Text style={index === 0 ? styles.tabPillActive : styles.tabPill} key={tab}>{tab}</Text>)}</View><View style={styles.tabsRow}>{data.ranges.map((range: string, index: number) => <Text style={index === 0 ? styles.tabPillActive : styles.tabPill} key={range}>{range}</Text>)}</View>{data.transactions.map((tx: GenericPayload) => <View style={styles.deliveryRequestCard} key={tx.id}><View style={styles.sectionHeadingRow}><Text style={styles.vendorName}>{tx.label}</Text><Text style={tx.tone === 'credit' ? styles.discountText : styles.priceValue}>{tx.amount}</Text></View><Text style={styles.restaurantMeta}>{tx.time}</Text><Text style={styles.secureText}>ID: {tx.id} - {tx.status}</Text></View>)}<TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Download Statement</Text></TouchableOpacity><Text style={styles.secureText}>{data.footer}</Text></ScrollView><BottomNav active="Wallet" /><SourceLedger /></View>;
 }
 
-function BottomNav({ active = 'Home' }: { active?: string } = {}) {
+function BottomNav({ active = 'Home', variant }: { active?: string; variant?: BottomNavVariant } = {}) {
+  const navigate = useContext(BottomNavNavigationContext);
   const insets = useSafeAreaInsets();
   const footerDeviceClearance = Math.max(insets.bottom + 16, 52);
   const bottomNavSafeStyle = useMemo(
@@ -2279,18 +2389,34 @@ function BottomNav({ active = 'Home' }: { active?: string } = {}) {
     }),
     [footerDeviceClearance]
   );
-  const tabs = active === 'Deliveries'
-    ? [['home', 'Home'], ['bike', 'Deliveries'], ['cash', 'Earnings'], ['bell', 'Alerts'], ['person', 'Account']]
-    : [['home', 'Home'], ['grid', 'Categories'], ['receipt', 'Orders'], ['heart', 'Favourites'], ['person', 'Account']];
+  const resolvedVariant: BottomNavVariant = variant || (['Deliveries', 'Earnings', 'Alerts'].includes(active) ? 'rider' : 'customer');
+  const tabs: BottomNavItem[] = resolvedVariant === 'rider'
+    ? [
+        { icon: 'home', label: 'Home', screen: 'riderHome' },
+        { icon: 'bike', label: 'Deliveries', screen: 'riderHome' },
+        { icon: 'cash', label: 'Earnings', screen: 'riderEarnings' },
+        { icon: 'bell', label: 'Alerts', screen: 'supportTicketHistory' },
+        { icon: 'person', label: 'Account', screen: 'riderProfile' },
+      ]
+    : [
+        { icon: 'home', label: 'Home', screen: 'home' },
+        { icon: 'grid', label: 'Categories', screen: 'categories' },
+        { icon: 'receipt', label: 'Orders', screen: 'orders' },
+        { icon: 'heart', label: 'Favourites', screen: 'favourites' },
+        { icon: 'person', label: 'Account', screen: 'accountAccess' },
+      ];
 
   return (
     <View style={[styles.bottomNav, bottomNavSafeStyle]}>
-      {tabs.map(([icon, label]) => (
-        <View key={label} style={[styles.navItem, label === active && styles.navItemActive]}>
-          <Text style={[styles.navIcon, label === active && styles.navIconActive]}>{icon}</Text>
-          <Text style={[styles.navLabel, label === active && styles.navLabelActive]}>{label}</Text>
-        </View>
-      ))}
+      {tabs.map((tab) => {
+        const selected = tab.label === active;
+        return (
+          <TouchableOpacity key={tab.label} style={[styles.navItem, selected && styles.navItemActive]} onPress={() => navigate?.(tab.screen)} activeOpacity={0.82}>
+            <AppIcon name={tab.icon} size={18} color={selected ? colors.onPrimaryContainer : colors.onSurfaceVariant} />
+            <Text style={[styles.navLabel, selected && styles.navLabelActive]}>{tab.label}</Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -2319,12 +2445,12 @@ function CheckoutScreen({
       <View style={styles.checkoutHeader}>
         <View style={styles.checkoutHeaderLeft}>
           <TouchableOpacity style={styles.backButton} onPress={onBack}>
-            <Text style={styles.backButtonText}>back</Text>
+            <AppIcon name="back" size={20} color={colors.primary} />
           </TouchableOpacity>
           <Text style={styles.checkoutBrand}>SokoEats</Text>
         </View>
         <View style={styles.checkoutHeaderRight}>
-          <Text style={styles.checkoutBell}>bell</Text>
+          <AppIcon name="bell" size={19} color={colors.primary} />
           <Image source={{ uri: images.checkoutAvatar }} style={styles.checkoutAvatar} />
         </View>
       </View>
@@ -2339,7 +2465,7 @@ function CheckoutScreen({
           <View style={styles.addressTop}>
             <View style={styles.addressTitleRow}>
               <View style={styles.addressIcon}>
-                <Text style={styles.addressIconText}>pin</Text>
+                <AppIcon name="pin" size={18} color={colors.primary} />
               </View>
               <View>
                 <Text style={styles.upperLabel}>Delivery Address</Text>
@@ -2399,7 +2525,7 @@ function CheckoutScreen({
 
         <View style={styles.smsCard}>
           <View style={styles.smsTitleRow}>
-            <Text style={styles.smsIcon}>sms</Text>
+            <AppIcon name="sms" size={20} color={colors.primary} />
             <Text style={styles.smsTitle}>Order Updates</Text>
           </View>
           <Text style={styles.smsBody}>Confirm your mobile number to receive real-time delivery tracking via SMS.</Text>
@@ -2423,10 +2549,10 @@ function CheckoutScreen({
 
       <View style={styles.placeOrderBar}>
         <TouchableOpacity style={styles.placeOrderButton} activeOpacity={0.86}>
-          <Text style={styles.placeOrderIcon}>bag</Text>
+          <AppIcon name="bag" size={20} color={colors.onPrimary} style={styles.inlineIcon} />
           <Text style={styles.placeOrderText}>Place Order</Text>
         </TouchableOpacity>
-        <Text style={styles.secureText}>lock Secure payment powered by SokoPay</Text>
+        <View style={styles.secureRow}><AppIcon name="lock" size={14} color={colors.onSurfaceVariant} /><Text style={styles.secureText}>Secure payment powered by SokoPay</Text></View>
       </View>
       <SourceLedger />
     </View>
@@ -3872,7 +3998,7 @@ const styles = StyleSheet.create({
   uploadCard: { borderRadius: 14, backgroundColor: colors.surfaceContainerLowest, padding: 14, marginBottom: 12, flexDirection: 'row', gap: 12, alignItems: 'center', justifyContent: 'space-between' },
   centerPanel: { flex: 1, justifyContent: 'center' },
   successImage: { width: 210, height: 170, alignSelf: 'center', resizeMode: 'contain', marginBottom: 20 },
-  successIcon: { color: colors.secondary, fontSize: 54, textAlign: 'center', fontWeight: '900' },
+  successIcon: { alignItems: 'center', justifyContent: 'center', marginBottom: 8 },
   balanceCard: { borderRadius: 20, backgroundColor: colors.primaryContainer, padding: 18, marginVertical: 16 },
   balanceText: { color: colors.primary, fontSize: 34, lineHeight: 40, fontWeight: '900', marginVertical: 8 },
   mobileChart: { height: 150, flexDirection: 'row', alignItems: 'flex-end', gap: 8, marginTop: 14 },
@@ -3902,4 +4028,33 @@ const styles = StyleSheet.create({
   quizOption: { borderRadius: 14, backgroundColor: colors.surfaceContainerLowest, padding: 14, marginBottom: 10, color: colors.onSurfaceVariant, fontWeight: '800' },
   quizOptionActive: { borderRadius: 14, backgroundColor: colors.primaryContainer, padding: 14, marginBottom: 10, color: colors.onPrimaryContainer, fontWeight: '900', overflow: 'hidden' },
 
+  inlineIcon: {
+    marginRight: 6,
+  },
+  searchActionButton: {
+    marginLeft: 12,
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  searchActionIcon: {
+    marginLeft: 12,
+  },
+  viewAllRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  secureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },  ratingStars: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    marginVertical: 12,
+  },
 });
