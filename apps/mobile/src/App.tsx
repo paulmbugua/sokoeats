@@ -3,6 +3,7 @@ import {
   Animated,
   Image,
   ImageBackground,
+  Linking,
   Pressable,
   ScrollView,
   StatusBar,
@@ -232,6 +233,65 @@ const orderItems = [
 
 const money = (value: number) => `KSh ${value.toLocaleString('en-KE')}`;
 const API_BASE = process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://10.0.2.2:4005';
+const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+
+type MapPoint = { id?: string; label: string; address?: string; lat: number; lng: number; kind?: string };
+type MapViewport = { center?: MapPoint; markers: MapPoint[]; path?: MapPoint[]; staticUrlTemplate?: string };
+type MapsManifest = {
+  provider?: string;
+  androidPackage?: string;
+  customer: Record<string, any>;
+  rider: Record<string, any>;
+  vendor: Record<string, any>;
+  merchant: Record<string, any>;
+  support: Record<string, any>;
+  admin: Record<string, any>;
+  tickets: Record<string, any>;
+};
+
+const MapsContext = createContext<MapsManifest | null>(null);
+const fallbackMaps: MapsManifest = {
+  provider: 'google_maps',
+  androidPackage: 'com.paulmbugua2.sokoeats',
+  customer: {
+    nearbyVendors: {
+      title: 'Nearby vendors',
+      map: { markers: [{ label: 'You', lat: -1.286389, lng: 36.817223 }, { label: 'Nairobi Grill House', lat: -1.28333, lng: 36.82194 }] },
+      actionUrl: 'https://www.google.com/maps/search/?api=1&query=-1.28333,36.82194',
+    },
+    checkout: {
+      title: 'Checkout delivery route',
+      route: { etaMinutes: 18, distanceKm: 4.2 },
+      map: { markers: [{ label: 'Nairobi Grill House', lat: -1.28333, lng: 36.82194 }, { label: 'Home', lat: -1.286389, lng: 36.817223 }], path: [{ label: 'Nairobi Grill House', lat: -1.28333, lng: 36.82194 }, { label: 'Home', lat: -1.286389, lng: 36.817223 }] },
+      navigationUrl: 'https://www.google.com/maps/dir/?api=1&origin=-1.28333,36.82194&destination=-1.286389,36.817223&travelmode=driving',
+    },
+    savedAddresses: [{ label: 'Home - Nairobi CBD', address: 'Apartment 4B, Nairobi CBD', lat: -1.286389, lng: 36.817223, map: { markers: [{ label: 'Home - Nairobi CBD', lat: -1.286389, lng: 36.817223 }] } }],
+  },
+  rider: {
+    deliveryRequest: {
+      title: 'Delivery request map',
+      map: { markers: [{ label: 'Rider', lat: -1.28472, lng: 36.82336 }, { label: 'Vendor', lat: -1.28333, lng: 36.82194 }, { label: 'Customer', lat: -1.286389, lng: 36.817223 }], path: [{ label: 'Rider', lat: -1.28472, lng: 36.82336 }, { label: 'Vendor', lat: -1.28333, lng: 36.82194 }, { label: 'Customer', lat: -1.286389, lng: 36.817223 }] },
+      acceptUrl: 'https://www.google.com/maps/dir/?api=1&destination=-1.28333,36.82194&travelmode=driving',
+    },
+    activeDelivery: {
+      title: 'Active delivery navigation',
+      route: { etaMinutes: 18, distanceKm: 4.2 },
+      map: { markers: [{ label: 'Rider', lat: -1.28472, lng: 36.82336 }, { label: 'Vendor', lat: -1.28333, lng: 36.82194 }, { label: 'Customer', lat: -1.286389, lng: 36.817223 }], path: [{ label: 'Rider', lat: -1.28472, lng: 36.82336 }, { label: 'Vendor', lat: -1.28333, lng: 36.82194 }, { label: 'Customer', lat: -1.286389, lng: 36.817223 }] },
+      toVendorUrl: 'https://www.google.com/maps/dir/?api=1&destination=-1.28333,36.82194&travelmode=driving',
+      toCustomerUrl: 'https://www.google.com/maps/dir/?api=1&destination=-1.286389,36.817223&travelmode=driving',
+    },
+    safety: {
+      title: 'Safety incident capture',
+      map: { markers: [{ label: 'Incident', lat: -1.2921, lng: 36.8219 }] },
+      dispatchUrl: 'https://www.google.com/maps/search/?api=1&query=-1.2921,36.8219',
+    },
+  },
+  vendor: {},
+  merchant: {},
+  support: {},
+  admin: {},
+  tickets: {},
+};
 type RiderHomePayload = { sourceFiles?: string[]; tabs?: string[]; rider: { name?: string; status: string; zone: string; earningsToday: string; online?: boolean }; heatmapUrl: string; surge: { active?: boolean; label: string }; request: { id: string; status: string; title: string; countdownSeconds: number; pickup: { name: string; distance: string }; dropoff: { area: string; distance: string }; payout: string; acceptedMessage: string } };
 type ActiveDeliveryPayload = { sourceFiles?: string[]; tabs?: string[]; order: { code: string; eta: string; status: string; progressLabel: string; progressPercent: number }; mapUrl: string; destinationLabel: string; vendor: { name: string; address: string; badge: string; prepTime: string; imageUrl: string }; arrived: boolean; pickupConfirmed: boolean };
 const fallbackRiderHome: RiderHomePayload = {
@@ -1644,6 +1704,45 @@ async function sokoeatsApi<T>(path: string, init: RequestInit = {}): Promise<T> 
   return res.json() as Promise<T>;
 }
 
+function staticMapUrl(map?: MapViewport) {
+  const markers: MapPoint[] = map?.markers?.length ? map.markers : (fallbackMaps.customer.nearbyVendors.map.markers as MapPoint[]);
+  const center = map?.center || markers[0];
+  const params = [
+    `center=${center.lat},${center.lng}`,
+    'zoom=14',
+    'size=900x520',
+    'scale=2',
+    'maptype=roadmap',
+    ...markers.map((point, index) => `markers=${encodeURIComponent(`color:${index === 0 ? 'orange' : index === 1 ? 'green' : 'red'}|label:${String.fromCharCode(65 + index)}|${point.lat},${point.lng}`)}`),
+  ];
+  if (map?.path?.length) params.push(`path=${encodeURIComponent('color:0x904d00ff|weight:5|' + map.path.map((point) => `${point.lat},${point.lng}`).join('|'))}`);
+  if (GOOGLE_MAPS_API_KEY) params.push(`key=${GOOGLE_MAPS_API_KEY}`);
+  return `https://maps.googleapis.com/maps/api/staticmap?${params.join('&')}`;
+}
+
+function openExternalUrl(url?: string) {
+  if (!url) return;
+  Linking.openURL(url).catch(() => {});
+}
+
+function MapPanel({ title, subtitle, map, actionUrl, actionLabel = 'Open navigation' }: { title: string; subtitle?: string; map?: MapViewport; actionUrl?: string; actionLabel?: string }) {
+  return (
+    <View style={styles.mapPanel}>
+      <View style={styles.sectionHeadingRow}>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.vendorName}>{title}</Text>
+          {!!subtitle && <Text style={styles.restaurantMeta}>{subtitle}</Text>}
+        </View>
+        <TouchableOpacity style={styles.mapAction} onPress={() => openExternalUrl(actionUrl)}>
+          <AppIcon name="pin" size={16} color={colors.primary} />
+          <Text style={styles.changeText}>{actionLabel}</Text>
+        </TouchableOpacity>
+      </View>
+      <Image source={{ uri: staticMapUrl(map) }} style={styles.mapPreview} />
+    </View>
+  );
+}
+
 function SourceLedger() {
   return (
     <View style={styles.sourceLedger} pointerEvents="none">
@@ -1672,6 +1771,7 @@ function SokoEatsApp() {
   const [riderHome, setRiderHome] = useState<RiderHomePayload>(fallbackRiderHome);
   const [activeDelivery, setActiveDelivery] = useState<ActiveDeliveryPayload>(fallbackActiveDelivery);
   const [riderBatch, setRiderBatch] = useState<Record<string, GenericPayload>>(fallbackRiderBatch);
+  const [maps, setMaps] = useState<MapsManifest>(fallbackMaps);
   const fade = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -1684,6 +1784,7 @@ function SokoEatsApp() {
 
   useEffect(() => {
     sokoeatsApi<{ wallet: Record<string, GenericPayload> }>('/api/wallet/payment-suite').then((r) => setRiderBatch((prev) => ({ ...prev, ...r.wallet }))).catch(() => {});
+    sokoeatsApi<{ maps: MapsManifest }>('/api/maps/manifest').then((r) => setMaps(r.maps)).catch(() => {});
   }, []);
 
   const openScreen = (next: Screen) => {
@@ -1709,6 +1810,7 @@ function SokoEatsApp() {
       <StatusBar barStyle={screen === 'splash' ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
       <Animated.View style={[styles.root, { opacity: fade }]}>
         <BottomNavNavigationContext.Provider value={openScreen}>
+          <MapsContext.Provider value={maps}>
         {screen === 'splash' && <SplashScreen onContinue={() => openScreen('onboarding')} />}
         {screen === 'onboarding' && <OnboardingScreen onNext={() => openScreen('home')} onSkip={() => openScreen('home')} />}
         {screen === 'home' && (
@@ -1770,6 +1872,7 @@ function SokoEatsApp() {
             onBack={() => openScreen('home')}
           />
         )}
+          </MapsContext.Provider>
         </BottomNavNavigationContext.Provider>
       </Animated.View>
     </View>
@@ -1916,6 +2019,7 @@ function HomeScreen({
   onWallet: () => void;
   onScan: () => void;
 }) {
+  const maps = useContext(MapsContext) || fallbackMaps;
   return (
     <View style={styles.shell}>
       <View style={styles.homeHeader}>
@@ -1950,6 +2054,8 @@ function HomeScreen({
           <TouchableOpacity style={styles.riderQuickButton} onPress={onWallet}><Text style={styles.riderQuickTitle}>Soko Wallet</Text><Text style={styles.riderQuickText}>Balance, vouchers, referrals</Text></TouchableOpacity>
           <TouchableOpacity style={styles.riderQuickButton} onPress={onScan}><Text style={styles.riderQuickTitle}>Scan to Pay</Text><Text style={styles.riderQuickText}>QR payments for local merchants</Text></TouchableOpacity>
         </View>
+
+        <MapPanel title={maps.customer.nearbyVendors.title || 'Nearby vendors'} subtitle="Restaurants and riders around Nairobi CBD" map={maps.customer.nearbyVendors.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Open map" />
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoScroller}>
           <PromoBanner
@@ -2093,6 +2199,7 @@ function FavouritesScreen({ onBack, onCheckout }: { onBack: () => void; onChecko
 }
 
 function AccountAccessScreen({ onBack, onRider }: { onBack: () => void; onRider: () => void }) {
+  const maps = useContext(MapsContext) || fallbackMaps;
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title="Account" onBack={onBack} />
@@ -2104,6 +2211,7 @@ function AccountAccessScreen({ onBack, onRider }: { onBack: () => void; onRider:
         </View>
         <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Phone number</Text><TextInput style={styles.formFieldInput} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
         <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Email address</Text><TextInput style={styles.formFieldInput} keyboardType="email-address" placeholder="paul@sokoeats.co.ke" placeholderTextColor={colors.outline} /></View>
+        <MapPanel title="Default delivery address" subtitle={maps.customer.savedAddresses?.[0]?.address || 'Nairobi CBD'} map={maps.customer.savedAddresses?.[0]?.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Edit pin" />
         <TouchableOpacity style={styles.placeOrderButton}><Text style={styles.placeOrderText}>Login with OTP</Text></TouchableOpacity>
         <TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Create SokoEats Account</Text></TouchableOpacity>
         <TouchableOpacity style={styles.smsCard} onPress={onRider}><Text style={styles.vendorName}>Rider or vendor partner?</Text><Text style={styles.smsBody}>Open your partner tools, onboarding, earnings, and support dashboards.</Text><Text style={styles.changeText}>Continue to partner mode</Text></TouchableOpacity>
@@ -2114,6 +2222,7 @@ function AccountAccessScreen({ onBack, onRider }: { onBack: () => void; onRider:
   );
 }
 function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onLeaderboard, onProfile, onHelp, onIncident, onTraining, onOrderDetail, onReferral, onTickets }: { data: RiderHomePayload; onBack: () => void; onAccept: () => void; onOnboarding: () => void; onEarnings: () => void; onLeaderboard: () => void; onProfile: () => void; onHelp: () => void; onIncident: () => void; onTraining: () => void; onOrderDetail: () => void; onReferral: () => void; onTickets: () => void }) {
+  const maps = useContext(MapsContext) || fallbackMaps;
   return (
     <View style={styles.riderShell}>
       <View style={styles.riderTop}>
@@ -2131,6 +2240,7 @@ function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onL
         <ImageBackground source={{ uri: data.heatmapUrl }} style={styles.riderMapCard} imageStyle={styles.riderMapImage}>
           <View style={styles.surgeBadge}><Text style={styles.surgeText}>{data.surge.label}</Text></View>
         </ImageBackground>
+        <MapPanel title={maps.rider.deliveryRequest.title || 'Delivery request map'} subtitle="Pickup, drop-off, and live rider position" map={maps.rider.deliveryRequest.map} actionUrl={maps.rider.deliveryRequest.acceptUrl} actionLabel="Navigate" />
         <View style={styles.deliveryRequestCard}>
           <View style={styles.sectionHeadingRow}><Text style={styles.checkoutSectionTitle}>{data.request.title}</Text><Text style={styles.countdownText}>{data.request.countdownSeconds}s</Text></View>
           <View style={styles.deliveryPoint}><AppIcon name="pin" size={15} color={colors.primary} style={styles.inlineIcon} /><View><Text style={styles.vendorName}>Pickup: {data.request.pickup.name}</Text><Text style={styles.restaurantMeta}>{data.request.pickup.distance}</Text></View></View>
@@ -2146,6 +2256,8 @@ function RiderHomeScreen({ data, onBack, onAccept, onOnboarding, onEarnings, onL
 }
 
 function ActiveDeliveryScreen({ data, onBack, onArrived, onPickup }: { data: ActiveDeliveryPayload; onBack: () => void; onArrived: () => void; onPickup: () => void }) {
+  const maps = useContext(MapsContext) || fallbackMaps;
+  const navigationUrl = data.pickupConfirmed ? maps.rider.activeDelivery.toCustomerUrl : maps.rider.activeDelivery.toVendorUrl;
   return (
     <View style={styles.riderShell}>
       <View style={styles.riderTop}>
@@ -2158,9 +2270,11 @@ function ActiveDeliveryScreen({ data, onBack, onArrived, onPickup }: { data: Act
         <Text style={styles.countdownText}>Status: {data.order.status}</Text>
       </View>
       <View style={styles.deliveryProgress}><View style={[styles.deliveryProgressFill, { width: `${data.order.progressPercent}%` as `${number}%` }]} /></View>
-      <ImageBackground source={{ uri: data.mapUrl }} style={styles.fullMap} imageStyle={styles.fullMapImage}>
+      <TouchableOpacity style={styles.fullMap} activeOpacity={0.92} onPress={() => openExternalUrl(navigationUrl)}>
+        <Image source={{ uri: staticMapUrl(maps.rider.activeDelivery.map) }} style={styles.fullMapPreview} />
         <View style={styles.destinationMarker}><Text style={styles.destinationText}>{data.destinationLabel}</Text></View>
-      </ImageBackground>
+        <View style={styles.navigationBadge}><AppIcon name="pin" size={16} color={colors.onPrimaryContainer} /><Text style={styles.destinationText}>{data.pickupConfirmed ? 'Navigate to customer' : 'Navigate to vendor'}</Text></View>
+      </TouchableOpacity>
       <View style={styles.vendorPickupCard}>
         <Image source={{ uri: data.vendor.imageUrl }} style={styles.orderImage} />
         <View style={{ flex: 1 }}><Text style={styles.vendorName}>{data.vendor.name}</Text><Text style={styles.restaurantMeta}>{data.vendor.address}</Text><View style={styles.restaurantStats}><Text style={styles.timeText}>{data.vendor.badge}</Text><Text style={styles.statText}>Prep time: {data.vendor.prepTime}</Text></View></View>
@@ -2214,11 +2328,12 @@ function RiderProfileScreen({ data, onBack }: { data: GenericPayload; onBack: ()
 
 
 function RiderIncidentScreen({ data, onBack, onSubmitted }: { data: GenericPayload; onBack: () => void; onSubmitted?: () => void }) {
+  const maps = useContext(MapsContext) || fallbackMaps;
   const [category, setCategory] = useState(data.categories[0]);
   const [urgency, setUrgency] = useState(data.urgencyLevels[1]);
   const [description, setDescription] = useState('');
   const submit = async () => { await sokoeatsApi('/api/rider/incidents', { method: 'POST', body: JSON.stringify({ category, urgency, description: description || 'Reported from mobile incident form.' }) }).catch(() => null); onSubmitted ? onSubmitted() : onBack(); };
-  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.emergencyCard}><Text style={styles.checkoutSectionTitle}>{data.dangerTitle}</Text><Text style={styles.smsBody}>{data.dangerBody}</Text><TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Call Dispatch</Text></TouchableOpacity></View><Text style={styles.upperLabel}>Category</Text><View style={styles.tabsRow}>{data.categories.map((item: string) => <Text onPress={() => setCategory(item)} style={item === category ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><Text style={styles.upperLabel}>Urgency Level</Text><View style={styles.tabsRow}>{data.urgencyLevels.map((item: string) => <Text onPress={() => setUrgency(item)} style={item === urgency ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>Detailed Description</Text><TextInput style={styles.formFieldInput} value={description} onChangeText={setDescription} multiline placeholder="Tell dispatch what happened" placeholderTextColor={colors.outline} /></View><View style={styles.riderQuickGrid}>{data.evidenceImages.map((uri: string) => <Image source={{ uri }} style={styles.evidenceThumb} key={uri} />)}</View><Text style={styles.secureText}>{data.legal}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={submit}><Text style={styles.placeOrderText}>Submit Report</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
+  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.emergencyCard}><Text style={styles.checkoutSectionTitle}>{data.dangerTitle}</Text><Text style={styles.smsBody}>{data.dangerBody}</Text><TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Call Dispatch</Text></TouchableOpacity></View><Text style={styles.upperLabel}>Category</Text><View style={styles.tabsRow}>{data.categories.map((item: string) => <Text onPress={() => setCategory(item)} style={item === category ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><Text style={styles.upperLabel}>Urgency Level</Text><View style={styles.tabsRow}>{data.urgencyLevels.map((item: string) => <Text onPress={() => setUrgency(item)} style={item === urgency ? styles.tabPillActive : styles.tabPill} key={item}>{item}</Text>)}</View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>Detailed Description</Text><TextInput style={styles.formFieldInput} value={description} onChangeText={setDescription} multiline placeholder="Tell dispatch what happened" placeholderTextColor={colors.outline} /></View><MapPanel title={maps.rider.safety.title || 'Safety incident location'} subtitle="Attach the exact incident location before submitting" map={maps.rider.safety.map} actionUrl={maps.rider.safety.dispatchUrl} actionLabel="Open location" /><View style={styles.riderQuickGrid}>{data.evidenceImages.map((uri: string) => <Image source={{ uri }} style={styles.evidenceThumb} key={uri} />)}</View><Text style={styles.secureText}>{data.legal}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={submit}><Text style={styles.placeOrderText}>Submit Report</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
 }
 
 function RiderHelpCenterScreen({ data, onBack, onChat, onIncident }: { data: GenericPayload; onBack: () => void; onChat: () => void; onIncident: () => void }) {
@@ -2440,6 +2555,7 @@ function CheckoutScreen({
   onPaymentChange: (method: PaymentMethod) => void;
   onBack: () => void;
 }) {
+  const maps = useContext(MapsContext) || fallbackMaps;
   return (
     <View style={styles.checkoutShell}>
       <View style={styles.checkoutHeader}>
@@ -2480,6 +2596,8 @@ function CheckoutScreen({
             <Text style={styles.addressDetailText}>Apartment 4B, Central Business District, Nairobi</Text>
           </View>
         </View>
+
+        <MapPanel title={maps.customer.checkout.title || 'Checkout delivery route'} subtitle={`ETA ${maps.customer.checkout.route?.etaMinutes || 18} min - ${maps.customer.checkout.route?.distanceKm || 4.2} km`} map={maps.customer.checkout.map} actionUrl={maps.customer.checkout.navigationUrl} actionLabel="Directions" />
 
         <Text style={styles.checkoutSectionTitle}>Order Review</Text>
         <View style={styles.orderCard}>
@@ -4051,10 +4169,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-  },  ratingStars: {
+  },
+  ratingStars: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 6,
     marginVertical: 12,
+  },
+  mapPanel: {
+    borderRadius: 18,
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 12,
+    marginVertical: 14,
+    shadowColor: '#2d3446',
+    shadowOpacity: 0.08,
+    shadowRadius: 18,
+    elevation: 3,
+  },
+  mapPreview: {
+    width: '100%',
+    height: 178,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceContainerHigh,
+    marginTop: 10,
+  },
+  mapAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  fullMapPreview: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
+    resizeMode: 'cover',
+  },
+  navigationBadge: {
+    position: 'absolute',
+    left: 18,
+    right: 18,
+    bottom: 28,
+    borderRadius: 999,
+    backgroundColor: colors.primaryContainer,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
   },
 });

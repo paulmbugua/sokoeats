@@ -9,6 +9,7 @@ import ticketRoutes from './routes/ticketRoutes.js';
 import vendorRoutes from './routes/vendorRoutes.js';
 import riderRoutes from './routes/riderRoutes.js';
 import supportRoutes from './routes/supportRoutes.js';
+import mapRoutes from './routes/mapRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 
 const app = express();
@@ -25,6 +26,7 @@ app.use('/api', ticketRoutes);
 app.use('/api', vendorRoutes);
 app.use('/api', riderRoutes);
 app.use('/api', supportRoutes);
+app.use('/api', mapRoutes);
 app.use('/api/admin', adminRoutes);
 app.use((req, res) => res.status(404).json({ message: `No Sokoeats route for ${req.method} ${req.path}` }));
 app.use((err, _req, res, _next) => {

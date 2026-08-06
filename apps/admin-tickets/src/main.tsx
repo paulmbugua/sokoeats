@@ -4,14 +4,29 @@ import { BadgeDollarSign, CheckCircle2, CreditCard, Headphones, MessageSquare, P
 import { api } from '@sokoeats/shared/api';
 import './styles.css';
 
+type MapPoint = { label: string; lat: number; lng: number };
+type MapViewport = { center?: MapPoint; markers?: MapPoint[]; path?: MapPoint[] };
+type MapsManifest = Record<string, any>;
+const googleMapUrl = (map?: MapViewport) => {
+  const markers = map?.markers?.length ? map.markers : [{ label: 'Nairobi CBD', lat: -1.286389, lng: 36.817223 }];
+  const center = map?.center || markers[0];
+  const params = [`center=${center.lat},${center.lng}`, 'zoom=13', 'size=900x420', 'scale=2', 'maptype=roadmap', ...markers.map((point, index) => `markers=${encodeURIComponent(`color:${index === 0 ? 'orange' : index === 1 ? 'green' : 'red'}|label:${String.fromCharCode(65 + index)}|${point.lat},${point.lng}`)}`)];
+  if (map?.path?.length) params.push(`path=${encodeURIComponent('color:0x904d00ff|weight:5|' + map.path.map((point) => `${point.lat},${point.lng}`).join('|'))}`);
+  return `https://maps.googleapis.com/maps/api/staticmap?${params.join('&')}`;
+};
+const MapPreview = ({ title, map, href, meta }: { title: string; map?: MapViewport; href?: string; meta?: string }) => <div className="map-panel"><div className="row"><div><b>{title}</b>{meta && <span className="muted">{meta}</span>}</div>{href && <a className="map-link" href={href} target="_blank" rel="noreferrer">Open map</a>}</div><img className="map" src={googleMapUrl(map)} /></div>;
+
+
 type TicketDetails = { ticket: any; agent: any; customer: any; order: any; rider: any; messages: any[]; activity: any[]; sourceFiles: string[] };
 
 function App() {
+  const [maps, setMaps] = useState<MapsManifest | null>(null);
   const [details, setDetails] = useState<TicketDetails | null>(null);
   const [body, setBody] = useState('');
   const [internal, setInternal] = useState(false);
   const load = () => api<{ ticketDetails: TicketDetails }>('/api/support/tickets/SKO-9214').then((r) => setDetails(r.ticketDetails)).catch(() => {});
-  useEffect(() => { void load(); }, []);
+  useEffect(() => {
+    api<{ maps: MapsManifest }>('/api/maps/manifest').then((r) => setMaps(r.maps)).catch(() => {}); void load(); }, []);
   const send = async () => { if (!body.trim()) return; const next = await api<{ ticketDetails: TicketDetails }>('/api/support/tickets/SKO-9214/messages', { method: 'POST', body: JSON.stringify({ body, internal }) }); setBody(''); setInternal(false); setDetails(next.ticketDetails); };
   const resolve = async () => { const next = await api<{ ticketDetails: TicketDetails }>('/api/support/tickets/SKO-9214/resolve', { method: 'POST', body: JSON.stringify({ note: 'Resolved from admin tickets dashboard.' }) }); setDetails(next.ticketDetails); };
   if (!details) return <div className="empty">Loading ticket SKO-9214...</div>;
@@ -20,7 +35,7 @@ function App() {
     <section className="page">
       <div className="topbar"><input className="search" placeholder="Search orders, tickets, or customers..." /><div className="user"><img className="avatar" src={details.agent.avatarUrl} /><b>Agent {details.agent.name}</b></div></div>
       <div className="split">
-        <aside className="profile-card"><div className="row"><img className="avatar" src={details.customer.avatarUrl} /><div><b>{details.customer.name}</b><div className="muted">{details.customer.tier}</div></div></div><p className="muted">{details.customer.email}<br />{details.customer.location}</p><div className="kpi-row"><article className="metric"><span>Total Orders</span><strong>{details.customer.totalOrders}</strong></article><article className="metric"><span>Total Spend</span><strong>{details.customer.totalSpend}</strong></article></div><h2>Order #{details.order.code}</h2><span className="pill">{details.order.status}</span>{details.order.items.map((item: any) => <div className="seller" key={item.name}><img className="thumb" src={item.imageUrl} /><div><b>{item.name}</b><div className="muted">{item.note}</div></div><b>{item.price}</b></div>)}<div className="row"><b>Total</b><b>{details.order.total}</b></div><h2><Truck /> Rider: {details.rider.name}</h2><img className="map" src={details.rider.mapUrl} /><p className="muted">Current status: {details.rider.status}</p></aside>
+        <aside className="profile-card"><div className="row"><img className="avatar" src={details.customer.avatarUrl} /><div><b>{details.customer.name}</b><div className="muted">{details.customer.tier}</div></div></div><p className="muted">{details.customer.email}<br />{details.customer.location}</p><div className="kpi-row"><article className="metric"><span>Total Orders</span><strong>{details.customer.totalOrders}</strong></article><article className="metric"><span>Total Spend</span><strong>{details.customer.totalSpend}</strong></article></div><h2>Order #{details.order.code}</h2><span className="pill">{details.order.status}</span>{details.order.items.map((item: any) => <div className="seller" key={item.name}><img className="thumb" src={item.imageUrl} /><div><b>{item.name}</b><div className="muted">{item.note}</div></div><b>{item.price}</b></div>)}<div className="row"><b>Total</b><b>{details.order.total}</b></div><h2><Truck /> Rider: {details.rider.name}</h2><img className="map" src={details.rider.mapUrl} /><p className="muted">Current status: {details.rider.status}</p><MapPreview title={maps?.tickets?.ticketDetail?.title || 'Ticket route map'} map={maps?.tickets?.ticketDetail?.map} href={maps?.tickets?.ticketDetail?.navigationUrl} meta="Customer, vendor, and rider route context" /></aside>
         <main className="panel"><div className="ticket-head"><div><p className="eyebrow">Ticket #{details.ticket.code}</p><h1>{details.ticket.title}</h1><p>{details.ticket.issue}</p><div className="actions"><span className="pill red">Priority {details.ticket.priority}</span><span className="pill">{details.ticket.opened}</span><span className={details.ticket.status === 'resolved' ? 'pill green' : 'pill red'}>SLA: {details.ticket.sla}</span></div></div><button className="primary" onClick={resolve}><CheckCircle2 size={17} /> Resolve Ticket</button></div>
           <div className="actions" style={{ margin: '18px 0' }}><button className="action"><BadgeDollarSign size={17} /> Issue Refund</button><button className="action"><CreditCard size={17} /> Apply Credit (KSh 200)</button><button className="action"><PhoneCall size={17} /> Escalate</button></div>
           <h2><MessageSquare /> Communication Log</h2>{details.messages.map((message, index) => <article className={message.tone === 'agent' ? 'message agent' : 'message'} key={index}><b>{message.sender}</b><div>{message.body}</div><span className="muted">{message.time}</span></article>)}

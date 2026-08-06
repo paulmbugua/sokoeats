@@ -101,3 +101,72 @@ CREATE TABLE IF NOT EXISTS sokoeats_screen_payloads (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sokoeats_screen_payloads_gin ON sokoeats_screen_payloads USING GIN (payload);
+
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS latitude NUMERIC(10,7);
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS longitude NUMERIC(10,7);
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS place_id TEXT;
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS service_radius_km NUMERIC(5,2) NOT NULL DEFAULT 5;
+
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS pickup_latitude NUMERIC(10,7);
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS pickup_longitude NUMERIC(10,7);
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS dropoff_latitude NUMERIC(10,7);
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS dropoff_longitude NUMERIC(10,7);
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS route_polyline TEXT;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS estimated_distance_km NUMERIC(7,2);
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS estimated_duration_min INT;
+
+CREATE TABLE IF NOT EXISTS sokoeats_user_addresses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES sokoeats_users(id) ON DELETE CASCADE,
+  label TEXT NOT NULL DEFAULT 'Saved address',
+  address TEXT NOT NULL,
+  latitude NUMERIC(10,7) NOT NULL,
+  longitude NUMERIC(10,7) NOT NULL,
+  place_id TEXT,
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_rider_locations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  rider_user_id UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL,
+  order_id UUID REFERENCES sokoeats_orders(id) ON DELETE SET NULL,
+  latitude NUMERIC(10,7) NOT NULL,
+  longitude NUMERIC(10,7) NOT NULL,
+  heading TEXT,
+  accuracy_m NUMERIC(7,2),
+  captured_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_delivery_routes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES sokoeats_orders(id) ON DELETE CASCADE,
+  rider_user_id UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL,
+  pickup_latitude NUMERIC(10,7) NOT NULL,
+  pickup_longitude NUMERIC(10,7) NOT NULL,
+  dropoff_latitude NUMERIC(10,7) NOT NULL,
+  dropoff_longitude NUMERIC(10,7) NOT NULL,
+  encoded_polyline TEXT,
+  distance_km NUMERIC(7,2),
+  duration_min INT,
+  status TEXT NOT NULL DEFAULT 'planned',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_service_zones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_type TEXT NOT NULL CHECK (owner_type IN ('vendor','admin','support')),
+  owner_id UUID,
+  name TEXT NOT NULL,
+  center_latitude NUMERIC(10,7) NOT NULL,
+  center_longitude NUMERIC(10,7) NOT NULL,
+  radius_km NUMERIC(6,2) NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sokoeats_vendors_lat_lng ON sokoeats_vendors(latitude, longitude);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_user_addresses_user ON sokoeats_user_addresses(user_id);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_rider_locations_order ON sokoeats_rider_locations(order_id, captured_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_delivery_routes_order ON sokoeats_delivery_routes(order_id);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_service_zones_center ON sokoeats_service_zones(center_latitude, center_longitude);

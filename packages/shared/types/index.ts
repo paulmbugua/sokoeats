@@ -13,3 +13,19 @@ export type DashboardMetric = { label: string; value: string; delta?: string };
 
 export type StitchScreenPayload<T = Record<string, unknown>> = T & { sourceFiles?: string[] };
 export type ApiEnvelope<TName extends string, TPayload> = { [K in TName]: TPayload };
+
+export type GeoPoint = { id?: ID; label: string; address?: string; lat: number; lng: number; kind?: string };
+export type DeliveryRoute = { id: ID; orderCode?: string; status: string; etaMinutes?: number; distanceKm?: number; pickup: GeoPoint; dropoff: GeoPoint; rider?: GeoPoint; polyline?: GeoPoint[]; navigationUrl?: string };
+export type MapViewport = { center: GeoPoint; markers: GeoPoint[]; path?: GeoPoint[]; staticUrlTemplate?: string };
+export type MapsManifest = {
+  provider: 'google_maps';
+  androidPackage: string;
+  requiredApis: string[];
+  customer: Record<string, unknown>;
+  rider: Record<string, unknown>;
+  vendor: Record<string, unknown>;
+  merchant: Record<string, unknown>;
+  support: Record<string, unknown>;
+  admin: Record<string, unknown>;
+  tickets: Record<string, unknown>;
+};
