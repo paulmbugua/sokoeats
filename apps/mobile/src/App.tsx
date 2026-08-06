@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
+  BackHandler,
   Image,
   ImageBackground,
   Linking,
@@ -1773,6 +1774,7 @@ function SokoEatsApp() {
   const [riderBatch, setRiderBatch] = useState<Record<string, GenericPayload>>(fallbackRiderBatch);
   const [maps, setMaps] = useState<MapsManifest>(fallbackMaps);
   const fade = useRef(new Animated.Value(0)).current;
+  const screenHistory = useRef<Screen[]>([]);
 
   useEffect(() => {
     Animated.timing(fade, {
@@ -1787,7 +1789,7 @@ function SokoEatsApp() {
     sokoeatsApi<{ maps: MapsManifest }>('/api/maps/manifest').then((r) => setMaps(r.maps)).catch(() => {});
   }, []);
 
-  const openScreen = (next: Screen) => {
+  const transitionToScreen = (next: Screen) => {
     fade.setValue(0);
     setScreen(next);
     Animated.timing(fade, {
@@ -1796,6 +1798,30 @@ function SokoEatsApp() {
       useNativeDriver: true,
     }).start();
   };
+
+  const openScreen = (next: Screen) => {
+    if (next === screen) return;
+    screenHistory.current.push(screen);
+    transitionToScreen(next);
+  };
+
+  const goBack = () => {
+    const previous = screenHistory.current.pop();
+    if (previous) {
+      transitionToScreen(previous);
+      return true;
+    }
+    if (screen !== 'home') {
+      transitionToScreen('home');
+      return true;
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    const subscription = BackHandler.addEventListener('hardwareBackPress', goBack);
+    return () => subscription.remove();
+  }, [screen]);
 
   const subtotal = useMemo(() => orderItems.reduce((sum, item) => sum + item.price, 0), []);
   const deliveryFee = 150;
@@ -2747,6 +2773,8 @@ const styles = StyleSheet.create({
   brandStack: {
     alignItems: 'center',
     marginTop: 22,
+    paddingBottom: 30,
+    zIndex: 2,
   },
   logoTile: {
     width: 80,
@@ -2788,6 +2816,8 @@ const styles = StyleSheet.create({
     width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
+    paddingTop: 24,
+    zIndex: 1,
   },
   splashHeroFloat: {
     width: 264,
@@ -2872,6 +2902,7 @@ const styles = StyleSheet.create({
   splashFooter: {
     alignItems: 'center',
     width: '100%',
+    marginTop: 14,
   },
   spinnerOuter: {
     width: 48,
