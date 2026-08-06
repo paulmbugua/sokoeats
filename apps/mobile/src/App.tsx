@@ -1,5 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import * as Updates from 'expo-updates';
 import {
+  Alert,
   Animated,
   BackHandler,
   Image,
@@ -23,6 +25,29 @@ type PaymentMethod = 'mpesa' | 'card';
 type BottomNavVariant = 'customer' | 'rider';
 type BottomNavItem = { icon: IconName; label: string; screen: Screen };
 const BottomNavNavigationContext = createContext<((screen: Screen) => void) | null>(null);
+
+export async function checkForAppUpdate() {
+  if (__DEV__) return;
+
+  try {
+    const update = await Updates.checkForUpdateAsync();
+
+    if (update.isAvailable) {
+      await Updates.fetchUpdateAsync();
+
+      Alert.alert(
+        'Update available',
+        'A new version is ready. Restart the app now to update.',
+        [
+          { text: 'Later', style: 'cancel' },
+          { text: 'Update now', onPress: () => { void Updates.reloadAsync(); } },
+        ],
+      );
+    }
+  } catch {
+    // Updates are opportunistic; app startup should not fail if the check fails.
+  }
+}
 
 const colors = {
   tertiaryFixedDim: '#eec209',
@@ -1785,6 +1810,7 @@ function SokoEatsApp() {
   }, [fade]);
 
   useEffect(() => {
+    void checkForAppUpdate();
     sokoeatsApi<{ wallet: Record<string, GenericPayload> }>('/api/wallet/payment-suite').then((r) => setRiderBatch((prev) => ({ ...prev, ...r.wallet }))).catch(() => {});
     sokoeatsApi<{ maps: MapsManifest }>('/api/maps/manifest').then((r) => setMaps(r.maps)).catch(() => {});
   }, []);

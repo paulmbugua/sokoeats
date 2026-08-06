@@ -7,6 +7,8 @@ export default {
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'light',
+    runtimeVersion: { policy: 'appVersion' },
+    updates: { url: 'https://u.expo.dev/53ff8952-ff52-45f2-b580-73e42582bcbe' },
     splash: {
       image: './assets/logo.png',
       resizeMode: 'contain',
