@@ -15,12 +15,20 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import nextArrowIcon from '../assets/next-arrow.png';
 import { AppIcon, type IconName } from './AppIcon';
 
+WebBrowser.maybeCompleteAuthSession();
+
 type Screen = 'splash' | 'onboarding' | 'home' | 'categories' | 'orders' | 'favourites' | 'accountAccess' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
 type PaymentMethod = 'mpesa' | 'card';
+type UserRole = 'customer' | 'rider' | 'vendor' | 'merchant' | 'support' | 'admin';
+type AuthUser = { id: string; name: string; email: string; phone?: string | null; role: UserRole; status?: string; authProvider?: string; avatarUrl?: string | null; city?: string | null; defaultAddress?: string | null; profile?: Record<string, unknown> };
+type AuthSession = { token: string; expiresAt: string; user: AuthUser };
 type CheckoutPayment = { reference: string; method: PaymentMethod; amount: number; status: string; actionUrl?: string; promptMessage?: string; simulation?: boolean };
 type CheckoutOrderResult = { order: { code: string; total: number; paymentStatus: string } };
 type BottomNavVariant = 'customer' | 'rider';
@@ -41,6 +49,13 @@ type ShopListing = {
   popularItems: string[];
   reorderLabel: string;
 };
+const AUTH_STORAGE_KEY = 'sokoeats.auth';
+const authRoleOptions: { role: UserRole; label: string; subtitle: string; icon: IconName }[] = [
+  { role: 'customer', label: 'Buyer', subtitle: 'Order meals, groceries, medicine, gas, and essentials', icon: 'bag' },
+  { role: 'rider', label: 'Rider', subtitle: 'Accept deliveries, earnings, training, and safety tools', icon: 'bike' },
+  { role: 'vendor', label: 'Vendor', subtitle: 'Run menus, orders, inventory, and payouts', icon: 'grid' },
+  { role: 'merchant', label: 'Merchant Admin', subtitle: 'Manage stores, campaigns, reports, and billing', icon: 'grid' },
+];
 const BottomNavNavigationContext = createContext<((screen: Screen) => void) | null>(null);
 
 export async function checkForAppUpdate() {
@@ -299,6 +314,9 @@ const orderItems = [
 const money = (value: number) => `KSh ${value.toLocaleString('en-KE')}`;
 const API_BASE = process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://10.0.2.2:4005';
 const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
+const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '';
+const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
+const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
 
 type MapPoint = { id?: string; label: string; address?: string; lat: number; lng: number; kind?: string };
 type MapViewport = { center?: MapPoint; markers: MapPoint[]; path?: MapPoint[]; staticUrlTemplate?: string };
@@ -1764,7 +1782,18 @@ const fallbackRiderBatch: Record<string, GenericPayload> = {
 };
 
 async function sokoeatsApi<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...(init.headers || {}) } });
+  const incomingHeaders = (init.headers || {}) as Record<string, string>;
+  let token = '';
+  if (!incomingHeaders.Authorization && !incomingHeaders.authorization) {
+    try {
+      const stored = await AsyncStorage.getItem(AUTH_STORAGE_KEY);
+      token = stored ? JSON.parse(stored)?.token || '' : '';
+    } catch {
+      token = '';
+    }
+  }
+  const headers = { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}), ...incomingHeaders };
+  const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!res.ok) {
     const error = await res.json().catch(() => null);
     throw new Error(error?.message || 'Sokoeats mobile API request failed');
@@ -1849,6 +1878,7 @@ function SokoEatsApp() {
   const [maps, setMaps] = useState<MapsManifest>(fallbackMaps);
   const [selectedShopCategory, setSelectedShopCategory] = useState<ShopCategoryKey>('restaurants');
   const [shopRatings, setShopRatings] = useState<Record<string, number>>({});
+  const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const fade = useRef(new Animated.Value(0)).current;
   const screenHistory = useRef<Screen[]>([]);
 
@@ -1859,6 +1889,14 @@ function SokoEatsApp() {
       useNativeDriver: true,
     }).start();
   }, [fade]);
+
+  useEffect(() => {
+    AsyncStorage.getItem(AUTH_STORAGE_KEY)
+      .then((raw) => {
+        if (raw) setAuthSession(JSON.parse(raw));
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     void checkForAppUpdate();
@@ -1893,6 +1931,24 @@ function SokoEatsApp() {
 
   const reorderShop = () => {
     openScreen('checkout');
+  };
+
+  const routeForRole = (role: UserRole) => {
+    if (role === 'rider') openScreen('riderHome');
+    else if (role === 'support' || role === 'admin') openScreen('supportTicketHistory');
+    else openScreen('home');
+  };
+
+  const handleAuthenticated = async (session: AuthSession) => {
+    setAuthSession(session);
+    await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+    routeForRole(session.user.role);
+  };
+
+  const handleSignOut = async () => {
+    setAuthSession(null);
+    await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+    openScreen('home');
   };
 
   const goBack = () => {
@@ -1942,7 +1998,7 @@ function SokoEatsApp() {
         {screen === 'categories' && <CategoriesScreen category={selectedShopCategory} ratings={shopRatings} onBack={() => openScreen('home')} onCategoryChange={setSelectedShopCategory} onRate={rateShop} onReorder={reorderShop} />}
         {screen === 'orders' && <OrdersScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} />}
         {screen === 'favourites' && <FavouritesScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} onRate={rateShop} ratings={shopRatings} />}
-        {screen === 'accountAccess' && <AccountAccessScreen onBack={() => openScreen('home')} onRider={() => openScreen('riderHome')} />}
+        {screen === 'accountAccess' && <AccountAccessScreen authSession={authSession} onAuthenticated={handleAuthenticated} onSignOut={handleSignOut} onBack={() => openScreen('home')} onRider={() => openScreen('riderHome')} />}
         {screen === 'walletHome' && <WalletHomeScreen data={riderBatch.sokoeats_wallet} onBack={() => openScreen('home')} onTopUp={() => openScreen('walletTopUp')} onWithdraw={() => openScreen('walletWithdraw')} onScan={() => openScreen('scanQr')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'walletTopUp' && <WalletTopUpScreen data={riderBatch.top_up_wallet} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ topUp: GenericPayload; history: GenericPayload }>('/api/wallet/top-ups', { method: 'POST', body: JSON.stringify({ amount, method: 'M-Pesa Express' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, top_up_wallet: next.topUp, full_transaction_history: next.history })); openScreen('walletHome'); }} />}
         {screen === 'walletWithdraw' && <WalletWithdrawScreen data={riderBatch.withdraw_to_m_pesa} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ withdrawal: GenericPayload }>('/api/wallet/withdrawals', { method: 'POST', body: JSON.stringify({ amount, destination: 'M-Pesa Account' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, withdraw_to_m_pesa: next.withdrawal })); openScreen('walletHome'); }} />}
@@ -2354,23 +2410,185 @@ function FavouritesScreen({ onBack, onCheckout, onRate, ratings }: { onBack: () 
   );
 }
 
-function AccountAccessScreen({ onBack, onRider }: { onBack: () => void; onRider: () => void }) {
+function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, onRider }: { authSession: AuthSession | null; onAuthenticated: (session: AuthSession) => Promise<void>; onSignOut: () => Promise<void>; onBack: () => void; onRider: () => void }) {
   const maps = useContext(MapsContext) || fallbackMaps;
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [role, setRole] = useState<UserRole>('customer');
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
+  const [city, setCity] = useState('Nairobi');
+  const [defaultAddress, setDefaultAddress] = useState(maps.customer.savedAddresses?.[0]?.address || 'Nairobi CBD');
+  const [businessName, setBusinessName] = useState('');
+  const [storeAddress, setStoreAddress] = useState('');
+  const [vehicleType, setVehicleType] = useState('Motorbike');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [, googleResponse, promptGoogle] = Google.useAuthRequest({
+    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
+    iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
+    webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
+    scopes: ['openid', 'profile', 'email'],
+  });
+
+  const authPayload = () => ({
+    role,
+    fullName: fullName.trim(),
+    email: email.trim().toLowerCase(),
+    phone: phone.trim(),
+    password,
+    city: city.trim() || 'Nairobi',
+    defaultAddress: defaultAddress.trim(),
+    businessName: businessName.trim(),
+    storeAddress: storeAddress.trim(),
+    vehicleType: vehicleType.trim() || 'Motorbike',
+    marketingOptIn: true,
+    preferredLanguage: 'English',
+  });
+
+  const finishAuth = async (session: AuthSession) => {
+    setMessage('');
+    await onAuthenticated(session);
+  };
+
+  const submitPasswordAuth = async () => {
+    const payload = authPayload();
+    if (!payload.email || !payload.password || (mode === 'register' && !payload.fullName && !payload.businessName)) {
+      Alert.alert('Complete your account details', mode === 'register' ? 'Add your name, email, and an 8 character password.' : 'Enter your email and password to continue.');
+      return;
+    }
+    if (mode === 'register' && payload.password.length < 8) {
+      Alert.alert('Password too short', 'Use at least 8 characters for your SokoEats account.');
+      return;
+    }
+    setBusy(true);
+    setMessage('');
+    try {
+      const session = await sokoeatsApi<AuthSession>(mode === 'login' ? '/api/auth/login' : '/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(mode === 'login' ? { role, email: payload.email, password: payload.password } : payload),
+      });
+      await finishAuth(session);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'SokoEats could not complete sign-in');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitGoogleAuth = async (idToken: string) => {
+    setBusy(true);
+    setMessage('');
+    try {
+      const { password: _password, email: _email, fullName: _fullName, ...partnerDetails } = authPayload();
+      const session = await sokoeatsApi<AuthSession>('/api/auth/google', {
+        method: 'POST',
+        body: JSON.stringify({ ...partnerDetails, idToken }),
+      });
+      await finishAuth(session);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Google sign-in could not be completed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (googleResponse?.type !== 'success') return;
+    const idToken = googleResponse.params?.id_token;
+    if (!idToken) {
+      setMessage('Google did not return an ID token. Check the configured web/android client IDs.');
+      return;
+    }
+    void submitGoogleAuth(idToken);
+  }, [googleResponse]);
+
+  const continueWithGoogle = async () => {
+    if (!GOOGLE_ANDROID_CLIENT_ID && !GOOGLE_IOS_CLIENT_ID && !GOOGLE_WEB_CLIENT_ID) {
+      Alert.alert('Google sign-in not configured', 'Add the SokoEats Google client IDs to the Expo environment first.');
+      return;
+    }
+    setMessage('');
+    await promptGoogle();
+  };
+
+  if (authSession) {
+    const user = authSession.user;
+    const isRider = user.role === 'rider';
+    return (
+      <View style={styles.shell}>
+        <CustomerScreenHeader title="Account" onBack={onBack} />
+        <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.profileHero}>
+            {user.avatarUrl ? <Image source={{ uri: user.avatarUrl }} style={styles.profileAvatar} /> : <AppIcon name="person" size={54} color={colors.primary} />}
+            <Text style={styles.checkoutTitle}>Hi, {user.name}</Text>
+            <Text style={styles.checkoutSubtitle}>{user.email} - {user.role === 'merchant' ? 'Merchant Admin' : user.role}</Text>
+          </View>
+          <View style={styles.signedInCard}>
+            <View style={styles.sectionHeadingRow}><Text style={styles.vendorName}>SokoEats account</Text><Text style={styles.discountText}>{user.status || 'active'}</Text></View>
+            <Text style={styles.smsBody}>{isRider ? 'Rider tools, delivery requests, earnings, training, and support are unlocked on this device.' : 'Ordering, wallet, saved addresses, ratings, reorders, referrals, and payments are unlocked on this device.'}</Text>
+            <Text style={styles.secureText}>Session expires {new Date(authSession.expiresAt).toLocaleDateString()}</Text>
+          </View>
+          <MapPanel title="Default delivery address" subtitle={user.defaultAddress || defaultAddress} map={maps.customer.savedAddresses?.[0]?.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Open pin" />
+          <TouchableOpacity style={styles.placeOrderButton} onPress={isRider ? onRider : onBack}>
+            <AppIcon name={isRider ? 'bike' : 'home'} size={18} color={colors.onPrimary} style={styles.inlineIcon} />
+            <Text style={styles.placeOrderText}>{isRider ? 'Open rider workspace' : 'Continue shopping'}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.primaryButton} onPress={onSignOut}><Text style={styles.primaryButtonText}>Sign out</Text></TouchableOpacity>
+        </ScrollView>
+        <BottomNav active="Account" />
+        <SourceLedger />
+      </View>
+    );
+  }
+
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title="Account" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
         <View style={styles.profileHero}>
           <AppIcon name="person" size={54} color={colors.primary} />
-          <Text style={styles.checkoutTitle}>Login or create account</Text>
-          <Text style={styles.checkoutSubtitle}>Sign in to save addresses, track orders, earn rewards, and manage rider or customer services securely.</Text>
+          <Text style={styles.checkoutTitle}>{mode === 'login' ? 'Welcome back to SokoEats' : 'Create your SokoEats account'}</Text>
+          <Text style={styles.checkoutSubtitle}>One secure account for buyers, riders, vendors, and merchant admins.</Text>
         </View>
-        <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Phone number</Text><TextInput style={styles.formFieldInput} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
-        <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Email address</Text><TextInput style={styles.formFieldInput} keyboardType="email-address" placeholder="paul@sokoeats.co.ke" placeholderTextColor={colors.outline} /></View>
-        <MapPanel title="Default delivery address" subtitle={maps.customer.savedAddresses?.[0]?.address || 'Nairobi CBD'} map={maps.customer.savedAddresses?.[0]?.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Edit pin" />
-        <TouchableOpacity style={styles.placeOrderButton}><Text style={styles.placeOrderText}>Login with OTP</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Create SokoEats Account</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.smsCard} onPress={onRider}><Text style={styles.vendorName}>Rider or vendor partner?</Text><Text style={styles.smsBody}>Open your partner tools, onboarding, earnings, and support dashboards.</Text><Text style={styles.changeText}>Continue to partner mode</Text></TouchableOpacity>
+        <View style={styles.authModeSwitch}>
+          <TouchableOpacity style={mode === 'login' ? styles.tabPillActive : styles.tabPill} onPress={() => setMode('login')}><Text style={mode === 'login' ? styles.authPillActiveText : styles.authPillText}>Login</Text></TouchableOpacity>
+          <TouchableOpacity style={mode === 'register' ? styles.tabPillActive : styles.tabPill} onPress={() => setMode('register')}><Text style={mode === 'register' ? styles.authPillActiveText : styles.authPillText}>Create account</Text></TouchableOpacity>
+        </View>
+        <View style={styles.authRoleGrid}>
+          {authRoleOptions.map((option) => (
+            <TouchableOpacity key={option.role} style={[styles.authRoleCard, role === option.role && styles.authRoleCardActive]} onPress={() => setRole(option.role)}>
+              <AppIcon name={option.icon} size={20} color={role === option.role ? colors.onPrimaryContainer : colors.onSurfaceVariant} />
+              <Text style={styles.vendorName}>{option.label}</Text>
+              <Text style={styles.authRoleSubtitle}>{option.subtitle}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>{role === 'vendor' || role === 'merchant' ? 'Owner or admin name' : 'Full name'}</Text><TextInput style={styles.formFieldInput} value={fullName} onChangeText={setFullName} placeholder="Paul Mbugua" placeholderTextColor={colors.outline} /></View>}
+        <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Email address</Text><TextInput style={styles.formFieldInput} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="paul@sokoeats.co.ke" placeholderTextColor={colors.outline} /></View>
+        <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Password</Text><TextInput style={styles.formFieldInput} value={password} onChangeText={setPassword} secureTextEntry placeholder={mode === 'register' ? 'At least 8 characters' : 'Your password'} placeholderTextColor={colors.outline} /></View>
+        {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Mobile number</Text><TextInput style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>}
+        {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>City</Text><TextInput style={styles.formFieldInput} value={city} onChangeText={setCity} placeholder="Nairobi" placeholderTextColor={colors.outline} /></View>}
+        {mode === 'register' && role === 'customer' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Default delivery address</Text><TextInput style={styles.formFieldInput} value={defaultAddress} onChangeText={setDefaultAddress} placeholder="Apartment, estate, street" placeholderTextColor={colors.outline} /></View>}
+        {mode === 'register' && role === 'rider' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>}
+        {mode === 'register' && (role === 'vendor' || role === 'merchant') && (
+          <>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business name</Text><TextInput style={styles.formFieldInput} value={businessName} onChangeText={setBusinessName} placeholder="Nairobi Grill House" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Store address</Text><TextInput style={styles.formFieldInput} value={storeAddress} onChangeText={setStoreAddress} placeholder="Westlands, Nairobi" placeholderTextColor={colors.outline} /></View>
+          </>
+        )}
+        <MapPanel title="Default delivery address" subtitle={maps.customer.savedAddresses?.[0]?.address || defaultAddress} map={maps.customer.savedAddresses?.[0]?.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Edit pin" />
+        {!!message && <Text style={styles.authMessage}>{message}</Text>}
+        <TouchableOpacity style={[styles.googleAuthButton, busy && styles.disabledButton]} disabled={busy} onPress={continueWithGoogle}>
+          <Text style={styles.googleMark}>G</Text>
+          <Text style={styles.googleAuthText}>Continue with Google</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={submitPasswordAuth}>
+          <AppIcon name={mode === 'login' ? 'person' : 'check'} size={18} color={colors.onPrimary} style={styles.inlineIcon} />
+          <Text style={styles.placeOrderText}>{busy ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create SokoEats Account'}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.smsCard} onPress={onRider}><Text style={styles.vendorName}>Already delivering with SokoEats?</Text><Text style={styles.smsBody}>Open partner tools, onboarding, earnings, and support dashboards.</Text><Text style={styles.changeText}>Continue to rider mode</Text></TouchableOpacity>
       </ScrollView>
       <BottomNav active="Account" />
       <SourceLedger />
@@ -4531,6 +4749,18 @@ const styles = StyleSheet.create({
   tabsRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 16 },
   tabPill: { borderRadius: 999, backgroundColor: colors.surfaceContainerHigh, color: colors.onSurfaceVariant, paddingHorizontal: 14, paddingVertical: 8, fontWeight: '800' },
   tabPillActive: { borderRadius: 999, backgroundColor: colors.primaryContainer, color: colors.onPrimaryContainer, paddingHorizontal: 14, paddingVertical: 8, fontWeight: '900', overflow: 'hidden' },
+  authModeSwitch: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  authPillText: { color: colors.onSurfaceVariant, fontWeight: '800' },
+  authPillActiveText: { color: colors.onPrimaryContainer, fontWeight: '900' },
+  authRoleGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  authRoleCard: { width: '48%', minHeight: 112, borderRadius: 14, backgroundColor: colors.surfaceContainerLowest, borderWidth: 1, borderColor: colors.outlineVariant, padding: 12, gap: 6 },
+  authRoleCardActive: { backgroundColor: colors.primaryContainer, borderColor: colors.primary },
+  authRoleSubtitle: { color: colors.onSurfaceVariant, fontSize: 11, lineHeight: 15, fontWeight: '600' },
+  googleAuthButton: { minHeight: 54, borderRadius: 14, borderWidth: 1, borderColor: colors.outlineVariant, backgroundColor: colors.surface, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10, marginBottom: 12 },
+  googleMark: { width: 26, height: 26, borderRadius: 13, backgroundColor: colors.surfaceContainerHigh, color: colors.primary, textAlign: 'center', lineHeight: 26, fontWeight: '900' },
+  googleAuthText: { color: colors.onSurface, fontWeight: '900', fontSize: 15 },
+  authMessage: { color: colors.error, fontWeight: '800', marginBottom: 12, lineHeight: 18 },
+  signedInCard: { borderRadius: 16, backgroundColor: colors.surfaceContainerLowest, padding: 16, marginBottom: 14, gap: 8 },
   podium: { flexDirection: 'row', gap: 10, alignItems: 'flex-end', marginBottom: 22 },
   podiumCard: { flex: 1, borderRadius: 16, backgroundColor: colors.surfaceContainerLowest, padding: 12, alignItems: 'center' },
   leaderRow: { borderRadius: 14, backgroundColor: colors.surfaceContainerLowest, padding: 14, marginBottom: 10, flexDirection: 'row', gap: 12, alignItems: 'center' },

@@ -12,6 +12,7 @@ import riderRoutes from './routes/riderRoutes.js';
 import supportRoutes from './routes/supportRoutes.js';
 import mapRoutes from './routes/mapRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4005);
@@ -21,6 +22,7 @@ app.use(cors({ origin: (origin, cb) => cb(null, !origin || origins.includes(orig
 app.use(morgan('dev'));
 app.use(express.json({ limit: '2mb' }));
 app.get('/healthz', (_req, res) => res.json({ ok: true, app: 'sokoeats' }));
+app.use('/api', authRoutes);
 app.use('/api', catalogRoutes);
 app.use('/api', orderRoutes);
 app.use('/api', paymentRoutes);

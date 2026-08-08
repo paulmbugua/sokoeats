@@ -1,8 +1,89 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Bell, Check, Clock, HelpCircle, LayoutDashboard, Menu as MenuIcon, PackageCheck, Plus, Search, Store, Utensils, X } from 'lucide-react';
-import { api } from '@sokoeats/shared/api';
+import { api, clearAuthSession, readAuthSession, saveAuthSession, type StoredAuthSession } from '@sokoeats/shared/api';
 import './styles.css';
+
+type AuthRole = 'customer' | 'rider' | 'vendor' | 'merchant' | 'support' | 'admin';
+const googleClientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || (import.meta as any).env?.VITE_GOOGLE_WEB_CLIENT_ID || '';
+
+function AuthGate({ title, defaultRole, roles, onAuthenticated }: { title: string; defaultRole: AuthRole; roles: AuthRole[]; onAuthenticated: (session: StoredAuthSession) => void }) {
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [role, setRole] = useState<AuthRole>(defaultRole);
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [businessName, setBusinessName] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+
+  const complete = (session: StoredAuthSession) => {
+    saveAuthSession(session);
+    onAuthenticated(session);
+  };
+
+  const submit = async () => {
+    setBusy(true);
+    setMessage('');
+    try {
+      const payload = { role, email: email.trim().toLowerCase(), password, fullName: name.trim(), businessName: businessName.trim(), inviteCode: inviteCode.trim(), city: 'Nairobi', marketingOptIn: true };
+      const session = await api<StoredAuthSession>(mode === 'login' ? '/api/auth/login' : '/api/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(mode === 'login' ? { role, email: payload.email, password } : payload),
+      });
+      complete(session);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'SokoEats sign-in failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!googleClientId) return;
+    const init = () => (window as any).google?.accounts?.id?.initialize({
+      client_id: googleClientId,
+      callback: async (response: any) => {
+        if (!response?.credential) return;
+        setBusy(true);
+        setMessage('');
+        try {
+          const session = await api<StoredAuthSession>('/api/auth/google', {
+            method: 'POST',
+            body: JSON.stringify({ role, idToken: response.credential, businessName: businessName.trim(), inviteCode: inviteCode.trim(), city: 'Nairobi', marketingOptIn: true }),
+          });
+          complete(session);
+        } catch (err) {
+          setMessage(err instanceof Error ? err.message : 'Google sign-in failed');
+        } finally {
+          setBusy(false);
+        }
+      },
+    });
+    if ((window as any).google?.accounts?.id) {
+      init();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = init;
+    document.head.appendChild(script);
+  }, [role, businessName, inviteCode]);
+
+  const google = () => {
+    if (!googleClientId) {
+      setMessage('Google web client ID is not configured for this dashboard.');
+      return;
+    }
+    (window as any).google?.accounts?.id?.prompt();
+  };
+
+  return <main className="auth-page"><section className="auth-card"><p className="eyebrow">SokoEats secure access</p><h1>{title}</h1><p className="muted">Use your SokoEats account or continue with Google. Platform support/admin accounts require an invite code when created.</p><div className="tabs">{['login','register'].map((item) => <button key={item} className={mode === item ? 'tab active' : 'tab'} onClick={() => setMode(item as 'login' | 'register')}>{item === 'login' ? 'Login' : 'Create account'}</button>)}</div><div className="tabs">{roles.map((item) => <button key={item} className={role === item ? 'tab active' : 'tab'} onClick={() => setRole(item)}>{item === 'merchant' ? 'Merchant Admin' : item}</button>)}</div>{mode === 'register' && <input className="auth-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Full name" />}<input className="auth-input" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" type="email" /><input className="auth-input" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" />{mode === 'register' && (role === 'vendor' || role === 'merchant') && <input className="auth-input" value={businessName} onChange={(event) => setBusinessName(event.target.value)} placeholder="Business or store name" />}{mode === 'register' && (role === 'support' || role === 'admin') && <input className="auth-input" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Private invite code" />}{message && <div className="auth-error">{message}</div>}<button className="google-btn" onClick={google} disabled={busy}><b>G</b> Continue with Google</button><button className="primary auth-submit" onClick={submit} disabled={busy}>{busy ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create SokoEats Account'}</button></section></main>;
+}
+
 
 type MapPoint = { label: string; lat: number; lng: number };
 type MapViewport = { center?: MapPoint; markers?: MapPoint[]; path?: MapPoint[] };
@@ -29,6 +110,7 @@ type FinanceSuite = Record<string, any>;
 type MerchantOpsSuite = Record<string, any>;
 
 function App() {
+  const [session, setSession] = useState<StoredAuthSession | null>(() => readAuthSession());
   const [portal, setPortal] = useState<Portal | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [activeCategory, setActiveCategory] = useState('Popular');
@@ -51,7 +133,7 @@ function App() {
     api<{ growth: GrowthSuite }>('/api/vendor/growth-suite').then((r) => setGrowth(r.growth)).catch(() => {});
     api<{ finance: FinanceSuite }>('/api/vendor/finance-suite').then((r) => setFinance(r.finance)).catch(() => {});
     api<{ operations: MerchantOpsSuite }>('/api/vendor/merchant-operations-suite').then((r) => setMerchantOps(r.operations)).catch(() => {});
-  }, []);
+  }, [session]);
   const activeOrders = useMemo(() => portal ? portal.liveOrders.new.length + portal.liveOrders.preparing.length + portal.liveOrders.ready.length : 0, [portal]);
   const toggleItem = async (id: string, available: boolean) => {
     const previous = menu;
@@ -63,6 +145,7 @@ function App() {
       if (previous) setMenu(previous);
     }
   };
+  if (!session) return <AuthGate title="Vendor and merchant access" defaultRole="merchant" roles={['vendor','merchant']} onAuthenticated={setSession} />;
   if (!portal || !menu || !analytics || !inventory || !orderHistory || !profileSettings || !growth || !finance || !merchantOps) return <div className="empty">Loading Nairobi Grill House...</div>;
   return <main className="app">
     <aside className="sidebar">
@@ -71,7 +154,7 @@ function App() {
       <div className="store-card"><img className="avatar" src={portal.vendor.avatarUrl} /><div><b>{portal.vendor.shortName}</b><div className="muted">{portal.vendor.status}</div></div></div>
     </aside>
     <section className="page">
-      <div className="topbar"><input className="search" placeholder="Search orders, products, customers..." /><div className="actions"><button className="action"><Bell size={17} /></button><button className="action"><HelpCircle size={17} /></button><div className="user">{portal.vendor.merchantId}<img className="avatar" src={portal.merchantAvatarUrl} /></div></div></div>
+      <div className="topbar"><input className="search" placeholder="Search orders, products, customers..." /><div className="actions"><button className="action"><Bell size={17} /></button><button className="action"><HelpCircle size={17} /></button><button className="action" onClick={() => { clearAuthSession(); setSession(null); }}>Logout</button><div className="user">{portal.vendor.merchantId}<img className="avatar" src={portal.merchantAvatarUrl} /></div></div></div>
       <div className="hero"><div><p className="eyebrow">Vendor Hub</p><h1>{portal.greeting.title}</h1><p>{portal.greeting.subtitle}</p></div><button className="primary"><Plus size={17} /> Add Item</button></div>
       <div className="metrics">{portal.metrics.map((metric) => <article className="metric" key={metric.label}><span>{metric.label}</span><strong>{metric.value}</strong><em>{metric.delta}</em></article>)}</div>
       <div className="grid">

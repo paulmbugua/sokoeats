@@ -212,3 +212,36 @@ CREATE TABLE IF NOT EXISTS sokoeats_sms_notifications (
 CREATE INDEX IF NOT EXISTS idx_sokoeats_payment_intents_reference ON sokoeats_payment_intents(reference);
 CREATE INDEX IF NOT EXISTS idx_sokoeats_payment_intents_order ON sokoeats_payment_intents(order_id);
 CREATE INDEX IF NOT EXISTS idx_sokoeats_sms_notifications_order ON sokoeats_sms_notifications(order_id, created_at DESC);
+
+
+ALTER TABLE sokoeats_users DROP CONSTRAINT IF EXISTS sokoeats_users_role_check;
+ALTER TABLE sokoeats_users ADD CONSTRAINT sokoeats_users_role_check CHECK (role IN ('customer','rider','courier','vendor','merchant','support','admin'));
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','review','suspended','disabled'));
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS auth_provider TEXT NOT NULL DEFAULT 'password' CHECK (auth_provider IN ('password','google','otp'));
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS google_sub TEXT;
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS avatar_url TEXT;
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS default_address TEXT;
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS phone_verified BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS marketing_opt_in BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+ALTER TABLE sokoeats_users ADD COLUMN IF NOT EXISTS profile JSONB NOT NULL DEFAULT '{}'::jsonb;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sokoeats_users_google_sub ON sokoeats_users(google_sub) WHERE google_sub IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_sokoeats_users_role_status ON sokoeats_users(role, status);
+
+CREATE TABLE IF NOT EXISTS sokoeats_auth_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES sokoeats_users(id) ON DELETE CASCADE,
+  token_id TEXT UNIQUE NOT NULL,
+  provider TEXT NOT NULL DEFAULT 'password',
+  user_agent TEXT,
+  ip_address TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  revoked_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_sokoeats_auth_sessions_user ON sokoeats_auth_sessions(user_id, created_at DESC);
