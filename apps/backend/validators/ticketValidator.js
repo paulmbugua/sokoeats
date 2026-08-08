@@ -2,7 +2,7 @@ import Joi from 'joi';
 export const createTicketSchema = Joi.object({
   orderId: Joi.string().uuid().allow('', null),
   requesterName: Joi.string().min(2).required(),
-  requesterEmail: Joi.string().email().allow('', null),
+  requesterEmail: Joi.string().email({ tlds: { allow: false } }).allow('', null),
   subject: Joi.string().min(4).required(),
   body: Joi.string().min(8).required(),
   priority: Joi.string().valid('low','normal','high','urgent').default('normal'),

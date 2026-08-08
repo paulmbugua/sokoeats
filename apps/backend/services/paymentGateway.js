@@ -60,7 +60,7 @@ async function promptPaystack({ amount, currency, email, reference, callbackUrl 
   const res = await fetch('https://api.paystack.co/transaction/initialize', {
     method: 'POST',
     headers: { Authorization: `Bearer ${process.env.PAYSTACK_SECRET_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: email || 'guest@sokoeats.local', amount: Math.round(Number(amount) * 100), currency, reference, callback_url: callbackUrl || process.env.PAYSTACK_CALLBACK_URL }),
+    body: JSON.stringify({ email: email || 'checkout@sokoeats.co.ke', amount: Math.round(Number(amount) * 100), currency, reference, callback_url: callbackUrl || process.env.PAYSTACK_CALLBACK_URL }),
   });
   const data = await res.json();
   if (!res.ok || !data.status) throw Object.assign(new Error(data.message || 'Paystack checkout initialization failed'), { status: 502 });

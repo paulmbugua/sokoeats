@@ -9,7 +9,7 @@ const orderItemSchema = Joi.object({
 
 export const createOrderSchema = Joi.object({
   customerName: Joi.string().min(2).required(),
-  customerEmail: Joi.string().email().allow('', null),
+  customerEmail: Joi.string().email({ tlds: { allow: false } }).allow('', null),
   phone: Joi.string().min(9).required(),
   vendorId: Joi.string().uuid(),
   vendorSlug: Joi.string().min(2),

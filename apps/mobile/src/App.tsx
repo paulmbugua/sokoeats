@@ -2620,6 +2620,8 @@ function CheckoutScreen({
   onBack: () => void;
 }) {
   const maps = useContext(MapsContext) || fallbackMaps;
+  const insets = useSafeAreaInsets();
+  const checkoutFooterSafeStyle = useMemo(() => ({ paddingBottom: Math.max(insets.bottom + 48, 84) }), [insets.bottom]);
   const [phone, setPhone] = useState('712 345 678');
   const [placing, setPlacing] = useState(false);
   const [pendingPayment, setPendingPayment] = useState<CheckoutPayment | null>(null);
@@ -2643,7 +2645,7 @@ function CheckoutScreen({
         method: 'POST',
         body: JSON.stringify({
           customerName: 'Amina Customer',
-          customerEmail: 'amina@sokoeats.local',
+          customerEmail: 'amina@sokoeats.co.ke',
           phone: mobile,
           vendorSlug: 'nairobi-grill-house',
           deliveryAddress: 'Apartment 4B, Central Business District, Nairobi',
@@ -2676,7 +2678,7 @@ function CheckoutScreen({
     try {
       const { payment } = await sokoeatsApi<{ payment: CheckoutPayment }>('/api/payments/checkout', {
         method: 'POST',
-        body: JSON.stringify({ method: paymentMethod, amount: total, currency: 'KES', phone: mobile, email: 'amina@sokoeats.local', customerName: 'Amina Customer' }),
+        body: JSON.stringify({ method: paymentMethod, amount: total, currency: 'KES', phone: mobile, email: 'amina@sokoeats.co.ke', customerName: 'Amina Customer' }),
       });
       setPendingPayment(payment);
       setCheckoutStatus(payment.promptMessage || 'Complete payment before placing this order.');
@@ -2816,7 +2818,7 @@ function CheckoutScreen({
         </View>
       </ScrollView>
 
-      <View style={styles.placeOrderBar}>
+      <View style={[styles.placeOrderBar, checkoutFooterSafeStyle]}>
         <TouchableOpacity style={[styles.placeOrderButton, placing && styles.disabledButton]} activeOpacity={0.86} disabled={placing} onPress={checkoutAction}>
           <AppIcon name="bag" size={20} color={colors.onPrimary} style={styles.inlineIcon} />
           <Text style={styles.placeOrderText}>{checkoutLabel}</Text>
@@ -3677,7 +3679,7 @@ const styles = StyleSheet.create({
   },
   checkoutContent: {
     paddingHorizontal: 20,
-    paddingBottom: 156,
+    paddingBottom: 220,
   },
   checkoutIntro: {
     marginTop: 8,
