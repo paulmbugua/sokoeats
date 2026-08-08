@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-import * as Updates from 'expo-updates';
 import {
   Alert,
   Animated,
@@ -30,6 +29,7 @@ export async function checkForAppUpdate() {
   if (__DEV__) return;
 
   try {
+    const Updates = await import('expo-updates');
     const update = await Updates.checkForUpdateAsync();
 
     if (update.isAvailable) {
