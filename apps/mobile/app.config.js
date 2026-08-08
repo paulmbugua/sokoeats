@@ -7,6 +7,7 @@ export default {
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'light',
+    plugins: ['expo-web-browser'],
     runtimeVersion: { policy: 'appVersion' },
     updates: { url: 'https://u.expo.dev/53ff8952-ff52-45f2-b580-73e42582bcbe' },
     splash: {
