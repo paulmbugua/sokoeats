@@ -2625,6 +2625,7 @@ function CheckoutScreen({
   const [phone, setPhone] = useState('712 345 678');
   const [placing, setPlacing] = useState(false);
   const [pendingPayment, setPendingPayment] = useState<CheckoutPayment | null>(null);
+  const [cardCheckoutOpened, setCardCheckoutOpened] = useState(false);
   const [checkoutStatus, setCheckoutStatus] = useState('Payment is required before SokoEats submits this order.');
 
   const createOrderAfterPayment = async (reference: string) => {
@@ -2681,16 +2682,12 @@ function CheckoutScreen({
         body: JSON.stringify({ method: paymentMethod, amount: total, currency: 'KES', phone: mobile, email: 'amina@sokoeats.co.ke', customerName: 'Amina Customer' }),
       });
       setPendingPayment(payment);
-      setCheckoutStatus(payment.promptMessage || 'Complete payment before placing this order.');
-      if (payment.actionUrl) await Linking.openURL(payment.actionUrl).catch(() => {});
-      Alert.alert(
-        paymentMethod === 'mpesa' ? 'M-Pesa payment required' : 'Paystack card payment required',
-        payment.promptMessage || 'Complete the payment prompt first. SokoEats will not place the order until payment is confirmed.',
-        [
-          { text: 'Later', style: 'cancel' },
-          { text: 'I have paid', onPress: () => { void createOrderAfterPayment(payment.reference); } },
-        ],
-      );
+      setCardCheckoutOpened(false);
+      if (paymentMethod === 'mpesa') {
+        setCheckoutStatus(payment.promptMessage || 'Check your phone for the Safaricom M-Pesa STK prompt, enter your PIN, then return to place the order.');
+        return;
+      }
+      setCheckoutStatus('Paystack checkout is ready. Tap Pay with card to enter your card details securely.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to start payment';
       setCheckoutStatus(message);
@@ -2700,9 +2697,36 @@ function CheckoutScreen({
     }
   };
 
-  const checkoutAction = pendingPayment ? () => { void createOrderAfterPayment(pendingPayment.reference); } : () => { void startPayment(); };
-  const checkoutLabel = placing ? 'Processing...' : pendingPayment ? 'Confirm Payment & Place Order' : paymentMethod === 'mpesa' ? 'Pay with M-Pesa' : 'Pay with Card';
-
+  const checkoutAction = () => {
+    if (!pendingPayment) {
+      void startPayment();
+      return;
+    }
+    if (paymentMethod === 'card' && pendingPayment.actionUrl && !cardCheckoutOpened) {
+      setCardCheckoutOpened(true);
+      setCheckoutStatus('Complete Paystack card payment, then return to SokoEats and confirm payment to place your order.');
+      void Linking.openURL(pendingPayment.actionUrl).catch(() => {
+        setCardCheckoutOpened(false);
+        Alert.alert('Paystack unavailable', 'Unable to open Paystack checkout. Try again.');
+      });
+      return;
+    }
+    void createOrderAfterPayment(pendingPayment.reference);
+  };
+  const checkoutLabel = placing
+    ? 'Processing...'
+    : pendingPayment && paymentMethod === 'card' && pendingPayment.actionUrl && !cardCheckoutOpened
+      ? 'Pay with card'
+      : pendingPayment
+        ? paymentMethod === 'mpesa' ? 'Confirm M-Pesa Payment' : 'Confirm Payment & Place Order'
+        : paymentMethod === 'mpesa' ? 'Pay with M-Pesa' : 'Pay with card';
+  const choosePaymentMethod = (method: PaymentMethod) => {
+    if (method === paymentMethod) return;
+    setPendingPayment(null);
+    setCardCheckoutOpened(false);
+    setCheckoutStatus('Payment is required before SokoEats submits this order.');
+    onPaymentChange(method);
+  };
   return (
     <View style={styles.checkoutShell}>
       <View style={styles.checkoutHeader}>
@@ -2778,14 +2802,14 @@ function CheckoutScreen({
           subtitle="Pay instantly via mobile money"
           icon="M"
           mpesa
-          onPress={() => onPaymentChange('mpesa')}
+          onPress={() => choosePaymentMethod('mpesa')}
         />
         <PaymentOption
           active={paymentMethod === 'card'}
-          title="Credit/Debit Card"
-          subtitle="Visa, Mastercard, Amex"
+          title="Pay with card"
+          subtitle="Powered by Paystack"
           icon="card"
-          onPress={() => onPaymentChange('card')}
+          onPress={() => choosePaymentMethod('card')}
         />
 
         <View style={styles.smsCard}>
