@@ -21,6 +21,8 @@ import { AppIcon, type IconName } from './AppIcon';
 
 type Screen = 'splash' | 'onboarding' | 'home' | 'categories' | 'orders' | 'favourites' | 'accountAccess' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
 type PaymentMethod = 'mpesa' | 'card';
+type CheckoutPayment = { reference: string; method: PaymentMethod; amount: number; status: string; actionUrl?: string; promptMessage?: string; simulation?: boolean };
+type CheckoutOrderResult = { order: { code: string; total: number; paymentStatus: string } };
 type BottomNavVariant = 'customer' | 'rider';
 type BottomNavItem = { icon: IconName; label: string; screen: Screen };
 const BottomNavNavigationContext = createContext<((screen: Screen) => void) | null>(null);
@@ -1726,10 +1728,20 @@ const fallbackRiderBatch: Record<string, GenericPayload> = {
 
 async function sokoeatsApi<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...(init.headers || {}) } });
-  if (!res.ok) throw new Error('Sokoeats mobile API request failed');
+  if (!res.ok) {
+    const error = await res.json().catch(() => null);
+    throw new Error(error?.message || 'Sokoeats mobile API request failed');
+  }
   return res.json() as Promise<T>;
 }
 
+function normalizeCheckoutPhone(value: string) {
+  const digits = value.replace(/\D/g, '');
+  if (digits.startsWith('254') && digits.length === 12) return `+${digits}`;
+  if (digits.startsWith('0') && digits.length === 10) return `+254${digits.slice(1)}`;
+  if (digits.length === 9) return `+254${digits}`;
+  return '';
+}
 function staticMapUrl(map?: MapViewport) {
   const markers: MapPoint[] = map?.markers?.length ? map.markers : (fallbackMaps.customer.nearbyVendors.map.markers as MapPoint[]);
   const center = map?.center || markers[0];
@@ -1851,7 +1863,7 @@ function SokoEatsApp() {
 
   const subtotal = useMemo(() => orderItems.reduce((sum, item) => sum + item.price, 0), []);
   const deliveryFee = 150;
-  const serviceFee = 45;
+  const serviceFee = Math.round(subtotal * 0.04);
   const discount = 250;
   const total = subtotal + deliveryFee + serviceFee - discount;
 
@@ -2608,6 +2620,87 @@ function CheckoutScreen({
   onBack: () => void;
 }) {
   const maps = useContext(MapsContext) || fallbackMaps;
+  const [phone, setPhone] = useState('712 345 678');
+  const [placing, setPlacing] = useState(false);
+  const [pendingPayment, setPendingPayment] = useState<CheckoutPayment | null>(null);
+  const [checkoutStatus, setCheckoutStatus] = useState('Payment is required before SokoEats submits this order.');
+
+  const createOrderAfterPayment = async (reference: string) => {
+    const mobile = normalizeCheckoutPhone(phone);
+    if (!mobile) {
+      Alert.alert('Mobile number required', 'Enter a valid Kenyan mobile number for payment and order updates.');
+      return;
+    }
+    setPlacing(true);
+    try {
+      const confirmed = await sokoeatsApi<{ payment: CheckoutPayment }>(`/api/payments/${reference}/confirm`, { method: 'POST' });
+      if (confirmed.payment.status !== 'paid') {
+        setCheckoutStatus('Payment is still pending. Complete the prompt before SokoEats places the order.');
+        Alert.alert('Payment pending', 'Complete the payment first, then tap Confirm Payment & Place Order.');
+        return;
+      }
+      const result = await sokoeatsApi<CheckoutOrderResult>('/api/orders', {
+        method: 'POST',
+        body: JSON.stringify({
+          customerName: 'Amina Customer',
+          customerEmail: 'amina@sokoeats.local',
+          phone: mobile,
+          vendorSlug: 'nairobi-grill-house',
+          deliveryAddress: 'Apartment 4B, Central Business District, Nairobi',
+          notes: 'Customer confirmed order updates by SMS.',
+          discountCode: 'SOKO25',
+          paymentMethod,
+          paymentReference: reference,
+          items: orderItems.map((item) => ({ menuItemName: item.name, quantity: Number.parseInt(item.quantity, 10) || 1, notes: item.note || null })),
+        }),
+      });
+      setPendingPayment(null);
+      setCheckoutStatus(`Order ${result.order.code} placed. SMS updates are enabled for ${mobile}.`);
+      Alert.alert('Order placed', `SokoEats received payment and placed order ${result.order.code}. SMS updates will be sent to ${mobile}.`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Checkout failed';
+      setCheckoutStatus(message);
+      Alert.alert('Checkout blocked', message);
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  const startPayment = async () => {
+    const mobile = normalizeCheckoutPhone(phone);
+    if (!mobile) {
+      Alert.alert('Mobile number required', 'Enter a valid Kenyan mobile number for M-Pesa, Paystack verification, and order updates.');
+      return;
+    }
+    setPlacing(true);
+    try {
+      const { payment } = await sokoeatsApi<{ payment: CheckoutPayment }>('/api/payments/checkout', {
+        method: 'POST',
+        body: JSON.stringify({ method: paymentMethod, amount: total, currency: 'KES', phone: mobile, email: 'amina@sokoeats.local', customerName: 'Amina Customer' }),
+      });
+      setPendingPayment(payment);
+      setCheckoutStatus(payment.promptMessage || 'Complete payment before placing this order.');
+      if (payment.actionUrl) await Linking.openURL(payment.actionUrl).catch(() => {});
+      Alert.alert(
+        paymentMethod === 'mpesa' ? 'M-Pesa payment required' : 'Paystack card payment required',
+        payment.promptMessage || 'Complete the payment prompt first. SokoEats will not place the order until payment is confirmed.',
+        [
+          { text: 'Later', style: 'cancel' },
+          { text: 'I have paid', onPress: () => { void createOrderAfterPayment(payment.reference); } },
+        ],
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to start payment';
+      setCheckoutStatus(message);
+      Alert.alert('Payment required', message);
+    } finally {
+      setPlacing(false);
+    }
+  };
+
+  const checkoutAction = pendingPayment ? () => { void createOrderAfterPayment(pendingPayment.reference); } : () => { void startPayment(); };
+  const checkoutLabel = placing ? 'Processing...' : pendingPayment ? 'Confirm Payment & Place Order' : paymentMethod === 'mpesa' ? 'Pay with M-Pesa' : 'Pay with Card';
+
   return (
     <View style={styles.checkoutShell}>
       <View style={styles.checkoutHeader}>
@@ -2701,8 +2794,14 @@ function CheckoutScreen({
           <Text style={styles.smsBody}>Confirm your mobile number to receive real-time delivery tracking via SMS.</Text>
           <View style={styles.phoneInputWrap}>
             <Text style={styles.countryCode}>+254</Text>
-            <TextInput style={styles.phoneInput} keyboardType="phone-pad" defaultValue="712 345 678" />
+            <TextInput style={styles.phoneInput} keyboardType="phone-pad" value={phone} onChangeText={setPhone} placeholder="712 345 678" placeholderTextColor={colors.outline} />
           </View>
+        </View>
+
+        <View style={styles.smsCard}>
+          <Text style={styles.vendorName}>Payment Gate</Text>
+          <Text style={styles.smsBody}>{checkoutStatus}</Text>
+          {pendingPayment && <Text style={styles.secureText}>Reference: {pendingPayment.reference}</Text>}
         </View>
 
         <View style={styles.breakdownCard}>
@@ -2718,9 +2817,9 @@ function CheckoutScreen({
       </ScrollView>
 
       <View style={styles.placeOrderBar}>
-        <TouchableOpacity style={styles.placeOrderButton} activeOpacity={0.86}>
+        <TouchableOpacity style={[styles.placeOrderButton, placing && styles.disabledButton]} activeOpacity={0.86} disabled={placing} onPress={checkoutAction}>
           <AppIcon name="bag" size={20} color={colors.onPrimary} style={styles.inlineIcon} />
-          <Text style={styles.placeOrderText}>Place Order</Text>
+          <Text style={styles.placeOrderText}>{checkoutLabel}</Text>
         </TouchableOpacity>
         <View style={styles.secureRow}><AppIcon name="lock" size={14} color={colors.onSurfaceVariant} /><Text style={styles.secureText}>Secure payment powered by SokoPay</Text></View>
       </View>

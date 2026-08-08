@@ -303,3 +303,17 @@ ON CONFLICT (screen_key) DO UPDATE SET payload = EXCLUDED.payload, updated_at = 
 INSERT INTO sokoeats_screen_payloads (screen_key, payload)
 VALUES ('create_ad_final_step_review_launch', '{"sourceFiles":["create_ad_final_step_review_launch/code.html","create_ad_final_step_review_launch/screen.png"],"title":"Review & Launch","subtitle":"Verify your campaign details before going live to reach thousands of customers.","goal":{"title":"Drive Store Visits","body":"Increasing walk-ins for weekend brunch specials."},"audience":{"title":"Local Foodies","location":"Nairobi, +5km","age":"Age 18-45"},"investment":{"total":"KES 14,000","schedule":"KES 2,000 daily x 7 days starting Oct 12, 2023"},"reach":"45.2K - 60.8K","payment":{"method":"M-Pesa Business","linked":"**** 5582"},"preview":{"headline":"Authentic Nairobi Brunch Experience","body":"Get 20% off your first visit when you order through the app. Limited time weekend special!","cta":"Order Now"},"terms":"By launching, you agree to SokoEats Merchant Advertising Terms and Conditions.","imageUrl":"https://lh3.googleusercontent.com/aida-public/AB6AXuBp4Dp80pYxblIbfTLi3SxOoAgLGUyzvnyZpQWxx-OABJKwEdFA--bxndFBFF8h5deLbrx3jWnvtS6dfaj5V9d4GQJVJQwsxafTUTvjdb1ZXIpG38EQtDH1FUgLpEoslHv_oB6TFHu3-i7di6YD_v7ZFn7zohQQL9o74SxrQOW0FSCRGBG2SquECgVEJdsyCJwJVsjdFfD55J8D3g-MfY6EttCq16Ax_Yn8nfSqJaAJJeJbe6QCJVNZ"}'::jsonb)
 ON CONFLICT (screen_key) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW();
+
+WITH owner AS (SELECT id FROM sokoeats_users WHERE email = 'vendor@sokoeats.local')
+INSERT INTO sokoeats_vendors (owner_user_id, name, slug, cuisine, status, rating, prep_minutes, delivery_fee, minimum_order, image_url, address)
+VALUES ((SELECT id FROM owner), 'Nairobi Grill House', 'nairobi-grill-house', 'Kenyan grill', 'active', 4.8, 28, 150, 200, NULL, 'The Oval, Ring Road, Westlands')
+ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, cuisine = EXCLUDED.cuisine, status = EXCLUDED.status, delivery_fee = EXCLUDED.delivery_fee, minimum_order = EXCLUDED.minimum_order;
+
+INSERT INTO sokoeats_menu_items (vendor_id, name, description, price, category, popular)
+SELECT v.id, item.name, item.description, item.price, item.category, item.popular
+FROM sokoeats_vendors v
+JOIN (VALUES
+  ('nairobi-grill-house', 'Platter of Nyama Choma', 'Charcoal-grilled nyama choma with kachumbari and house spice.', 1200, 'Grill', true),
+  ('nairobi-grill-house', 'Tusker Cider (500ml)', 'Chilled cider paired for checkout bundles.', 250, 'Drinks', false)
+) AS item(slug, name, description, price, category, popular) ON item.slug = v.slug
+WHERE NOT EXISTS (SELECT 1 FROM sokoeats_menu_items mi WHERE mi.vendor_id = v.id AND mi.name = item.name);

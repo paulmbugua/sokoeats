@@ -170,3 +170,45 @@ CREATE INDEX IF NOT EXISTS idx_sokoeats_user_addresses_user ON sokoeats_user_add
 CREATE INDEX IF NOT EXISTS idx_sokoeats_rider_locations_order ON sokoeats_rider_locations(order_id, captured_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sokoeats_delivery_routes_order ON sokoeats_delivery_routes(order_id);
 CREATE INDEX IF NOT EXISTS idx_sokoeats_service_zones_center ON sokoeats_service_zones(center_latitude, center_longitude);
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS discount_amount INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('mpesa','card'));
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid','paid','refunded','failed'));
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_reference TEXT;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_provider_reference TEXT;
+
+CREATE TABLE IF NOT EXISTS sokoeats_payment_intents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reference TEXT UNIQUE NOT NULL,
+  order_id UUID REFERENCES sokoeats_orders(id) ON DELETE SET NULL,
+  method TEXT NOT NULL CHECK (method IN ('mpesa','card')),
+  provider TEXT NOT NULL,
+  amount INT NOT NULL CHECK (amount > 0),
+  currency TEXT NOT NULL DEFAULT 'KES',
+  status TEXT NOT NULL DEFAULT 'requires_action' CHECK (status IN ('requires_action','paid','failed','cancelled','expired')),
+  phone TEXT NOT NULL,
+  customer_email TEXT,
+  provider_reference TEXT,
+  action_url TEXT,
+  prompt_message TEXT,
+  provider_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  paid_at TIMESTAMPTZ
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_sms_notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID REFERENCES sokoeats_orders(id) ON DELETE SET NULL,
+  phone TEXT NOT NULL,
+  sender_id TEXT NOT NULL DEFAULT 'Ekazi',
+  brand_name TEXT NOT NULL DEFAULT 'SokoEats',
+  message TEXT NOT NULL,
+  event TEXT NOT NULL,
+  delivery_status TEXT NOT NULL DEFAULT 'queued' CHECK (delivery_status IN ('queued','sent','failed')),
+  provider_response JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_sokoeats_payment_intents_reference ON sokoeats_payment_intents(reference);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_payment_intents_order ON sokoeats_payment_intents(order_id);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_sms_notifications_order ON sokoeats_sms_notifications(order_id, created_at DESC);

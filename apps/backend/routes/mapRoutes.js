@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { mapManifest, saveCustomerAddress, updateRiderLocation, updateVendorLocation } from '../controllers/mapController.js';
-import { validate } from '../middleware/validate.js';
+import { validate } from '../validators/validate.js';
 import { customerAddressSchema, riderLocationSchema, vendorLocationSchema } from '../validators/mapValidator.js';
 
 const router = Router();
