@@ -25,6 +25,22 @@ type CheckoutPayment = { reference: string; method: PaymentMethod; amount: numbe
 type CheckoutOrderResult = { order: { code: string; total: number; paymentStatus: string } };
 type BottomNavVariant = 'customer' | 'rider';
 type BottomNavItem = { icon: IconName; label: string; screen: Screen };
+type ShopCategoryKey = 'restaurants' | 'groceries' | 'pharmacy' | 'gas' | 'electronics';
+type ShopListing = {
+  id: string;
+  category: ShopCategoryKey;
+  name: string;
+  meta: string;
+  rating: number;
+  time: string;
+  delivery: string;
+  minimum: string;
+  distance: string;
+  badge: string;
+  image: string;
+  popularItems: string[];
+  reorderLabel: string;
+};
 const BottomNavNavigationContext = createContext<((screen: Screen) => void) | null>(null);
 
 export async function checkForAppUpdate() {
@@ -213,12 +229,12 @@ const images = {
     'https://lh3.googleusercontent.com/aida-public/AB6AXuDYeQ7quzQW1VQP9dU6gW67imFwGKQqekclHeX7suvyuAqDFj0E3iFltNxFsPhWzlCMkl5dmZTuzg-Pla4KGsiNjcS8Sb5XsmKiQ8QEJ9WUBLmaPsa3x3_gCFOhPgWM_9ZVn91qx8pfW7dMJSlYb39vwB-IHFbJMIglahsXhFVVBeICM8JTOqPsZl4qT-BRv0VSzqSKw-N7OlE1phU0g2Ov_uMHUp5hwrj9Jy_B5lrXZYJePmMxGVsg',
 };
 
-const categories = [
-  { label: 'Restaurants', icon: 'fork', bg: colors.primaryFixed, fg: colors.onPrimaryContainer },
-  { label: 'Groceries', icon: 'cart', bg: colors.secondaryFixed, fg: colors.onSecondaryContainer },
-  { label: 'Pharmacy', icon: '+', bg: colors.errorContainer, fg: colors.onErrorContainer },
-  { label: 'Gas', icon: 'fuel', bg: colors.surfaceContainerHighest, fg: colors.onSurfaceVariant },
-  { label: 'Electronics', icon: 'tech', bg: colors.tertiaryFixed, fg: colors.onTertiaryContainer },
+const categories: Array<{ key: ShopCategoryKey; label: string; icon: IconName; bg: string; fg: string; accent: string }> = [
+  { key: 'restaurants', label: 'Restaurants', icon: 'fork', bg: colors.primaryFixed, fg: colors.onPrimaryContainer, accent: 'Hot meals nearby' },
+  { key: 'groceries', label: 'Groceries', icon: 'cart', bg: colors.secondaryFixed, fg: colors.onSecondaryContainer, accent: 'Fresh market runs' },
+  { key: 'pharmacy', label: 'Pharmacy', icon: 'plus', bg: colors.errorContainer, fg: colors.onErrorContainer, accent: 'Wellness essentials' },
+  { key: 'gas', label: 'Gas', icon: 'fuel', bg: colors.surfaceContainerHighest, fg: colors.onSurfaceVariant, accent: 'Cooking gas refill' },
+  { key: 'electronics', label: 'Electronics', icon: 'tech', bg: colors.tertiaryFixed, fg: colors.onTertiaryContainer, accent: 'Chargers and devices' },
 ];
 
 const chips = ['Nyama Choma', 'Pilau', 'Chapati', 'Ugali', 'Sukuma Wiki'];
@@ -242,6 +258,27 @@ const restaurants = [
     minimum: 'KES 150 min',
     image: images.mamaNjeri,
   },
+];
+
+const categoryCopy: Record<ShopCategoryKey, { title: string; subtitle: string }> = {
+  restaurants: { title: 'Restaurants near Nairobi CBD', subtitle: 'Ready-to-eat meals, family trays, and office lunch baskets.' },
+  groceries: { title: 'Groceries and fresh markets', subtitle: 'Produce, pantry refills, and everyday essentials from trusted shops.' },
+  pharmacy: { title: 'Pharmacy and wellness shops', subtitle: 'OTC medicine, baby care, supplements, and urgent health essentials.' },
+  gas: { title: 'Gas refill partners', subtitle: 'Verified LPG vendors with cylinder swaps and express dispatch.' },
+  electronics: { title: 'Electronics and accessories', subtitle: 'Chargers, power banks, earbuds, routers, and quick tech replacements.' },
+};
+
+const shopListings: ShopListing[] = [
+  { id: 'nairobi-grill-house', category: 'restaurants', name: 'Nairobi Grill House', meta: 'Kenyan grill - Nyama choma - Family trays', rating: 4.8, time: '25-35 min', delivery: 'Free', minimum: 'KES 200 min', distance: '1.2 km', badge: 'Most reordered', image: images.grillHouse, popularItems: ['Nyama Choma', 'Ugali', 'Kachumbari'], reorderLabel: 'Reorder grill platter' },
+  { id: 'mama-njeri-kitchen', category: 'restaurants', name: 'Mama Njeri Kitchen', meta: 'Swahili plates - Chapati - Pilau', rating: 4.6, time: '15-25 min', delivery: 'KES 50', minimum: 'KES 150 min', distance: '0.8 km', badge: 'Top rated', image: images.mamaNjeri, popularItems: ['Pilau', 'Beef Stew', 'Samosas'], reorderLabel: 'Reorder Swahili lunch' },
+  { id: 'city-fresh-grocers', category: 'groceries', name: 'City Fresh Grocers', meta: 'Vegetables - Fruits - Pantry staples', rating: 4.7, time: '20-30 min', delivery: 'KES 80', minimum: 'KES 300 min', distance: '1.5 km', badge: 'Fresh today', image: images.groceries, popularItems: ['Spinach Bundle', 'Bananas', 'Maize Flour'], reorderLabel: 'Reorder weekly basket' },
+  { id: 'soko-pantry-express', category: 'groceries', name: 'Soko Pantry Express', meta: 'Milk - Bread - Snacks - Office supplies', rating: 4.5, time: '18-28 min', delivery: 'KES 60', minimum: 'KES 250 min', distance: '1.1 km', badge: 'Office favorite', image: images.checkoutMeal, popularItems: ['Milk', 'Bread', 'Tea Leaves'], reorderLabel: 'Reorder breakfast kit' },
+  { id: 'afya-plus-pharmacy', category: 'pharmacy', name: 'Afya Plus Pharmacy', meta: 'OTC medicine - Baby care - First aid', rating: 4.9, time: '20-32 min', delivery: 'KES 70', minimum: 'KES 200 min', distance: '1.9 km', badge: 'Pharmacist online', image: images.mpesaBanner, popularItems: ['Pain Relief', 'Vitamin C', 'Bandages'], reorderLabel: 'Reorder wellness pack' },
+  { id: 'uzima-care-chemist', category: 'pharmacy', name: 'Uzima Care Chemist', meta: 'Supplements - Personal care - Hygiene', rating: 4.6, time: '25-38 min', delivery: 'KES 90', minimum: 'KES 250 min', distance: '2.4 km', badge: 'Open late', image: images.deliveryBanner, popularItems: ['ORS Sachets', 'Thermometer', 'Sanitizer'], reorderLabel: 'Reorder care kit' },
+  { id: 'mtaa-gas-express', category: 'gas', name: 'Mtaa Gas Express', meta: '6kg and 13kg LPG - Cylinder swaps', rating: 4.7, time: '30-45 min', delivery: 'KES 120', minimum: 'KES 900 min', distance: '2.0 km', badge: 'Sealed cylinders', image: images.nyama, popularItems: ['6kg Refill', '13kg Refill', 'Regulator'], reorderLabel: 'Reorder 6kg refill' },
+  { id: 'blue-flame-depot', category: 'gas', name: 'Blue Flame Depot', meta: 'K-Gas - TotalEnergies - Accessories', rating: 4.4, time: '35-50 min', delivery: 'KES 140', minimum: 'KES 950 min', distance: '2.8 km', badge: 'Safety checked', image: images.pilau, popularItems: ['13kg Swap', 'Burner Hose', 'Lighter'], reorderLabel: 'Reorder gas swap' },
+  { id: 'tech-hub-cbd', category: 'electronics', name: 'Tech Hub CBD', meta: 'Chargers - Earbuds - Power banks', rating: 4.6, time: '22-35 min', delivery: 'KES 90', minimum: 'KES 500 min', distance: '1.4 km', badge: 'Genuine accessories', image: images.checkoutAvatar, popularItems: ['USB-C Charger', 'Power Bank', 'Earbuds'], reorderLabel: 'Reorder charger kit' },
+  { id: 'soko-gadgets', category: 'electronics', name: 'Soko Gadgets', meta: 'Phone accessories - Routers - Cables', rating: 4.5, time: '25-40 min', delivery: 'KES 100', minimum: 'KES 450 min', distance: '1.7 km', badge: 'Warranty ready', image: images.splashRider, popularItems: ['Type-C Cable', 'MiFi Router', 'Screen Guard'], reorderLabel: 'Reorder tech essentials' },
 ];
 
 const orderItems = [
@@ -1810,6 +1847,8 @@ function SokoEatsApp() {
   const [activeDelivery, setActiveDelivery] = useState<ActiveDeliveryPayload>(fallbackActiveDelivery);
   const [riderBatch, setRiderBatch] = useState<Record<string, GenericPayload>>(fallbackRiderBatch);
   const [maps, setMaps] = useState<MapsManifest>(fallbackMaps);
+  const [selectedShopCategory, setSelectedShopCategory] = useState<ShopCategoryKey>('restaurants');
+  const [shopRatings, setShopRatings] = useState<Record<string, number>>({});
   const fade = useRef(new Animated.Value(0)).current;
   const screenHistory = useRef<Screen[]>([]);
 
@@ -1841,6 +1880,19 @@ function SokoEatsApp() {
     if (next === screen) return;
     screenHistory.current.push(screen);
     transitionToScreen(next);
+  };
+
+  const openShopCategory = (category: ShopCategoryKey) => {
+    setSelectedShopCategory(category);
+    openScreen('categories');
+  };
+
+  const rateShop = (shopId: string, rating: number) => {
+    setShopRatings((prev) => ({ ...prev, [shopId]: rating }));
+  };
+
+  const reorderShop = () => {
+    openScreen('checkout');
   };
 
   const goBack = () => {
@@ -1884,11 +1936,12 @@ function SokoEatsApp() {
             onCheckout={() => openScreen('checkout')}
             onWallet={() => openScreen('walletHome')}
             onScan={() => openScreen('scanQr')}
+          onCategoryOpen={openShopCategory}
           />
         )}
-        {screen === 'categories' && <CategoriesScreen onBack={() => openScreen('home')} />}
-        {screen === 'orders' && <OrdersScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} />}
-        {screen === 'favourites' && <FavouritesScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} />}
+        {screen === 'categories' && <CategoriesScreen category={selectedShopCategory} ratings={shopRatings} onBack={() => openScreen('home')} onCategoryChange={setSelectedShopCategory} onRate={rateShop} onReorder={reorderShop} />}
+        {screen === 'orders' && <OrdersScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} />}
+        {screen === 'favourites' && <FavouritesScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} onRate={rateShop} ratings={shopRatings} />}
         {screen === 'accountAccess' && <AccountAccessScreen onBack={() => openScreen('home')} onRider={() => openScreen('riderHome')} />}
         {screen === 'walletHome' && <WalletHomeScreen data={riderBatch.sokoeats_wallet} onBack={() => openScreen('home')} onTopUp={() => openScreen('walletTopUp')} onWithdraw={() => openScreen('walletWithdraw')} onScan={() => openScreen('scanQr')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'walletTopUp' && <WalletTopUpScreen data={riderBatch.top_up_wallet} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ topUp: GenericPayload; history: GenericPayload }>('/api/wallet/top-ups', { method: 'POST', body: JSON.stringify({ amount, method: 'M-Pesa Express' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, top_up_wallet: next.topUp, full_transaction_history: next.history })); openScreen('walletHome'); }} />}
@@ -2076,12 +2129,14 @@ function HomeScreen({
   onCheckout,
   onWallet,
   onScan,
+  onCategoryOpen,
 }: {
   activeChip: string;
   onChipChange: (chip: string) => void;
   onCheckout: () => void;
   onWallet: () => void;
   onScan: () => void;
+  onCategoryOpen: (category: ShopCategoryKey) => void;
 }) {
   const maps = useContext(MapsContext) || fallbackMaps;
   return (
@@ -2140,12 +2195,12 @@ function HomeScreen({
 
         <View style={styles.categoryGrid}>
           {categories.map((category) => (
-            <View key={category.label} style={styles.categoryItem}>
+            <TouchableOpacity key={category.key} style={styles.categoryItem} onPress={() => onCategoryOpen(category.key)} activeOpacity={0.82}>
               <View style={[styles.categoryIconBox, { backgroundColor: category.bg }]}>
-                <AppIcon name={category.icon as IconName} size={24} color={category.fg} />
+                <AppIcon name={category.icon} size={24} color={category.fg} />
               </View>
               <Text style={styles.categoryLabel}>{category.label}</Text>
-            </View>
+            </TouchableOpacity>
           ))}
         </View>
 
@@ -2200,7 +2255,24 @@ function CustomerScreenHeader({ title, onBack }: { title: string; onBack: () => 
   );
 }
 
-function CategoriesScreen({ onBack }: { onBack: () => void }) {
+function CategoriesScreen({
+  category,
+  ratings,
+  onBack,
+  onCategoryChange,
+  onRate,
+  onReorder,
+}: {
+  category: ShopCategoryKey;
+  ratings: Record<string, number>;
+  onBack: () => void;
+  onCategoryChange: (category: ShopCategoryKey) => void;
+  onRate: (shopId: string, rating: number) => void;
+  onReorder: () => void;
+}) {
+  const activeCopy = categoryCopy[category];
+  const shops = shopListings.filter((shop) => shop.category === category);
+
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title="Categories" onBack={onBack} />
@@ -2208,16 +2280,26 @@ function CategoriesScreen({ onBack }: { onBack: () => void }) {
         <Text style={styles.checkoutTitle}>Shop by need</Text>
         <Text style={styles.checkoutSubtitle}>Fast food, groceries, pharmacy runs, gas, and electronics in one SokoEats basket.</Text>
         <View style={styles.categoryGrid}>
-          {categories.map((category) => (
-            <View key={category.label} style={styles.categoryItem}>
-              <View style={[styles.categoryIconBox, { backgroundColor: category.bg }]}>
-                <AppIcon name={category.icon as IconName} size={25} color={category.fg} />
-              </View>
-              <Text style={styles.categoryLabel}>{category.label}</Text>
-            </View>
-          ))}
+          {categories.map((item) => {
+            const active = item.key === category;
+            return (
+              <TouchableOpacity key={item.key} style={[styles.categoryItem, active && styles.categoryItemActive]} onPress={() => onCategoryChange(item.key)} activeOpacity={0.82}>
+                <View style={[styles.categoryIconBox, { backgroundColor: item.bg }, active && styles.categoryIconBoxActive]}>
+                  <AppIcon name={item.icon} size={25} color={item.fg} />
+                </View>
+                <Text style={[styles.categoryLabel, active && styles.categoryLabelActive]}>{item.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
-        <View style={styles.smsCard}><Text style={styles.vendorName}>Recommended for Nairobi CBD</Text><Text style={styles.smsBody}>Lunch plates, office snacks, and M-Pesa ready vendors are prioritized for your current location.</Text></View>
+        <View style={styles.shopCategoryHero}>
+          <Text style={styles.upperLabel}>{categories.find((item) => item.key === category)?.accent}</Text>
+          <Text style={styles.checkoutSectionTitle}>{activeCopy.title}</Text>
+          <Text style={styles.smsBody}>{activeCopy.subtitle}</Text>
+        </View>
+        {shops.map((shop) => (
+          <ShopCard key={shop.id} shop={shop} rating={ratings[shop.id] || Math.round(shop.rating)} onRate={(value) => onRate(shop.id, value)} onReorder={onReorder} />
+        ))}
       </ScrollView>
       <BottomNav active="Categories" />
       <SourceLedger />
@@ -2225,7 +2307,8 @@ function CategoriesScreen({ onBack }: { onBack: () => void }) {
   );
 }
 
-function OrdersScreen({ onBack, onCheckout }: { onBack: () => void; onCheckout: () => void }) {
+function OrdersScreen({ onBack, onCheckout, onReorder, onRate, ratings }: { onBack: () => void; onCheckout: () => void; onReorder: () => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number> }) {
+  const previousShop = shopListings.find((shop) => shop.id === 'mama-njeri-kitchen') || shopListings[1];
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title="Orders" onBack={onBack} />
@@ -2239,7 +2322,15 @@ function OrdersScreen({ onBack, onCheckout }: { onBack: () => void; onCheckout: 
             <AppIcon name="chevron" size={20} color={colors.primary} />
           </View>
         </TouchableOpacity>
-        <View style={styles.deliveryRequestCard}><Text style={styles.vendorName}>Previous delivery</Text><Text style={styles.smsBody}>Mama Njeri Kitchen - Delivered yesterday to Nairobi CBD.</Text><Text style={styles.discountText}>Reorder</Text></View>
+        <View style={styles.deliveryRequestCard}>
+          <Text style={styles.vendorName}>Previous delivery</Text>
+          <Text style={styles.smsBody}>{previousShop.name} - Delivered yesterday to Nairobi CBD.</Text>
+          <RatingControl value={ratings[previousShop.id] || Math.round(previousShop.rating)} onRate={(value) => onRate(previousShop.id, value)} />
+          <TouchableOpacity style={styles.reorderButton} onPress={onReorder} activeOpacity={0.86}>
+            <AppIcon name="receipt" size={17} color={colors.onPrimaryContainer} />
+            <Text style={styles.reorderText}>Reorder previous basket</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
       <BottomNav active="Orders" />
       <SourceLedger />
@@ -2247,14 +2338,15 @@ function OrdersScreen({ onBack, onCheckout }: { onBack: () => void; onCheckout: 
   );
 }
 
-function FavouritesScreen({ onBack, onCheckout }: { onBack: () => void; onCheckout: () => void }) {
+function FavouritesScreen({ onBack, onCheckout, onRate, ratings }: { onBack: () => void; onCheckout: () => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number> }) {
+  const savedShops = shopListings.filter((shop) => ['nairobi-grill-house', 'mama-njeri-kitchen', 'city-fresh-grocers'].includes(shop.id));
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title="Favourites" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.checkoutTitle}>Saved vendors</Text>
         <Text style={styles.checkoutSubtitle}>Quick access to restaurants and shops you love.</Text>
-        {restaurants.map((restaurant) => <RestaurantCard key={restaurant.name} restaurant={restaurant} onPress={onCheckout} />)}
+        {savedShops.map((shop) => <ShopCard key={shop.id} shop={shop} rating={ratings[shop.id] || Math.round(shop.rating)} onRate={(value) => onRate(shop.id, value)} onReorder={onCheckout} />)}
       </ScrollView>
       <BottomNav active="Favourites" />
       <SourceLedger />
@@ -2503,7 +2595,7 @@ function RestaurantCard({
       <View style={styles.restaurantImageWrap}>
         <Image source={{ uri: restaurant.image }} style={styles.restaurantImage} />
         <View style={styles.ratingBadge}>
-          <Text style={styles.star}>star</Text>
+          <AppIcon name="star" size={13} color={colors.tertiaryFixedDim} style={styles.inlineIcon} />
           <Text style={styles.ratingText}>{restaurant.rating}</Text>
         </View>
       </View>
@@ -2523,6 +2615,49 @@ function RestaurantCard({
         </View>
       </View>
     </TouchableOpacity>
+  );
+}
+
+function RatingControl({ value, onRate }: { value: number; onRate: (value: number) => void }) {
+  return (
+    <View style={styles.ratingControlRow}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <TouchableOpacity key={star} onPress={() => onRate(star)} hitSlop={8} activeOpacity={0.72}>
+          <AppIcon name="star" size={20} color={star <= value ? colors.tertiaryFixedDim : colors.outlineVariant} />
+        </TouchableOpacity>
+      ))}
+      <Text style={styles.ratingHint}>{value}/5</Text>
+    </View>
+  );
+}
+
+function ShopCard({ shop, rating, onRate, onReorder }: { shop: ShopListing; rating: number; onRate: (rating: number) => void; onReorder: () => void }) {
+  return (
+    <View style={styles.shopCard}>
+      <Image source={{ uri: shop.image }} style={styles.shopImage} />
+      <View style={styles.shopCardBody}>
+        <View style={styles.sectionHeadingRowCompact}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.upperLabel}>{shop.badge} - {shop.distance}</Text>
+            <Text style={styles.restaurantName}>{shop.name}</Text>
+            <Text style={styles.restaurantMeta}>{shop.meta}</Text>
+          </View>
+          <View style={styles.timeBadge}><Text style={styles.timeText}>{shop.time}</Text></View>
+        </View>
+        <View style={styles.restaurantStats}>
+          <Text style={styles.statText}>delivery {shop.delivery}</Text>
+          <Text style={styles.statText}>{shop.minimum}</Text>
+        </View>
+        <View style={styles.shopItemChips}>
+          {shop.popularItems.map((item) => <Text style={styles.shopItemChip} key={item}>{item}</Text>)}
+        </View>
+        <RatingControl value={rating} onRate={onRate} />
+        <TouchableOpacity style={styles.reorderButton} onPress={onReorder} activeOpacity={0.86}>
+          <AppIcon name="bag" size={17} color={colors.onPrimaryContainer} />
+          <Text style={styles.reorderText}>{shop.reorderLabel}</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
 
@@ -3455,6 +3590,24 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textAlign: 'center',
   },
+  categoryItemActive: {
+    transform: [{ translateY: -2 }],
+  },
+  categoryIconBoxActive: {
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  categoryLabelActive: {
+    color: colors.primary,
+  },
+  shopCategoryHero: {
+    marginTop: 24,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+  },
   sectionBlock: {
     marginTop: 34,
   },
@@ -3588,6 +3741,76 @@ const styles = StyleSheet.create({
   restaurantStats: {
     marginTop: 12,
     flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  shopCard: {
+    marginTop: 18,
+    borderRadius: 20,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    shadowColor: '#2d3446',
+    shadowOpacity: 0.06,
+    shadowRadius: 18,
+    elevation: 2,
+  },
+  shopImage: {
+    width: '100%',
+    height: 150,
+    backgroundColor: colors.surfaceContainerHigh,
+  },
+  shopCardBody: {
+    padding: 16,
+  },
+  sectionHeadingRowCompact: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  shopItemChips: {
+    marginTop: 14,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  shopItemChip: {
+    borderRadius: 999,
+    backgroundColor: colors.surfaceContainerLow,
+    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    fontWeight: '800',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  ratingControlRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  ratingHint: {
+    marginLeft: 4,
+    color: colors.onSurfaceVariant,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  reorderButton: {
+    marginTop: 14,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  reorderText: {
+    color: colors.onPrimaryContainer,
+    fontSize: 13,
+    fontWeight: '900',
   },
   statText: {
     marginRight: 18,

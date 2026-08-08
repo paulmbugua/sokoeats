@@ -1,7 +1,7 @@
 import React from 'react';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 
-export type IconName = 'home' | 'grid' | 'receipt' | 'heart' | 'person' | 'bike' | 'cash' | 'bell' | 'bag' | 'back' | 'pin' | 'flag' | 'call' | 'search' | 'mic' | 'qr' | 'fork' | 'cart' | 'fuel' | 'menu' | 'bolt' | 'online' | 'lock' | 'sms' | 'chevron' | 'card' | 'check' | 'star';
+export type IconName = 'home' | 'grid' | 'receipt' | 'heart' | 'person' | 'bike' | 'cash' | 'bell' | 'bag' | 'back' | 'pin' | 'flag' | 'call' | 'search' | 'mic' | 'qr' | 'fork' | 'cart' | 'fuel' | 'plus' | 'tech' | 'menu' | 'bolt' | 'online' | 'lock' | 'sms' | 'chevron' | 'card' | 'check' | 'star';
 
 export function AppIcon({ name, size = 18, color = '#904d00', style }: { name: IconName | string; size?: number; color?: string; style?: any }) {
   const common = { stroke: color, strokeWidth: 2.25, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
@@ -44,6 +44,10 @@ export function AppIcon({ name, size = 18, color = '#904d00', style }: { name: I
       return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Path {...common} d="M4 5h2l2.2 10.5A2 2 0 0 0 10.2 17H18" /><Path {...common} d="M8 7h13l-2 7H9.5" /><Circle {...common} cx="10" cy="20" r="1" /><Circle {...common} cx="18" cy="20" r="1" /></Svg>;
     case 'fuel':
       return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Path {...common} d="M5 21V4a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v17" /><Path {...common} d="M5 10h10M15 7h2l2 2v8a2 2 0 0 0 4 0v-5l-3-3" /></Svg>;
+    case 'plus':
+      return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Circle {...common} cx="12" cy="12" r="9" /><Line {...common} x1="12" y1="8" x2="12" y2="16" /><Line {...common} x1="8" y1="12" x2="16" y2="12" /></Svg>;
+    case 'tech':
+      return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Rect {...common} x="7" y="3" width="10" height="18" rx="2" /><Line {...common} x1="10" y1="18" x2="14" y2="18" /><Path {...common} d="M4 8h2M4 12h2M4 16h2M18 8h2M18 12h2M18 16h2" /></Svg>;
     case 'bolt':
       return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Path {...common} d="M13 2 4 14h7l-1 8 9-12h-7l1-8Z" /></Svg>;
     case 'online':
@@ -56,6 +60,8 @@ export function AppIcon({ name, size = 18, color = '#904d00', style }: { name: I
       return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Polyline {...common} points="9 6 15 12 9 18" /></Svg>;
     case 'card':
       return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Rect {...common} x="3" y="5" width="18" height="14" rx="2" /><Line {...common} x1="3" y1="10" x2="21" y2="10" /></Svg>;
+    case 'star':
+      return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Path {...common} fill={color} d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.9 6.6 19.8l1-6.1-4.4-4.3 6.1-.9L12 3Z" /></Svg>;
     case 'check':
     default:
       return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Circle {...common} cx="12" cy="12" r="9" /><Path {...common} d="m8 12 2.5 2.5L16.5 9" /></Svg>;
