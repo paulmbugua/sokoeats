@@ -1,6 +1,8 @@
 import pool from '../config/db.js';
 import { createPaymentPrompt, confirmGatewayPayment, normalizeKenyanPhone, paymentReference } from '../services/paymentGateway.js';
 
+const providerMessage = (payload = {}) => payload.mpesaCallback?.ResultDesc || payload.mpesaQuery?.ResultDesc || payload.CustomerMessage || payload.ResponseDescription || payload.initiationError || null;
+
 const paymentJson = (row) => ({
   reference: row.reference,
   method: row.method,
@@ -11,6 +13,7 @@ const paymentJson = (row) => ({
   providerReference: row.provider_reference,
   actionUrl: row.action_url,
   promptMessage: row.prompt_message,
+  providerMessage: providerMessage(row.provider_payload),
   simulation: Boolean(row.provider_payload?.simulation),
   createdAt: row.created_at,
   paidAt: row.paid_at,
@@ -66,7 +69,7 @@ export async function initiateCheckoutPayment(req, res, next) {
              provider_payload = provider_payload || $2::jsonb,
              updated_at = NOW()
          WHERE reference = $3`,
-        [promptErr.message || 'Payment prompt failed', { initiationError: promptErr.message || 'Payment prompt failed' }, reference],
+        [promptErr.message || 'Payment prompt failed', { initiationError: promptErr.message || 'Payment prompt failed', gatewayPayload: promptErr.payload || null }, reference],
       );
       throw promptErr;
     }

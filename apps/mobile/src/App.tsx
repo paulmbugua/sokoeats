@@ -29,7 +29,7 @@ type PaymentMethod = 'mpesa' | 'card';
 type UserRole = 'customer' | 'rider' | 'vendor' | 'merchant' | 'support' | 'admin';
 type AuthUser = { id: string; name: string; email: string; phone?: string | null; role: UserRole; status?: string; authProvider?: string; avatarUrl?: string | null; city?: string | null; defaultAddress?: string | null; profile?: Record<string, unknown> };
 type AuthSession = { token: string; expiresAt: string; user: AuthUser };
-type CheckoutPayment = { reference: string; method: PaymentMethod; amount: number; status: string; actionUrl?: string; promptMessage?: string; simulation?: boolean };
+type CheckoutPayment = { reference: string; method: PaymentMethod; amount: number; status: string; actionUrl?: string; promptMessage?: string; providerMessage?: string | null; providerReference?: string; simulation?: boolean };
 type CheckoutOrderResult = { order: { code: string; total: number; paymentStatus: string } };
 type BottomNavVariant = 'customer' | 'rider';
 type BottomNavItem = { icon: IconName; label: string; screen: Screen };
@@ -1803,6 +1803,7 @@ async function sokoeatsApi<T>(path: string, init: RequestInit = {}): Promise<T> 
 
 function normalizeCheckoutPhone(value: string) {
   const digits = value.replace(/\D/g, '');
+  if (digits === '254712345678' || digits === '0712345678' || digits === '712345678') return '';
   if (digits.startsWith('254') && digits.length === 12) return `+${digits}`;
   if (digits.startsWith('0') && digits.length === 10) return `+254${digits.slice(1)}`;
   if (digits.length === 9) return `+254${digits}`;
@@ -2975,7 +2976,7 @@ function CheckoutScreen({
   const maps = useContext(MapsContext) || fallbackMaps;
   const insets = useSafeAreaInsets();
   const checkoutFooterSafeStyle = useMemo(() => ({ paddingBottom: Math.max(insets.bottom + 48, 84) }), [insets.bottom]);
-  const [phone, setPhone] = useState('712 345 678');
+  const [phone, setPhone] = useState('');
   const [placing, setPlacing] = useState(false);
   const [pendingPayment, setPendingPayment] = useState<CheckoutPayment | null>(null);
   const [cardCheckoutOpened, setCardCheckoutOpened] = useState(false);
@@ -2991,8 +2992,10 @@ function CheckoutScreen({
     try {
       const confirmed = await sokoeatsApi<{ payment: CheckoutPayment }>(`/api/payments/${reference}/confirm`, { method: 'POST' });
       if (confirmed.payment.status !== 'paid') {
-        setCheckoutStatus('Payment is still pending. Complete the prompt before SokoEats places the order.');
-        Alert.alert('Payment pending', 'Complete the payment first, then tap Confirm Payment & Place Order.');
+        const providerMessage = confirmed.payment.providerMessage || confirmed.payment.promptMessage || 'Payment is still pending. Complete the prompt before SokoEats places the order.';
+        setPendingPayment(confirmed.payment);
+        setCheckoutStatus(providerMessage);
+        Alert.alert(confirmed.payment.status === 'failed' ? 'M-Pesa payment failed' : 'Payment pending', providerMessage);
         return;
       }
       const result = await sokoeatsApi<CheckoutOrderResult>('/api/orders', {
@@ -3037,7 +3040,9 @@ function CheckoutScreen({
       setPendingPayment(payment);
       setCardCheckoutOpened(false);
       if (paymentMethod === 'mpesa') {
-        setCheckoutStatus(payment.promptMessage || 'Check your phone for the Safaricom M-Pesa STK prompt, enter your PIN, then return to place the order.');
+        const mpesaMessage = payment.providerMessage || payment.promptMessage || 'Check your phone for the Safaricom M-Pesa STK prompt, enter your PIN, then return to place the order.';
+        setCheckoutStatus(mpesaMessage);
+        Alert.alert('M-Pesa STK sent', mpesaMessage);
         return;
       }
       setCheckoutStatus('Paystack checkout is ready. Tap Pay with card to enter your card details securely.');
@@ -3173,7 +3178,7 @@ function CheckoutScreen({
           <Text style={styles.smsBody}>Confirm your mobile number to receive real-time delivery tracking via SMS.</Text>
           <View style={styles.phoneInputWrap}>
             <Text style={styles.countryCode}>+254</Text>
-            <TextInput style={styles.phoneInput} keyboardType="phone-pad" value={phone} onChangeText={setPhone} placeholder="712 345 678" placeholderTextColor={colors.outline} />
+            <TextInput style={styles.phoneInput} keyboardType="phone-pad" value={phone} onChangeText={setPhone} placeholder="Your Safaricom M-Pesa number" placeholderTextColor={colors.outline} />
           </View>
         </View>
 
