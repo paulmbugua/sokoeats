@@ -3,6 +3,14 @@ import { createPaymentPrompt, confirmGatewayPayment, normalizeKenyanPhone, payme
 
 const providerMessage = (payload = {}) => payload.mpesaCallback?.ResultDesc || payload.mpesaQuery?.ResultDesc || payload.CustomerMessage || payload.ResponseDescription || payload.initiationError || null;
 
+function maskPaymentPhone(value) {
+  return String(value || '').replace(/(\+254\d{3})\d+(\d{2})/, '$1*****$2');
+}
+
+function paymentLog(event, details = {}) {
+  console.info(`[SokoEats][Payment] ${event}`, details);
+}
+
 const paymentJson = (row) => ({
   reference: row.reference,
   method: row.method,
@@ -27,6 +35,8 @@ export async function initiateCheckoutPayment(req, res, next) {
     const currency = req.body.currency || 'KES';
     const provider = method === 'mpesa' ? 'mpesa' : 'paystack';
 
+    paymentLog('checkout:init', { reference, method, provider, amount: req.body.amount, currency, phone: maskPaymentPhone(phone), hasCallbackUrl: Boolean(req.body.callbackUrl) });
+
     await pool.query(
       `INSERT INTO sokoeats_payment_intents
         (reference, method, provider, amount, currency, status, phone, customer_email, provider_payload)
@@ -35,6 +45,7 @@ export async function initiateCheckoutPayment(req, res, next) {
     );
 
     try {
+      paymentLog('checkout:prompt-start', { reference, method, provider, phone: maskPaymentPhone(phone) });
       const prompt = await createPaymentPrompt({
         method,
         amount: req.body.amount,
@@ -60,8 +71,10 @@ export async function initiateCheckoutPayment(req, res, next) {
         [prompt.provider, prompt.status, prompt.providerReference || null, prompt.actionUrl || null, prompt.promptMessage, prompt.payload || {}, reference],
       );
 
+      paymentLog('checkout:prompt-result', { reference, method, status: rows[0].status, providerReference: rows[0].provider_reference, providerMessage: providerMessage(rows[0].provider_payload) });
       return res.status(201).json({ payment: paymentJson(rows[0]) });
     } catch (promptErr) {
+      paymentLog('checkout:prompt-error', { reference, method, message: promptErr.message, gatewayPayload: promptErr.payload || null });
       await pool.query(
         `UPDATE sokoeats_payment_intents
          SET status = 'failed',
@@ -79,6 +92,7 @@ export async function confirmCheckoutPayment(req, res, next) {
   try {
     const existing = await pool.query('SELECT * FROM sokoeats_payment_intents WHERE reference = $1', [req.params.reference]);
     if (!existing.rows.length) return res.status(404).json({ message: 'Payment reference not found' });
+    paymentLog('confirm:start', { reference: req.params.reference, method: existing.rows[0].method, status: existing.rows[0].status, providerReference: existing.rows[0].provider_reference });
     if (existing.rows[0].status === 'paid') return res.json({ payment: paymentJson(existing.rows[0]) });
 
     const confirmation = await confirmGatewayPayment(existing.rows[0]);
@@ -95,6 +109,7 @@ export async function confirmCheckoutPayment(req, res, next) {
       [nextStatus, confirmation.providerReference || null, confirmation.payload || {}, req.params.reference],
     );
 
+    paymentLog('confirm:result', { reference: req.params.reference, method: rows[0].method, status: rows[0].status, providerReference: rows[0].provider_reference, providerMessage: providerMessage(rows[0].provider_payload) });
     res.json({ payment: paymentJson(rows[0]) });
   } catch (err) { next(err); }
 }
@@ -105,6 +120,7 @@ export async function mpesaCheckoutCallback(req, res, next) {
     const checkoutRequestId = callback?.CheckoutRequestID;
     const resultCode = Number(callback?.ResultCode);
     if (!checkoutRequestId) return res.status(422).json({ message: 'CheckoutRequestID is required' });
+    paymentLog('mpesa-callback:received', { checkoutRequestId, merchantRequestId: callback?.MerchantRequestID, resultCode, resultDesc: callback?.ResultDesc });
     const status = resultCode === 0 ? 'paid' : 'failed';
     const { rows } = await pool.query(
       `UPDATE sokoeats_payment_intents
@@ -117,9 +133,10 @@ export async function mpesaCheckoutCallback(req, res, next) {
       [status, { mpesaCallback: callback }, checkoutRequestId],
     );
     if (!rows.length) {
-      console.warn('Unmatched M-Pesa callback', { checkoutRequestId, resultCode });
+      console.warn('[SokoEats][Payment] mpesa-callback:unmatched', { checkoutRequestId, resultCode, resultDesc: callback?.ResultDesc });
       return res.json({ ok: true, matched: false, message: 'M-Pesa callback accepted for an unknown or already archived payment intent' });
     }
+    paymentLog('mpesa-callback:matched', { checkoutRequestId, reference: rows[0].reference, status: rows[0].status, resultCode, resultDesc: callback?.ResultDesc });
     res.json({ ok: true, matched: true, payment: paymentJson(rows[0]) });
   } catch (err) { next(err); }
 }

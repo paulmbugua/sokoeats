@@ -1802,6 +1802,11 @@ async function sokoeatsApi<T>(path: string, init: RequestInit = {}): Promise<T> 
   return res.json() as Promise<T>;
 }
 
+function maskCheckoutPhone(value: string) {
+  const normalized = normalizeCheckoutPhone(value);
+  return normalized ? normalized.replace(/(\+254\d{3})\d+(\d{2})/, '$1*****$2') : 'invalid';
+}
+
 function normalizeCheckoutPhone(value: string) {
   const digits = value.replace(/\D/g, '');
   if (digits === '254712345678' || digits === '0712345678' || digits === '712345678') return '';
@@ -3040,13 +3045,16 @@ function CheckoutScreen({
       else Alert.alert('Mobile number required', message);
       return;
     }
+    console.info('[SokoEats][M-Pesa][mobile] payment:start', { method: paymentMethod, amount: total, phone: maskCheckoutPhone(paymentPhone !== undefined ? paymentPhone : phone) });
     setPlacing(true);
     try {
+      console.info('[SokoEats][M-Pesa][mobile] checkout-request', { method: paymentMethod, amount: total, phone: maskCheckoutPhone(mobile) });
       const { payment } = await sokoeatsApi<{ payment: CheckoutPayment }>('/api/payments/checkout', {
         method: 'POST',
         body: JSON.stringify({ method: paymentMethod, amount: total, currency: 'KES', phone: mobile, email: 'amina@sokoeats.co.ke', customerName: 'Amina Customer' }),
       });
       setPhone(mobile.replace('+254', ''));
+      console.info('[SokoEats][M-Pesa][mobile] checkout-response', { reference: payment.reference, status: payment.status, providerReference: payment.providerReference, providerMessage: payment.providerMessage || payment.promptMessage || null });
       setPendingPayment(payment);
       setCardCheckoutOpened(false);
       if (paymentMethod === 'mpesa') {
@@ -3060,6 +3068,7 @@ function CheckoutScreen({
       setCheckoutStatus('Paystack checkout is ready. Tap Pay with card to enter your card details securely.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to start payment';
+      console.warn('[SokoEats][M-Pesa][mobile] checkout-error', { method: paymentMethod, phone: maskCheckoutPhone(paymentPhone !== undefined ? paymentPhone : phone), message });
       setCheckoutStatus(message);
       if (paymentMethod === 'mpesa') setMpesaModalError(message);
       else Alert.alert('Payment required', message);
@@ -3069,6 +3078,7 @@ function CheckoutScreen({
   };
 
   const submitMpesaNumber = () => {
+    console.info('[SokoEats][M-Pesa][mobile] modal-submit', { phone: maskCheckoutPhone(mpesaPaymentPhone), amount: total });
     setMpesaModalError('');
     void startPayment(mpesaPaymentPhone);
   };
@@ -3076,6 +3086,7 @@ function CheckoutScreen({
   const checkoutAction = () => {
     if (!pendingPayment) {
       if (paymentMethod === 'mpesa') {
+        console.info('[SokoEats][M-Pesa][mobile] modal-open', { amount: total });
         setMpesaPaymentPhone('');
         setMpesaModalError('');
         setMpesaModalVisible(true);

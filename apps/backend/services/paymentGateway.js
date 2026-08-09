@@ -22,7 +22,9 @@ export function normalizeKenyanPhone(phone) {
 
 async function mpesaToken() {
   const auth = Buffer.from(`${process.env.MPESA_CONSUMER_KEY}:${process.env.MPESA_CONSUMER_SECRET}`).toString('base64');
+  mpesaLog('oauth:start', { env: process.env.MPESA_ENV || 'sandbox', baseUrl: mpesaBase() });
   const res = await fetch(`${mpesaBase()}/oauth/v1/generate?grant_type=client_credentials`, { headers: { Authorization: `Basic ${auth}` } });
+  mpesaLog('oauth:response', { ok: res.ok, status: res.status });
   if (!res.ok) throw Object.assign(new Error('M-Pesa authorization failed'), { status: 502 });
   return (await res.json()).access_token;
 }
@@ -60,6 +62,10 @@ function maskMpesaPhone(value) {
   return String(value).replace(/(254\d{3})\d+(\d{2})/, '$1*****$2');
 }
 
+function mpesaLog(event, details = {}) {
+  console.info(`[SokoEats][M-Pesa] ${event}`, details);
+}
+
 function safeMpesaRequest(body) {
   const { Password: _password, ...safe } = body;
   return { ...safe, PartyA: maskMpesaPhone(body.PartyA), PhoneNumber: maskMpesaPhone(body.PhoneNumber) };
@@ -67,6 +73,7 @@ function safeMpesaRequest(body) {
 async function promptMpesa({ amount, phone, reference, callbackUrl }) {
   const mpesaCallbackUrl = callbackUrl || process.env.MPESA_CALLBACK_URL;
   if (!mpesaReady(mpesaCallbackUrl)) {
+    mpesaLog('stk:configuration-missing', { hasConsumerKey: Boolean(process.env.MPESA_CONSUMER_KEY), hasConsumerSecret: Boolean(process.env.MPESA_CONSUMER_SECRET), hasShortcode: Boolean(process.env.MPESA_SHORTCODE), hasPasskey: Boolean(process.env.MPESA_PASSKEY), hasCallbackUrl: Boolean(mpesaCallbackUrl), simulate });
     if (!simulate) throw Object.assign(new Error('M-Pesa credentials are not configured'), { status: 503 });
     return { provider: 'mpesa', status: 'requires_action', providerReference: `SIM-${reference}`, promptMessage: `SokoEats payment prompt sent to ${phone}. Complete the simulated M-Pesa approval before placing the order.`, payload: { simulation: true } };
   }
@@ -85,9 +92,12 @@ async function promptMpesa({ amount, phone, reference, callbackUrl }) {
     AccountReference: mpesaAccountReference(reference),
     TransactionDesc: mpesaTransactionDesc(),
   };
+  const safeRequest = safeMpesaRequest(body);
+  mpesaLog('stk:request', { reference, amount: body.Amount, env: process.env.MPESA_ENV || 'sandbox', baseUrl: mpesaBase(), shortcode: body.BusinessShortCode, partyB: body.PartyB, transactionType: body.TransactionType, accountReference: body.AccountReference, transactionDesc: body.TransactionDesc, callbackHost: mpesaCallbackUrl ? new URL(mpesaCallbackUrl).host : null, request: safeRequest });
   const res = await fetch(`${mpesaBase()}/mpesa/stkpush/v1/processrequest`, { method: 'POST', headers: { Authorization: `Bearer ${await mpesaToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json();
-  const payload = { ...data, stkRequest: safeMpesaRequest(body) };
+  mpesaLog('stk:response', { ok: res.ok, httpStatus: res.status, responseCode: data.ResponseCode, responseDescription: data.ResponseDescription, customerMessage: data.CustomerMessage, merchantRequestId: data.MerchantRequestID, checkoutRequestId: data.CheckoutRequestID, errorCode: data.errorCode, errorMessage: data.errorMessage });
+  const payload = { ...data, stkRequest: safeRequest };
   if (!res.ok || data.ResponseCode !== '0') throw Object.assign(new Error(data.errorMessage || data.ResponseDescription || data.CustomerMessage || 'M-Pesa prompt failed'), { status: 502, payload });
   return { provider: 'mpesa', status: 'requires_action', providerReference: data.CheckoutRequestID, promptMessage: data.CustomerMessage || `SokoEats M-Pesa STK push sent to ${phone}. Enter your PIN to authorize KES ${Math.round(Number(amount)).toLocaleString('en-KE')}.`, payload };
 }
@@ -102,8 +112,10 @@ async function queryMpesa(checkoutRequestId) {
     Timestamp: timestamp,
     CheckoutRequestID: checkoutRequestId,
   };
+  mpesaLog('query:request', { checkoutRequestId, shortcode: body.BusinessShortCode, env: process.env.MPESA_ENV || 'sandbox' });
   const res = await fetch(`${mpesaBase()}/mpesa/stkpushquery/v1/query`, { method: 'POST', headers: { Authorization: `Bearer ${await mpesaToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json();
+  mpesaLog('query:response', { ok: res.ok, httpStatus: res.status, responseCode: data.ResponseCode, responseDescription: data.ResponseDescription, resultCode: data.ResultCode, resultDesc: data.ResultDesc, checkoutRequestId: data.CheckoutRequestID || checkoutRequestId, errorCode: data.errorCode, errorMessage: data.errorMessage });
   if (!res.ok) throw Object.assign(new Error(data.errorMessage || data.ResponseDescription || 'M-Pesa status query failed'), { status: 502, payload: data });
   return data;
 }
