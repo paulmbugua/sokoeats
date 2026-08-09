@@ -1,8 +1,14 @@
 import pool from '../config/db.js';
 export async function createVendor(req, res, next) {
   try {
-    const { name, slug, cuisine, status, prepMinutes, deliveryFee, minimumOrder, address } = req.body;
-    const { rows } = await pool.query(`INSERT INTO sokoeats_vendors (name, slug, cuisine, status, prep_minutes, delivery_fee, minimum_order, address) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`, [name, slug, cuisine, status, prepMinutes, deliveryFee, minimumOrder, address || null]);
+    const { name, slug, cuisine, status, prepMinutes, deliveryFee, minimumOrder, address, paymentCollectionMode = 'platform', paymentProvider = 'mpesa', paymentAccountType = 'paybill', paymentShortcode = '4139123' } = req.body;
+    const { rows } = await pool.query(
+      `INSERT INTO sokoeats_vendors
+        (name, slug, cuisine, status, prep_minutes, delivery_fee, minimum_order, address, payment_collection_mode, payment_provider, payment_account_type, payment_shortcode)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       RETURNING *`,
+      [name, slug, cuisine, status, prepMinutes, deliveryFee, minimumOrder, address || null, paymentCollectionMode, paymentProvider, paymentAccountType, paymentShortcode],
+    );
     res.status(201).json({ vendor: rows[0] });
   } catch (err) { next(err); }
 }

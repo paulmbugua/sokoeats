@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 const production = process.env.NODE_ENV === 'production';
 const simulate = process.env.SOKOEATS_ALLOW_PAYMENT_SIMULATION === 'true' || !production;
-const mpesaReady = (callbackUrl) => process.env.MPESA_CONSUMER_KEY && process.env.MPESA_CONSUMER_SECRET && process.env.MPESA_SHORTCODE && process.env.MPESA_PASSKEY && (callbackUrl || process.env.MPESA_CALLBACK_URL);
+const mpesaReady = (callbackUrl) => process.env.MPESA_CONSUMER_KEY && process.env.MPESA_CONSUMER_SECRET && mpesaBusinessShortcode() && process.env.MPESA_PASSKEY && (callbackUrl || process.env.MPESA_CALLBACK_URL);
 const paystackReady = () => process.env.PAYSTACK_SECRET_KEY;
 const mpesaBase = () => process.env.MPESA_ENV === 'live' ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke';
 const MPESA_PAYBILL = 'CustomerPayBillOnline';
@@ -40,13 +40,30 @@ function mpesaPassword(shortcode, timestamp) {
   return Buffer.from(String(shortcode) + process.env.MPESA_PASSKEY + timestamp).toString('base64');
 }
 
-function mpesaTransactionType(shortcode) {
+function mpesaBusinessShortcode() {
+  return process.env.MPESA_BUSINESS_SHORTCODE || process.env.MPESA_SHORTCODE;
+}
+
+function mpesaTransactionType() {
   const explicit = process.env.MPESA_TRANSACTION_TYPE;
   if ([MPESA_PAYBILL, MPESA_BUY_GOODS].includes(explicit)) return explicit;
   const shortcodeType = String(process.env.MPESA_SHORTCODE_TYPE || '').toLowerCase();
   if (['till', 'buygoods', 'buy_goods', 'buy-goods'].includes(shortcodeType)) return MPESA_BUY_GOODS;
   if (['paybill', 'pay_bill', 'pay-bill'].includes(shortcodeType)) return MPESA_PAYBILL;
-  return String(shortcode).length >= 7 ? MPESA_BUY_GOODS : MPESA_PAYBILL;
+  return MPESA_PAYBILL;
+}
+
+function mpesaPartyB(transactionType, businessShortcode) {
+  if (process.env.MPESA_PARTY_B) return process.env.MPESA_PARTY_B;
+  if (transactionType === MPESA_BUY_GOODS && process.env.MPESA_STORE_NUMBER) return process.env.MPESA_STORE_NUMBER;
+  return businessShortcode;
+}
+
+function mpesaConfigurationHint(transactionType, businessShortcode, partyB) {
+  if (transactionType === MPESA_BUY_GOODS && String(businessShortcode) === String(partyB) && !process.env.MPESA_STORE_NUMBER) {
+    return 'BuyGoods STK needs the Daraja business/agent shortcode that owns the passkey and the linked store/till number. Set MPESA_BUSINESS_SHORTCODE plus MPESA_STORE_NUMBER or switch to CustomerPayBillOnline for PayBill.';
+  }
+  return null;
 }
 
 function mpesaAccountReference(reference) {
@@ -73,27 +90,30 @@ function safeMpesaRequest(body) {
 async function promptMpesa({ amount, phone, reference, callbackUrl }) {
   const mpesaCallbackUrl = callbackUrl || process.env.MPESA_CALLBACK_URL;
   if (!mpesaReady(mpesaCallbackUrl)) {
-    mpesaLog('stk:configuration-missing', { hasConsumerKey: Boolean(process.env.MPESA_CONSUMER_KEY), hasConsumerSecret: Boolean(process.env.MPESA_CONSUMER_SECRET), hasShortcode: Boolean(process.env.MPESA_SHORTCODE), hasPasskey: Boolean(process.env.MPESA_PASSKEY), hasCallbackUrl: Boolean(mpesaCallbackUrl), simulate });
+    mpesaLog('stk:configuration-missing', { hasConsumerKey: Boolean(process.env.MPESA_CONSUMER_KEY), hasConsumerSecret: Boolean(process.env.MPESA_CONSUMER_SECRET), hasBusinessShortcode: Boolean(mpesaBusinessShortcode()), hasLegacyShortcode: Boolean(process.env.MPESA_SHORTCODE), hasPasskey: Boolean(process.env.MPESA_PASSKEY), hasCallbackUrl: Boolean(mpesaCallbackUrl), simulate });
     if (!simulate) throw Object.assign(new Error('M-Pesa credentials are not configured'), { status: 503 });
     return { provider: 'mpesa', status: 'requires_action', providerReference: `SIM-${reference}`, promptMessage: `SokoEats payment prompt sent to ${phone}. Complete the simulated M-Pesa approval before placing the order.`, payload: { simulation: true } };
   }
   const timestamp = mpesaTimestamp();
-  const shortcode = process.env.MPESA_SHORTCODE;
+  const businessShortcode = mpesaBusinessShortcode();
+  const transactionType = mpesaTransactionType();
+  const partyB = mpesaPartyB(transactionType, businessShortcode);
+  const configurationHint = mpesaConfigurationHint(transactionType, businessShortcode, partyB);
   const body = {
-    BusinessShortCode: shortcode,
-    Password: mpesaPassword(shortcode, timestamp),
+    BusinessShortCode: businessShortcode,
+    Password: mpesaPassword(businessShortcode, timestamp),
     Timestamp: timestamp,
-    TransactionType: mpesaTransactionType(shortcode),
+    TransactionType: transactionType,
     Amount: Math.round(Number(amount)),
     PartyA: phone.replace('+', ''),
-    PartyB: process.env.MPESA_PARTY_B || shortcode,
+    PartyB: partyB,
     PhoneNumber: phone.replace('+', ''),
     CallBackURL: mpesaCallbackUrl,
     AccountReference: mpesaAccountReference(reference),
     TransactionDesc: mpesaTransactionDesc(),
   };
   const safeRequest = safeMpesaRequest(body);
-  mpesaLog('stk:request', { reference, amount: body.Amount, env: process.env.MPESA_ENV || 'sandbox', baseUrl: mpesaBase(), shortcode: body.BusinessShortCode, partyB: body.PartyB, transactionType: body.TransactionType, accountReference: body.AccountReference, transactionDesc: body.TransactionDesc, callbackHost: mpesaCallbackUrl ? new URL(mpesaCallbackUrl).host : null, request: safeRequest });
+  mpesaLog('stk:request', { reference, amount: body.Amount, env: process.env.MPESA_ENV || 'sandbox', baseUrl: mpesaBase(), businessShortcode: body.BusinessShortCode, legacyShortcode: process.env.MPESA_SHORTCODE || null, storeNumber: process.env.MPESA_STORE_NUMBER || null, partyB: body.PartyB, transactionType: body.TransactionType, accountReference: body.AccountReference, transactionDesc: body.TransactionDesc, callbackHost: mpesaCallbackUrl ? new URL(mpesaCallbackUrl).host : null, configurationHint, request: safeRequest });
   const res = await fetch(`${mpesaBase()}/mpesa/stkpush/v1/processrequest`, { method: 'POST', headers: { Authorization: `Bearer ${await mpesaToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json();
   mpesaLog('stk:response', { ok: res.ok, httpStatus: res.status, responseCode: data.ResponseCode, responseDescription: data.ResponseDescription, customerMessage: data.CustomerMessage, merchantRequestId: data.MerchantRequestID, checkoutRequestId: data.CheckoutRequestID, errorCode: data.errorCode, errorMessage: data.errorMessage });
@@ -105,14 +125,14 @@ async function promptMpesa({ amount, phone, reference, callbackUrl }) {
 async function queryMpesa(checkoutRequestId) {
   if (!mpesaReady(process.env.MPESA_CALLBACK_URL)) throw Object.assign(new Error('M-Pesa credentials are not configured'), { status: 503 });
   const timestamp = mpesaTimestamp();
-  const shortcode = process.env.MPESA_SHORTCODE;
+  const businessShortcode = mpesaBusinessShortcode();
   const body = {
-    BusinessShortCode: shortcode,
-    Password: mpesaPassword(shortcode, timestamp),
+    BusinessShortCode: businessShortcode,
+    Password: mpesaPassword(businessShortcode, timestamp),
     Timestamp: timestamp,
     CheckoutRequestID: checkoutRequestId,
   };
-  mpesaLog('query:request', { checkoutRequestId, shortcode: body.BusinessShortCode, env: process.env.MPESA_ENV || 'sandbox' });
+  mpesaLog('query:request', { checkoutRequestId, businessShortcode: body.BusinessShortCode, legacyShortcode: process.env.MPESA_SHORTCODE || null, env: process.env.MPESA_ENV || 'sandbox' });
   const res = await fetch(`${mpesaBase()}/mpesa/stkpushquery/v1/query`, { method: 'POST', headers: { Authorization: `Bearer ${await mpesaToken()}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const data = await res.json();
   mpesaLog('query:response', { ok: res.ok, httpStatus: res.status, responseCode: data.ResponseCode, responseDescription: data.ResponseDescription, resultCode: data.ResultCode, resultDesc: data.ResultDesc, checkoutRequestId: data.CheckoutRequestID || checkoutRequestId, errorCode: data.errorCode, errorMessage: data.errorMessage });

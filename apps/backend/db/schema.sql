@@ -106,6 +106,18 @@ ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS latitude NUMERIC(10,7);
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS longitude NUMERIC(10,7);
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS place_id TEXT;
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS service_radius_km NUMERIC(5,2) NOT NULL DEFAULT 5;
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payment_collection_mode TEXT NOT NULL DEFAULT 'platform' CHECK (payment_collection_mode IN ('platform','direct'));
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payment_provider TEXT NOT NULL DEFAULT 'mpesa';
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payment_account_type TEXT NOT NULL DEFAULT 'paybill' CHECK (payment_account_type IN ('paybill','till','wallet'));
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payment_shortcode TEXT NOT NULL DEFAULT '4139123';
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payout_method TEXT NOT NULL DEFAULT 'mpesa';
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payout_schedule TEXT NOT NULL DEFAULT 'daily';
+UPDATE sokoeats_vendors
+SET payment_collection_mode = 'platform',
+    payment_provider = 'mpesa',
+    payment_account_type = 'paybill',
+    payment_shortcode = '4139123'
+WHERE payment_collection_mode = 'platform';
 
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS pickup_latitude NUMERIC(10,7);
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS pickup_longitude NUMERIC(10,7);

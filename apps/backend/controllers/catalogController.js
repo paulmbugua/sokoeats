@@ -1,7 +1,7 @@
 import pool from '../config/db.js';
 export async function listVendors(_req, res, next) {
   try {
-    const { rows } = await pool.query("SELECT id, name, slug, cuisine, status, rating::float AS rating, prep_minutes AS \"prepMinutes\", delivery_fee AS \"deliveryFee\", minimum_order AS \"minimumOrder\", image_url AS \"imageUrl\" FROM sokoeats_vendors ORDER BY status = 'active' DESC, rating DESC");
+    const { rows } = await pool.query("SELECT id, name, slug, cuisine, status, rating::float AS rating, prep_minutes AS \"prepMinutes\", delivery_fee AS \"deliveryFee\", minimum_order AS \"minimumOrder\", image_url AS \"imageUrl\", payment_collection_mode AS \"paymentCollectionMode\", payment_provider AS \"paymentProvider\", payment_account_type AS \"paymentAccountType\", payment_shortcode AS \"paymentShortcode\" FROM sokoeats_vendors ORDER BY status = 'active' DESC, rating DESC");
     res.json({ vendors: rows });
   } catch (err) { next(err); }
 }
