@@ -211,6 +211,7 @@ CREATE TABLE IF NOT EXISTS sokoeats_sms_notifications (
 
 CREATE INDEX IF NOT EXISTS idx_sokoeats_payment_intents_reference ON sokoeats_payment_intents(reference);
 CREATE INDEX IF NOT EXISTS idx_sokoeats_payment_intents_order ON sokoeats_payment_intents(order_id);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_payment_intents_provider_reference ON sokoeats_payment_intents(provider_reference);
 CREATE INDEX IF NOT EXISTS idx_sokoeats_sms_notifications_order ON sokoeats_sms_notifications(order_id, created_at DESC);
 
 

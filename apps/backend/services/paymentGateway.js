@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 const production = process.env.NODE_ENV === 'production';
 const simulate = process.env.SOKOEATS_ALLOW_PAYMENT_SIMULATION === 'true' || !production;
-const mpesaReady = () => process.env.MPESA_CONSUMER_KEY && process.env.MPESA_CONSUMER_SECRET && process.env.MPESA_SHORTCODE && process.env.MPESA_PASSKEY && process.env.MPESA_CALLBACK_URL;
+const mpesaReady = (callbackUrl) => process.env.MPESA_CONSUMER_KEY && process.env.MPESA_CONSUMER_SECRET && process.env.MPESA_SHORTCODE && process.env.MPESA_PASSKEY && (callbackUrl || process.env.MPESA_CALLBACK_URL);
 const paystackReady = () => process.env.PAYSTACK_SECRET_KEY;
 const mpesaBase = () => process.env.MPESA_ENV === 'live' ? 'https://api.safaricom.co.ke' : 'https://sandbox.safaricom.co.ke';
 
@@ -24,8 +24,9 @@ async function mpesaToken() {
   return (await res.json()).access_token;
 }
 
-async function promptMpesa({ amount, phone, reference }) {
-  if (!mpesaReady()) {
+async function promptMpesa({ amount, phone, reference, callbackUrl }) {
+  const mpesaCallbackUrl = callbackUrl || process.env.MPESA_CALLBACK_URL;
+  if (!mpesaReady(mpesaCallbackUrl)) {
     if (!simulate) throw Object.assign(new Error('M-Pesa credentials are not configured'), { status: 503 });
     return { provider: 'mpesa', status: 'requires_action', providerReference: `SIM-${reference}`, promptMessage: `SokoEats payment prompt sent to ${phone}. Complete the simulated M-Pesa approval before placing the order.`, payload: { simulation: true } };
   }
@@ -42,7 +43,7 @@ async function promptMpesa({ amount, phone, reference }) {
     PartyA: phone.replace('+', ''),
     PartyB: process.env.MPESA_PARTY_B || shortcode,
     PhoneNumber: phone.replace('+', ''),
-    CallBackURL: process.env.MPESA_CALLBACK_URL,
+    CallBackURL: mpesaCallbackUrl,
     AccountReference: reference,
     TransactionDesc: 'SokoEats order payment',
   };
