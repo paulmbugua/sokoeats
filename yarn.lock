@@ -2828,6 +2828,7 @@ __metadata:
     cors: "npm:^2.8.5"
     dotenv: "npm:^16.5.0"
     express: "npm:^4.19.2"
+    firebase-admin: "npm:^13.5.0"
     helmet: "npm:^8.0.0"
     joi: "npm:^17.13.3"
     jsonwebtoken: "npm:^9.0.2"

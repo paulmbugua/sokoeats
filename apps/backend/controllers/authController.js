@@ -3,6 +3,8 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import pool from '../config/db.js';
 
+let firebaseAuthInstance;
+
 const SESSION_DAYS = Number(process.env.AUTH_SESSION_DAYS || 30);
 const roleAliases = {
   normal: 'customer',
@@ -57,19 +59,30 @@ function cleanEmail(email) {
 
 function buildProfile(body, role) {
   const base = {
-    city: body.city || 'Nairobi',
+    city: body.city || '',
     preferredLanguage: body.preferredLanguage || 'English',
     source: body.source || 'mobile',
   };
   if (role === 'rider') {
-    return { ...base, vehicleType: body.vehicleType || 'Motorbike', onboardingStatus: 'started', payoutMethod: 'M-Pesa' };
+    return {
+      ...base,
+      vehicleType: body.vehicleType || '',
+      registrationNumber: body.registrationNumber || body.vehicleRegistration || '',
+      nationalId: body.nationalId || '',
+      onboardingStatus: body.registrationNumber || body.vehicleRegistration ? 'details_submitted' : 'started',
+      payoutMethod: 'M-Pesa',
+      payoutPhone: body.payoutPhone || body.phone || '',
+    };
   }
   if (role === 'vendor' || role === 'merchant') {
     return {
       ...base,
-      businessName: body.businessName || body.storeName || body.fullName || body.name,
-      storeAddress: body.storeAddress || body.defaultAddress || '',
-      onboardingStatus: role === 'merchant' ? 'merchant_admin_created' : 'vendor_created',
+      businessName: body.businessName || body.storeName || '',
+      businessCategory: body.businessCategory || body.category || '',
+      storeAddress: body.storeAddress || body.defaultAddress || body.address || '',
+      payoutMethod: 'M-Pesa',
+      payoutPhone: body.payoutPhone || body.phone || '',
+      onboardingStatus: body.businessName && body.storeAddress ? 'details_submitted' : role === 'merchant' ? 'merchant_admin_created' : 'vendor_created',
     };
   }
   if (role === 'admin' || role === 'support') {
@@ -78,7 +91,33 @@ function buildProfile(body, role) {
   return { ...base, defaultAddress: body.defaultAddress || body.address || '', rewardsOptIn: body.marketingOptIn !== false };
 }
 
+function valuePresent(value) {
+  return typeof value === 'string' ? value.trim().length > 0 : Boolean(value);
+}
+
+function profileValue(row, key) {
+  const profile = row.profile || {};
+  if (key === 'phone') return row.phone;
+  if (key === 'city') return row.city || profile.city;
+  if (key === 'defaultAddress') return row.default_address || profile.defaultAddress || profile.address;
+  return profile[key];
+}
+
+function requiredProfileFields(role) {
+  if (role === 'rider') return ['phone', 'city', 'vehicleType', 'registrationNumber'];
+  if (role === 'vendor' || role === 'merchant') return ['phone', 'city', 'businessName', 'storeAddress'];
+  if (role === 'customer') return ['phone', 'city', 'defaultAddress'];
+  return [];
+}
+
+function profileCompletion(row) {
+  const role = row.role === 'courier' ? 'rider' : row.role;
+  const missing = requiredProfileFields(role).filter((field) => !valuePresent(profileValue(row, field)));
+  return { profileComplete: missing.length === 0, missingProfileFields: missing };
+}
+
 function publicUser(row) {
+  const completion = profileCompletion(row);
   return {
     id: row.id,
     name: row.name,
@@ -92,6 +131,8 @@ function publicUser(row) {
     defaultAddress: row.default_address,
     emailVerified: row.email_verified,
     phoneVerified: row.phone_verified,
+    profileComplete: completion.profileComplete,
+    missingProfileFields: completion.missingProfileFields,
     profile: row.profile || {},
   };
 }
@@ -129,7 +170,49 @@ function googleClientIds() {
   ].filter(Boolean);
 }
 
+async function getFirebaseAuth() {
+  if (firebaseAuthInstance) return firebaseAuthInstance;
+  const projectId = process.env.FIREBASE_PROJECT_ID || process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT;
+  if (!projectId) {
+    const err = new Error('FIREBASE_PROJECT_ID is not configured');
+    err.status = 500;
+    throw err;
+  }
+  const [{ initializeApp, getApps }, { getAuth }] = await Promise.all([import('firebase-admin/app'), import('firebase-admin/auth')]);
+  const app = getApps()[0] || initializeApp({ projectId });
+  firebaseAuthInstance = getAuth(app);
+  return firebaseAuthInstance;
+}
+
+async function verifyFirebaseIdToken(idToken) {
+  const auth = await getFirebaseAuth();
+  const payload = await auth.verifyIdToken(idToken);
+  if (!payload.uid || !payload.email) {
+    const err = new Error('Firebase sign-in could not be verified');
+    err.status = 401;
+    throw err;
+  }
+  if (!(payload.email_verified === true || payload.firebase?.sign_in_provider === 'google.com')) {
+    const err = new Error('Firebase account email is not verified');
+    err.status = 401;
+    throw err;
+  }
+  return {
+    sub: payload.uid,
+    email: cleanEmail(payload.email),
+    name: payload.name || payload.email.split('@')[0],
+    avatarUrl: payload.picture || null,
+    issuer: 'firebase',
+  };
+}
+
 async function verifyGoogleIdToken(idToken) {
+  try {
+    return await verifyFirebaseIdToken(idToken);
+  } catch (firebaseErr) {
+    if (process.env.AUTH_GOOGLE_FALLBACK === 'false') throw firebaseErr;
+  }
+
   const allowedAudiences = googleClientIds();
   if (!allowedAudiences.length) {
     const err = new Error('Google client IDs are not configured');
@@ -139,7 +222,7 @@ async function verifyGoogleIdToken(idToken) {
   const response = await fetch(`https://oauth2.googleapis.com/tokeninfo?id_token=${encodeURIComponent(idToken)}`);
   const payload = await response.json().catch(() => ({}));
   if (!response.ok || !payload.sub || !payload.email) {
-    const err = new Error('Google sign-in could not be verified');
+    const err = new Error('Google sign-in could not be verified by Firebase or Google');
     err.status = 401;
     throw err;
   }
@@ -158,6 +241,7 @@ async function verifyGoogleIdToken(idToken) {
     email: cleanEmail(payload.email),
     name: payload.name || payload.given_name || payload.email.split('@')[0],
     avatarUrl: payload.picture || null,
+    issuer: 'google',
   };
 }
 
@@ -231,7 +315,7 @@ export async function googleAuth(req, res, next) {
           last_login_at = NOW(),
           profile = profile || $8::jsonb
          WHERE id = $1 RETURNING *`,
-        [userRow.id, googleProfile.name, googleProfile.sub, googleProfile.avatarUrl, req.body.city || null, req.body.defaultAddress || req.body.address || null, typeof req.body.marketingOptIn === 'boolean' ? req.body.marketingOptIn : null, JSON.stringify(profile)],
+        [userRow.id, googleProfile.name, googleProfile.sub, googleProfile.avatarUrl, req.body.city || null, req.body.defaultAddress || req.body.address || req.body.storeAddress || null, typeof req.body.marketingOptIn === 'boolean' ? req.body.marketingOptIn : null, JSON.stringify(profile)],
       );
       userRow = rows[0];
     } else {
@@ -240,7 +324,7 @@ export async function googleAuth(req, res, next) {
           (name, email, phone, role, password_hash, status, auth_provider, google_sub, avatar_url, city, default_address, email_verified, phone_verified, marketing_opt_in, terms_accepted_at, last_login_at, profile)
          VALUES ($1,$2,$3,$4,NULL,$5,'google',$6,$7,$8,$9,true,false,$10,NOW(),NOW(),$11::jsonb)
          RETURNING *`,
-        [googleProfile.name, googleProfile.email, req.body.phone || null, role, role === 'vendor' || role === 'merchant' ? 'review' : 'active', googleProfile.sub, googleProfile.avatarUrl, req.body.city || 'Nairobi', req.body.defaultAddress || req.body.address || null, req.body.marketingOptIn !== false, JSON.stringify(profile)],
+        [googleProfile.name, googleProfile.email, req.body.phone || null, role, role === 'vendor' || role === 'merchant' ? 'review' : 'active', googleProfile.sub, googleProfile.avatarUrl, req.body.city || null, req.body.defaultAddress || req.body.address || req.body.storeAddress || null, req.body.marketingOptIn !== false, JSON.stringify(profile)],
       );
       userRow = rows[0];
     }
@@ -275,7 +359,7 @@ export async function updateProfile(req, res, next) {
         marketing_opt_in = COALESCE($6, marketing_opt_in),
         profile = profile || $7::jsonb
        WHERE id = $1 RETURNING *`,
-      [payload.sub, req.body.fullName || req.body.name || null, req.body.phone || null, req.body.city || null, req.body.defaultAddress || req.body.address || null, typeof req.body.marketingOptIn === 'boolean' ? req.body.marketingOptIn : null, JSON.stringify(profile)],
+      [payload.sub, req.body.fullName || req.body.name || null, req.body.phone || null, req.body.city || null, req.body.defaultAddress || req.body.address || req.body.storeAddress || null, typeof req.body.marketingOptIn === 'boolean' ? req.body.marketingOptIn : null, JSON.stringify(profile)],
     );
     res.json({ user: publicUser(rows[0]) });
   } catch (err) {

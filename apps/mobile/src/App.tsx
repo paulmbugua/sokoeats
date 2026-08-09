@@ -18,6 +18,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import nextArrowIcon from '../assets/next-arrow.png';
@@ -28,7 +29,7 @@ WebBrowser.maybeCompleteAuthSession();
 type Screen = 'splash' | 'onboarding' | 'home' | 'categories' | 'orders' | 'favourites' | 'accountAccess' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
 type PaymentMethod = 'mpesa' | 'card';
 type UserRole = 'customer' | 'rider' | 'vendor' | 'merchant' | 'support' | 'admin';
-type AuthUser = { id: string; name: string; email: string; phone?: string | null; role: UserRole; status?: string; authProvider?: string; avatarUrl?: string | null; city?: string | null; defaultAddress?: string | null; profile?: Record<string, unknown> };
+type AuthUser = { id: string; name: string; email: string; phone?: string | null; role: UserRole; status?: string; authProvider?: string; avatarUrl?: string | null; city?: string | null; defaultAddress?: string | null; emailVerified?: boolean; phoneVerified?: boolean; profileComplete?: boolean; missingProfileFields?: string[]; profile?: Record<string, unknown> };
 type AuthSession = { token: string; expiresAt: string; user: AuthUser };
 type CheckoutPayment = { reference: string; method: PaymentMethod; amount: number; status: string; actionUrl?: string; promptMessage?: string; providerMessage?: string | null; providerReference?: string; simulation?: boolean };
 type CheckoutOrderResult = { order: { code: string; total: number; paymentStatus: string } };
@@ -318,6 +319,9 @@ const GOOGLE_MAPS_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '';
 const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
 const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
+const FIREBASE_API_KEY = process.env.EXPO_PUBLIC_FIREBASE_API_KEY || '';
+const FIREBASE_PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || '';
+const GOOGLE_REDIRECT_URI = AuthSession.makeRedirectUri({ scheme: 'sokoeats', path: 'google-auth' });
 
 type MapPoint = { id?: string; label: string; address?: string; lat: number; lng: number; kind?: string };
 type MapViewport = { center?: MapPoint; markers: MapPoint[]; path?: MapPoint[]; staticUrlTemplate?: string };
@@ -1836,6 +1840,39 @@ function openExternalUrl(url?: string) {
   Linking.openURL(url).catch(() => {});
 }
 
+async function exchangeGoogleTokenForFirebaseIdToken(googleIdToken: string) {
+  if (!FIREBASE_API_KEY) return googleIdToken;
+  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=${encodeURIComponent(FIREBASE_API_KEY)}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      postBody: `id_token=${encodeURIComponent(googleIdToken)}&providerId=google.com`,
+      requestUri: GOOGLE_REDIRECT_URI,
+      returnIdpCredential: true,
+      returnSecureToken: true,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok || !payload.idToken) {
+    const detail = payload?.error?.message ? ` Firebase said: ${payload.error.message}` : '';
+    throw new Error(`Firebase Google sign-in failed.${detail}`);
+  }
+  return String(payload.idToken);
+}
+
+function profileTextValue(profile: Record<string, unknown> | undefined, key: string) {
+  const value = profile?.[key];
+  return typeof value === 'string' ? value : '';
+}
+
+function profileCompletionTitle(role: UserRole) {
+  if (role === 'rider') return 'Complete rider setup';
+  if (role === 'vendor') return 'Complete vendor setup';
+  if (role === 'merchant') return 'Complete merchant admin setup';
+  return 'Complete your delivery profile';
+}
+
+
 function MapPanel({ title, subtitle, map, actionUrl, actionLabel = 'Open navigation' }: { title: string; subtitle?: string; map?: MapViewport; actionUrl?: string; actionLabel?: string }) {
   return (
     <View style={styles.mapPanel}>
@@ -1949,7 +1986,8 @@ function SokoEatsApp() {
   const handleAuthenticated = async (session: AuthSession) => {
     setAuthSession(session);
     await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
-    routeForRole(session.user.role);
+    if (session.user.profileComplete === false) openScreen('accountAccess');
+    else routeForRole(session.user.role);
   };
 
   const handleSignOut = async () => {
@@ -2431,14 +2469,18 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   const [businessName, setBusinessName] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
   const [vehicleType, setVehicleType] = useState('Motorbike');
+  const [registrationNumber, setRegistrationNumber] = useState('');
+  const [nationalId, setNationalId] = useState('');
+  const [businessCategory, setBusinessCategory] = useState('Restaurant');
+  const [payoutPhone, setPayoutPhone] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [, googleResponse, promptGoogle] = Google.useAuthRequest({
+  const [googleRequest, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
     androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
     iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
     webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
     scopes: ['openid', 'profile', 'email'],
-  });
+  }, { scheme: 'sokoeats', path: 'google-auth' });
 
   const authPayload = () => ({
     role,
@@ -2451,6 +2493,10 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     businessName: businessName.trim(),
     storeAddress: storeAddress.trim(),
     vehicleType: vehicleType.trim() || 'Motorbike',
+    registrationNumber: registrationNumber.trim(),
+    nationalId: nationalId.trim(),
+    businessCategory: businessCategory.trim(),
+    payoutPhone: payoutPhone.trim() || phone.trim(),
     marketingOptIn: true,
     preferredLanguage: 'English',
   });
@@ -2489,10 +2535,10 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     setBusy(true);
     setMessage('');
     try {
-      const { password: _password, email: _email, fullName: _fullName, ...partnerDetails } = authPayload();
+      const firebaseIdToken = await exchangeGoogleTokenForFirebaseIdToken(idToken);
       const session = await sokoeatsApi<AuthSession>('/api/auth/google', {
         method: 'POST',
-        body: JSON.stringify({ ...partnerDetails, idToken }),
+        body: JSON.stringify({ role, idToken: firebaseIdToken, preferredLanguage: 'English', marketingOptIn: true }),
       });
       await finishAuth(session);
     } catch (err) {
@@ -2503,7 +2549,12 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   };
 
   useEffect(() => {
-    if (googleResponse?.type !== 'success') return;
+    if (!googleResponse) return;
+    if (googleResponse.type === 'error') {
+      setMessage(googleResponse.error?.message || 'Google sign-in returned an authorization error.');
+      return;
+    }
+    if (googleResponse.type !== 'success') return;
     const idToken = googleResponse.params?.id_token;
     if (!idToken) {
       setMessage('Google did not return an ID token. Check the configured web/android client IDs.');
@@ -2512,18 +2563,117 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     void submitGoogleAuth(idToken);
   }, [googleResponse]);
 
+  useEffect(() => {
+    if (!authSession?.user) return;
+    const profile = authSession.user.profile || {};
+    setPhone(authSession.user.phone || '');
+    setCity(authSession.user.city || profileTextValue(profile, 'city') || 'Nairobi');
+    setDefaultAddress(authSession.user.defaultAddress || profileTextValue(profile, 'defaultAddress') || profileTextValue(profile, 'address') || defaultAddress);
+    setVehicleType(profileTextValue(profile, 'vehicleType') || 'Motorbike');
+    setRegistrationNumber(profileTextValue(profile, 'registrationNumber'));
+    setNationalId(profileTextValue(profile, 'nationalId'));
+    setBusinessName(profileTextValue(profile, 'businessName'));
+    setBusinessCategory(profileTextValue(profile, 'businessCategory') || 'Restaurant');
+    setStoreAddress(profileTextValue(profile, 'storeAddress'));
+    setPayoutPhone(profileTextValue(profile, 'payoutPhone') || authSession.user.phone || '');
+  }, [authSession?.user?.id]);
+
   const continueWithGoogle = async () => {
     if (!GOOGLE_ANDROID_CLIENT_ID && !GOOGLE_IOS_CLIENT_ID && !GOOGLE_WEB_CLIENT_ID) {
       Alert.alert('Google sign-in not configured', 'Add the SokoEats Google client IDs to the Expo environment first.');
       return;
     }
+    if (!FIREBASE_API_KEY) {
+      Alert.alert('Firebase login not configured', 'Add EXPO_PUBLIC_FIREBASE_API_KEY to the mobile environment.');
+      return;
+    }
+    console.info('[SokoEats][Auth] google:start', { hasRequest: Boolean(googleRequest), redirectUri: GOOGLE_REDIRECT_URI, hasAndroidClient: Boolean(GOOGLE_ANDROID_CLIENT_ID), hasWebClient: Boolean(GOOGLE_WEB_CLIENT_ID), firebaseProjectId: FIREBASE_PROJECT_ID || null });
     setMessage('');
-    await promptGoogle();
+    try {
+      await promptGoogle();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Google sign-in could not open. Check the redirect URI and Firebase Android client.');
+    }
+  };
+
+  const submitProfileCompletion = async () => {
+    if (!authSession) return;
+    const payload = authPayload();
+    const currentRole = authSession.user.role;
+    const missing: string[] = [];
+    if (!payload.phone) missing.push('mobile number');
+    if (!payload.city) missing.push('city');
+    if (currentRole === 'customer' && !payload.defaultAddress) missing.push('delivery address');
+    if (currentRole === 'rider' && !payload.vehicleType) missing.push('vehicle type');
+    if (currentRole === 'rider' && !payload.registrationNumber) missing.push('registration number');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.businessName) missing.push('business name');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.storeAddress) missing.push('store address');
+    if (missing.length) {
+      Alert.alert('Complete your profile', 'Add ' + missing.join(', ') + ' to continue.');
+      return;
+    }
+    setBusy(true);
+    setMessage('');
+    try {
+      const { role: _role, email: _email, password: _password, ...profilePayload } = payload;
+      const result = await sokoeatsApi<{ user: AuthUser }>('/api/auth/profile', {
+        method: 'PATCH',
+        body: JSON.stringify(profilePayload),
+      });
+      await finishAuth({ ...authSession, user: result.user });
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Profile details could not be saved');
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (authSession) {
     const user = authSession.user;
-    const isRider = user.role === 'rider';
+    const signedInRole = user.role;
+    const isRider = signedInRole === 'rider';
+    const needsCompletion = user.profileComplete === false;
+    if (needsCompletion) {
+      return (
+        <View style={styles.shell}>
+          <CustomerScreenHeader title="Complete profile" onBack={onBack} />
+          <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.profileHero}>
+              {user.avatarUrl ? <Image source={{ uri: user.avatarUrl }} style={styles.profileAvatar} /> : <AppIcon name="person" size={54} color={colors.primary} />}
+              <Text style={styles.checkoutTitle}>{profileCompletionTitle(signedInRole)}</Text>
+              <Text style={styles.checkoutSubtitle}>Google sign-in is complete. Add the details SokoEats needs for your account.</Text>
+            </View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Mobile number</Text><TextInput style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>City</Text><TextInput style={styles.formFieldInput} value={city} onChangeText={setCity} placeholder="Nairobi" placeholderTextColor={colors.outline} /></View>
+            {signedInRole === 'customer' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Delivery address</Text><TextInput style={styles.formFieldInput} value={defaultAddress} onChangeText={setDefaultAddress} placeholder="Apartment, estate, street" placeholderTextColor={colors.outline} /></View>}
+            {signedInRole === 'rider' && (
+              <>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>National ID optional</Text><TextInput style={styles.formFieldInput} value={nationalId} onChangeText={setNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
+              </>
+            )}
+            {(signedInRole === 'vendor' || signedInRole === 'merchant') && (
+              <>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business name</Text><TextInput style={styles.formFieldInput} value={businessName} onChangeText={setBusinessName} placeholder="Nairobi Grill House" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business category</Text><TextInput style={styles.formFieldInput} value={businessCategory} onChangeText={setBusinessCategory} placeholder="Restaurant" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Store address</Text><TextInput style={styles.formFieldInput} value={storeAddress} onChangeText={setStoreAddress} placeholder="Westlands, Nairobi" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+              </>
+            )}
+            {!!user.missingProfileFields?.length && <Text style={styles.secureText}>Required: {user.missingProfileFields.join(', ')}</Text>}
+            {!!message && <Text style={styles.authMessage}>{message}</Text>}
+            <TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={submitProfileCompletion}>
+              <AppIcon name="check" size={18} color={colors.onPrimary} style={styles.inlineIcon} />
+              <Text style={styles.placeOrderText}>{busy ? 'Saving...' : 'Save and continue'}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.primaryButton} onPress={onSignOut}><Text style={styles.primaryButtonText}>Sign out</Text></TouchableOpacity>
+          </ScrollView>
+          <BottomNav active="Account" />
+          <SourceLedger />
+        </View>
+      );
+    }
     return (
       <View style={styles.shell}>
         <CustomerScreenHeader title="Account" onBack={onBack} />
@@ -2579,11 +2729,18 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
         {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Mobile number</Text><TextInput style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>}
         {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>City</Text><TextInput style={styles.formFieldInput} value={city} onChangeText={setCity} placeholder="Nairobi" placeholderTextColor={colors.outline} /></View>}
         {mode === 'register' && role === 'customer' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Default delivery address</Text><TextInput style={styles.formFieldInput} value={defaultAddress} onChangeText={setDefaultAddress} placeholder="Apartment, estate, street" placeholderTextColor={colors.outline} /></View>}
-        {mode === 'register' && role === 'rider' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>}
+        {mode === 'register' && role === 'rider' && (
+          <>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>
+          </>
+        )}
         {mode === 'register' && (role === 'vendor' || role === 'merchant') && (
           <>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business name</Text><TextInput style={styles.formFieldInput} value={businessName} onChangeText={setBusinessName} placeholder="Nairobi Grill House" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business category</Text><TextInput style={styles.formFieldInput} value={businessCategory} onChangeText={setBusinessCategory} placeholder="Restaurant" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Store address</Text><TextInput style={styles.formFieldInput} value={storeAddress} onChangeText={setStoreAddress} placeholder="Westlands, Nairobi" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
           </>
         )}
         <MapPanel title="Default delivery address" subtitle={maps.customer.savedAddresses?.[0]?.address || defaultAddress} map={maps.customer.savedAddresses?.[0]?.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Edit pin" />
