@@ -6,6 +6,7 @@ import {
   Image,
   ImageBackground,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   StatusBar,
@@ -2120,6 +2121,7 @@ function SplashScreen({ onContinue }: { onContinue: () => void }) {
           </View>
         </View>
       </View>
+
       <SourceLedger />
     </View>
   );
@@ -2980,6 +2982,9 @@ function CheckoutScreen({
   const [placing, setPlacing] = useState(false);
   const [pendingPayment, setPendingPayment] = useState<CheckoutPayment | null>(null);
   const [cardCheckoutOpened, setCardCheckoutOpened] = useState(false);
+  const [mpesaModalVisible, setMpesaModalVisible] = useState(false);
+  const [mpesaPaymentPhone, setMpesaPaymentPhone] = useState('');
+  const [mpesaModalError, setMpesaModalError] = useState('');
   const [checkoutStatus, setCheckoutStatus] = useState('Payment is required before SokoEats submits this order.');
 
   const createOrderAfterPayment = async (reference: string) => {
@@ -3025,10 +3030,14 @@ function CheckoutScreen({
     }
   };
 
-  const startPayment = async () => {
-    const mobile = normalizeCheckoutPhone(phone);
+  const startPayment = async (paymentPhone?: string) => {
+    const mobile = normalizeCheckoutPhone(paymentPhone !== undefined ? paymentPhone : phone);
     if (!mobile) {
-      Alert.alert('Mobile number required', 'Enter a valid Kenyan mobile number for M-Pesa, Paystack verification, and order updates.');
+      const message = paymentMethod === 'mpesa'
+        ? 'Enter the Safaricom M-Pesa number that should receive the STK prompt.'
+        : 'Enter a valid Kenyan mobile number for payment verification and order updates.';
+      if (paymentMethod === 'mpesa') setMpesaModalError(message);
+      else Alert.alert('Mobile number required', message);
       return;
     }
     setPlacing(true);
@@ -3037,26 +3046,41 @@ function CheckoutScreen({
         method: 'POST',
         body: JSON.stringify({ method: paymentMethod, amount: total, currency: 'KES', phone: mobile, email: 'amina@sokoeats.co.ke', customerName: 'Amina Customer' }),
       });
+      setPhone(mobile.replace('+254', ''));
       setPendingPayment(payment);
       setCardCheckoutOpened(false);
       if (paymentMethod === 'mpesa') {
         const mpesaMessage = payment.providerMessage || payment.promptMessage || 'Check your phone for the Safaricom M-Pesa STK prompt, enter your PIN, then return to place the order.';
         setCheckoutStatus(mpesaMessage);
-        Alert.alert('M-Pesa STK sent', mpesaMessage);
+        setMpesaModalVisible(false);
+        setMpesaPaymentPhone('');
+        setMpesaModalError('');
         return;
       }
       setCheckoutStatus('Paystack checkout is ready. Tap Pay with card to enter your card details securely.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to start payment';
       setCheckoutStatus(message);
-      Alert.alert('Payment required', message);
+      if (paymentMethod === 'mpesa') setMpesaModalError(message);
+      else Alert.alert('Payment required', message);
     } finally {
       setPlacing(false);
     }
   };
 
+  const submitMpesaNumber = () => {
+    setMpesaModalError('');
+    void startPayment(mpesaPaymentPhone);
+  };
+
   const checkoutAction = () => {
     if (!pendingPayment) {
+      if (paymentMethod === 'mpesa') {
+        setMpesaPaymentPhone('');
+        setMpesaModalError('');
+        setMpesaModalVisible(true);
+        return;
+      }
       void startPayment();
       return;
     }
@@ -3207,6 +3231,38 @@ function CheckoutScreen({
         </TouchableOpacity>
         <View style={styles.secureRow}><AppIcon name="lock" size={14} color={colors.onSurfaceVariant} /><Text style={styles.secureText}>Secure payment powered by SokoPay</Text></View>
       </View>
+      <Modal visible={mpesaModalVisible} transparent animationType="fade" onRequestClose={() => !placing && setMpesaModalVisible(false)}>
+        <View style={styles.mpesaModalOverlay}>
+          <View style={styles.mpesaModalCard}>
+            <View style={styles.mpesaModalIconWrap}>
+              <Text style={styles.mpesaModalIcon}>M</Text>
+            </View>
+            <Text style={styles.mpesaModalTitle}>Pay with M-Pesa</Text>
+            <Text style={styles.mpesaModalBody}>Enter the Safaricom number that should receive the STK push. Keep your phone unlocked and enter your M-Pesa PIN when the prompt appears.</Text>
+            <View style={styles.mpesaModalInputWrap}>
+              <Text style={styles.mpesaModalCountry}>+254</Text>
+              <TextInput
+                style={styles.mpesaModalInput}
+                keyboardType="phone-pad"
+                value={mpesaPaymentPhone}
+                onChangeText={(value) => { setMpesaPaymentPhone(value); if (mpesaModalError) setMpesaModalError(''); }}
+                placeholder="7XX XXX XXX"
+                placeholderTextColor={colors.outline}
+                autoFocus
+              />
+            </View>
+            {!!mpesaModalError && <Text style={styles.mpesaModalError}>{mpesaModalError}</Text>}
+            <View style={styles.mpesaModalActions}>
+              <TouchableOpacity style={styles.mpesaModalSecondaryButton} disabled={placing} onPress={() => setMpesaModalVisible(false)}>
+                <Text style={styles.mpesaModalSecondaryText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.mpesaModalPrimaryButton, placing && styles.disabledButton]} disabled={placing} onPress={submitMpesaNumber}>
+                <Text style={styles.mpesaModalPrimaryText}>{placing ? 'Sending...' : 'OK, send STK'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
       <SourceLedger />
     </View>
   );
@@ -4464,6 +4520,112 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: colors.onSurface,
     paddingRight: 16,
+  },
+  mpesaModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(16, 20, 18, 0.58)',
+    justifyContent: 'center',
+    padding: 24,
+  },
+  mpesaModalCard: {
+    borderRadius: 22,
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 22,
+    shadowColor: '#10231d',
+    shadowOpacity: 0.22,
+    shadowRadius: 28,
+    elevation: 14,
+  },
+  mpesaModalIconWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 18,
+    backgroundColor: colors.secondary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 14,
+  },
+  mpesaModalIcon: {
+    color: colors.onSecondary,
+    fontSize: 24,
+    fontWeight: '900',
+  },
+  mpesaModalTitle: {
+    color: colors.onBackground,
+    fontSize: 24,
+    lineHeight: 31,
+    fontWeight: '900',
+    marginBottom: 8,
+  },
+  mpesaModalBody: {
+    color: colors.onSurfaceVariant,
+    fontSize: 14,
+    lineHeight: 21,
+    marginBottom: 16,
+  },
+  mpesaModalInputWrap: {
+    minHeight: 54,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    backgroundColor: colors.surfaceContainer,
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  mpesaModalCountry: {
+    paddingLeft: 16,
+    paddingRight: 12,
+    marginRight: 12,
+    borderRightWidth: 1,
+    borderRightColor: colors.outlineVariant,
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  mpesaModalInput: {
+    flex: 1,
+    color: colors.onSurface,
+    fontSize: 18,
+    fontWeight: '800',
+    paddingRight: 16,
+  },
+  mpesaModalError: {
+    color: colors.error,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '800',
+    marginBottom: 10,
+  },
+  mpesaModalActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+    marginTop: 8,
+  },
+  mpesaModalSecondaryButton: {
+    minHeight: 46,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.surfaceContainer,
+  },
+  mpesaModalSecondaryText: {
+    color: colors.onSurfaceVariant,
+    fontWeight: '900',
+  },
+  mpesaModalPrimaryButton: {
+    minHeight: 46,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+  },
+  mpesaModalPrimaryText: {
+    color: colors.onPrimary,
+    fontWeight: '900',
   },
   breakdownCard: {
     borderRadius: 16,
