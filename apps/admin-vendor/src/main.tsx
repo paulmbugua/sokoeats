@@ -1,11 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Bell, Check, Clock, HelpCircle, LayoutDashboard, Menu as MenuIcon, PackageCheck, Plus, Search, Store, Utensils, X } from 'lucide-react';
-import { api, clearAuthSession, readAuthSession, saveAuthSession, type StoredAuthSession } from '@sokoeats/shared/api';
+import { adminAccountGuidance, adminRoleLabel, api, clearAuthSession, exchangeGoogleCredentialForFirebaseIdToken, googleWebClientId, readAuthSession, saveAuthSession, type StoredAuthSession } from '@sokoeats/shared/api';
 import './styles.css';
 
 type AuthRole = 'customer' | 'rider' | 'vendor' | 'merchant' | 'support' | 'admin';
-const googleClientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID || (import.meta as any).env?.VITE_GOOGLE_WEB_CLIENT_ID || '';
+const googleClientId = googleWebClientId();
 
 function AuthGate({ title, defaultRole, roles, onAuthenticated }: { title: string; defaultRole: AuthRole; roles: AuthRole[]; onAuthenticated: (session: StoredAuthSession) => void }) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -49,9 +49,10 @@ function AuthGate({ title, defaultRole, roles, onAuthenticated }: { title: strin
         setBusy(true);
         setMessage('');
         try {
+          const firebaseIdToken = await exchangeGoogleCredentialForFirebaseIdToken(response.credential);
           const session = await api<StoredAuthSession>('/api/auth/google', {
             method: 'POST',
-            body: JSON.stringify({ role, idToken: response.credential, businessName: businessName.trim(), inviteCode: inviteCode.trim(), city: 'Nairobi', marketingOptIn: true }),
+            body: JSON.stringify({ role, idToken: firebaseIdToken, businessName: businessName.trim(), inviteCode: inviteCode.trim(), city: 'Nairobi', marketingOptIn: true }),
           });
           complete(session);
         } catch (err) {
@@ -75,13 +76,13 @@ function AuthGate({ title, defaultRole, roles, onAuthenticated }: { title: strin
 
   const google = () => {
     if (!googleClientId) {
-      setMessage('Google web client ID is not configured for this dashboard.');
+      setMessage('Google web client ID is not configured. Add VITE_GOOGLE_WEB_CLIENT_ID or EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID to this dashboard env.');
       return;
     }
     (window as any).google?.accounts?.id?.prompt();
   };
 
-  return <main className="auth-page"><section className="auth-card"><p className="eyebrow">SokoEats secure access</p><h1>{title}</h1><p className="muted">Use your SokoEats account or continue with Google. Platform support/admin accounts require an invite code when created.</p><div className="tabs">{['login','register'].map((item) => <button key={item} className={mode === item ? 'tab active' : 'tab'} onClick={() => setMode(item as 'login' | 'register')}>{item === 'login' ? 'Login' : 'Create account'}</button>)}</div><div className="tabs">{roles.map((item) => <button key={item} className={role === item ? 'tab active' : 'tab'} onClick={() => setRole(item)}>{item === 'merchant' ? 'Merchant Admin' : item}</button>)}</div>{mode === 'register' && <input className="auth-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Full name" />}<input className="auth-input" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" type="email" /><input className="auth-input" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" />{mode === 'register' && (role === 'vendor' || role === 'merchant') && <input className="auth-input" value={businessName} onChange={(event) => setBusinessName(event.target.value)} placeholder="Business or store name" />}{mode === 'register' && (role === 'support' || role === 'admin') && <input className="auth-input" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Private invite code" />}{message && <div className="auth-error">{message}</div>}<button className="google-btn" onClick={google} disabled={busy}><b>G</b> Continue with Google</button><button className="primary auth-submit" onClick={submit} disabled={busy}>{busy ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create SokoEats Account'}</button></section></main>;
+  return <main className="auth-page"><section className="auth-card"><p className="eyebrow">SokoEats secure access</p><h1>{title}</h1><p className="muted">{adminAccountGuidance(role)}</p><div className="auth-guidance"><b>Standard access flow</b><span>Support/Admin: operations invite code required.</span><span>Vendor/Merchant: self-register, complete business profile, then review approval.</span></div><div className="tabs">{['login','register'].map((item) => <button key={item} className={mode === item ? 'tab active' : 'tab'} onClick={() => setMode(item as 'login' | 'register')}>{item === 'login' ? 'Login' : 'Create account'}</button>)}</div><div className="tabs">{roles.map((item) => <button key={item} className={role === item ? 'tab active' : 'tab'} onClick={() => setRole(item)}>{adminRoleLabel(item)}</button>)}</div>{mode === 'register' && <input className="auth-input" value={name} onChange={(event) => setName(event.target.value)} placeholder="Full name" />}<input className="auth-input" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" type="email" /><input className="auth-input" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" />{mode === 'register' && (role === 'vendor' || role === 'merchant') && <input className="auth-input" value={businessName} onChange={(event) => setBusinessName(event.target.value)} placeholder="Business or store name" />}{mode === 'register' && (role === 'support' || role === 'admin') && <input className="auth-input" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Private invite code" />}{message && <div className="auth-error">{message}</div>}<button className="google-btn" onClick={google} disabled={busy}><b>G</b> Continue with Google</button><button className="primary auth-submit" onClick={submit} disabled={busy}>{busy ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create SokoEats Account'}</button></section></main>;
 }
 
 

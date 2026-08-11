@@ -293,13 +293,13 @@ export async function login(req, res, next) {
 export async function googleAuth(req, res, next) {
   try {
     const role = normalizeRole(req.body.role);
-    assertSelfRegistrationAllowed(role, req.body);
     const googleProfile = await verifyGoogleIdToken(req.body.idToken);
-    const profile = buildProfile({ ...req.body, ...googleProfile, source: 'google' }, role);
     const existing = await pool.query(`SELECT * FROM sokoeats_users WHERE email = $1 OR google_sub = $2 ORDER BY created_at ASC LIMIT 1`, [googleProfile.email, googleProfile.sub]);
     if (existing.rows[0] && !roleMatches(existing.rows[0].role, role)) {
       return res.status(409).json({ message: 'This Google account is already linked to a different SokoEats role' });
     }
+    if (!existing.rows[0]) assertSelfRegistrationAllowed(role, req.body);
+    const profile = buildProfile({ ...req.body, ...googleProfile, source: 'google' }, role);
     let userRow = existing.rows[0];
     if (userRow) {
       const { rows } = await pool.query(

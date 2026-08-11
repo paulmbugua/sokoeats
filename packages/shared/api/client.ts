@@ -1,4 +1,15 @@
-export const API_BASE = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_API_URL) || 'http://localhost:4005';
+function readViteEnv(name: string) {
+  return typeof import.meta !== 'undefined' ? String((import.meta as any).env?.[name] || '') : '';
+}
+
+function defaultApiBase() {
+  const configured = readViteEnv('VITE_API_URL') || readViteEnv('VITE_BACKEND_URL') || readViteEnv('EXPO_PUBLIC_BACKEND_URL') || readViteEnv('EXPO_PUBLIC_LAN_BACKEND_URL');
+  if (configured) return configured.replace(/\/$/, '');
+  if (typeof window !== 'undefined' && window.location.hostname) return 'http://' + window.location.hostname + ':4000';
+  return 'http://localhost:4000';
+}
+
+export const API_BASE = defaultApiBase();
 const AUTH_KEY = 'sokoeats.auth';
 
 export type StoredAuthSession = {

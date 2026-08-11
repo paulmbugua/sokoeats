@@ -59,8 +59,8 @@ const AUTH_STORAGE_KEY = 'sokoeats.auth';
 const authRoleOptions: { role: UserRole; label: string; subtitle: string; icon: IconName }[] = [
   { role: 'customer', label: 'Buyer', subtitle: 'Order meals, groceries, medicine, gas, and essentials', icon: 'bag' },
   { role: 'rider', label: 'Rider', subtitle: 'Accept deliveries, earnings, training, and safety tools', icon: 'bike' },
-  { role: 'vendor', label: 'Vendor', subtitle: 'Run menus, orders, inventory, and payouts', icon: 'grid' },
-  { role: 'merchant', label: 'Merchant Admin', subtitle: 'Manage stores, campaigns, reports, and billing', icon: 'grid' },
+  { role: 'vendor', label: 'Vendor', subtitle: 'Apply for a store, upload products, then manage menus after review', icon: 'grid' },
+  { role: 'merchant', label: 'Merchant Admin', subtitle: 'Create a business owner account, complete store details, then await approval', icon: 'grid' },
 ];
 const BottomNavNavigationContext = createContext<((screen: Screen) => void) | null>(null);
 
@@ -2796,6 +2796,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
           <Text style={styles.checkoutTitle}>{mode === 'login' ? 'Welcome back to SokoEats' : 'Create your SokoEats account'}</Text>
           <Text style={styles.checkoutSubtitle}>One secure account for buyers, riders, vendors, and merchant admins.</Text>
         </View>
+        <View style={styles.smsCard}><Text style={styles.vendorName}>Account enrollment</Text><Text style={styles.smsBody}>Buyers and riders can create accounts in the mobile app. Vendors and merchant admins can use Google or password, submit business details, then SokoEats reviews the store before it goes live. Platform admin and support accounts are invitation-only and are created from the web dashboards with a private code.</Text></View>
         <View style={styles.authModeSwitch}>
           <TouchableOpacity style={mode === 'login' ? styles.tabPillActive : styles.tabPill} onPress={() => setMode('login')}><Text style={mode === 'login' ? styles.authPillActiveText : styles.authPillText}>Login</Text></TouchableOpacity>
           <TouchableOpacity style={mode === 'register' ? styles.tabPillActive : styles.tabPill} onPress={() => setMode('register')}><Text style={mode === 'register' ? styles.authPillActiveText : styles.authPillText}>Create account</Text></TouchableOpacity>

@@ -1,10 +1,32 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Bike, CheckCircle2, Clock, Headphones, PackageCheck, Store, TicketCheck, Utensils } from 'lucide-react';
-import { api } from '@sokoeats/shared/api';
+import { adminAccountGuidance, adminRoleLabel, api, clearAuthSession, exchangeGoogleCredentialForFirebaseIdToken, googleWebClientId, readAuthSession, saveAuthSession, type StoredAuthSession } from '@sokoeats/shared/api';
 import type { DashboardMetric, Order, Ticket, Vendor } from '@sokoeats/shared/types';
 import './styles.css';
 
+type AuthRole = 'support' | 'admin';
+const googleClientId = googleWebClientId();
+function AuthGate({ onAuthenticated }: { onAuthenticated: (session: StoredAuthSession) => void }) {
+  const [role, setRole] = useState<AuthRole>('admin');
+  const [mode, setMode] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [inviteCode, setInviteCode] = useState('');
+  const [message, setMessage] = useState('');
+  const complete = (session: StoredAuthSession) => { saveAuthSession(session); onAuthenticated(session); };
+  const submit = async () => {
+    try { const session = await api<StoredAuthSession>(mode === 'login' ? '/api/auth/login' : '/api/auth/register', { method: 'POST', body: JSON.stringify(mode === 'login' ? { role, email, password } : { role, email, password, inviteCode, city: 'Nairobi' }) }); complete(session); }
+    catch (err) { setMessage(err instanceof Error ? err.message : 'SokoEats sign-in failed'); }
+  };
+  useEffect(() => {
+    if (!googleClientId) return;
+    const init = () => (window as any).google?.accounts?.id?.initialize({ client_id: googleClientId, callback: async (response: any) => { try { const idToken = await exchangeGoogleCredentialForFirebaseIdToken(response.credential); complete(await api<StoredAuthSession>('/api/auth/google', { method: 'POST', body: JSON.stringify({ role, idToken, inviteCode, city: 'Nairobi' }) })); } catch (err) { setMessage(err instanceof Error ? err.message : 'Google sign-in failed'); } } });
+    if ((window as any).google?.accounts?.id) { init(); return; }
+    const script = document.createElement('script'); script.src = 'https://accounts.google.com/gsi/client'; script.async = true; script.defer = true; script.onload = init; document.head.appendChild(script);
+  }, [role, inviteCode]);
+  return <main className="auth-page"><section className="auth-card"><p className="eyebrow">SokoEats secure access</p><h1>Platform admin access</h1><p className="muted">{adminAccountGuidance(role)}</p><div className="auth-guidance"><b>Standard access flow</b><span>Support/Admin accounts are created by invitation with a private code.</span><span>Google is preferred for daily dashboard login after the account exists.</span></div><div className="tabs"><button className={mode === 'login' ? 'tab active' : 'tab'} onClick={() => setMode('login')}>Login</button><button className={mode === 'register' ? 'tab active' : 'tab'} onClick={() => setMode('register')}>Create account</button></div><div className="tabs">{(['admin','support'] as AuthRole[]).map((item) => <button key={item} className={role === item ? 'tab active' : 'tab'} onClick={() => setRole(item)}>{adminRoleLabel(item)}</button>)}</div><input className="auth-input" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="Email address" type="email" /><input className="auth-input" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" />{mode === 'register' && <input className="auth-input" value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Private invite code" />}{message && <div className="auth-error">{message}</div>}<button className="google-btn" onClick={() => googleClientId ? (window as any).google?.accounts?.id?.prompt() : setMessage('Google web client ID is not configured. Add VITE_GOOGLE_WEB_CLIENT_ID or EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID.') }><b>G</b> Continue with Google</button><button className="primary auth-submit" onClick={submit}>{mode === 'login' ? 'Login' : 'Create SokoEats Account'}</button></section></main>;
+}
 type MapPoint = { label: string; lat: number; lng: number };
 type MapViewport = { center?: MapPoint; markers?: MapPoint[]; path?: MapPoint[] };
 type MapsManifest = Record<string, any>;
@@ -19,6 +41,7 @@ const MapPreview = ({ title, map, href, meta }: { title: string; map?: MapViewpo
 
 
 function App() {
+  const [session, setSession] = useState<StoredAuthSession | null>(() => readAuthSession());
   const [maps, setMaps] = useState<MapsManifest | null>(null);
   const [metrics, setMetrics] = useState<DashboardMetric[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
@@ -31,10 +54,11 @@ function App() {
     api<{ tickets: Ticket[] }>('/api/tickets').then((r) => setTickets(r.tickets)).catch(() => {});
     api<{ vendors: Vendor[] }>('/api/vendors').then((r) => setVendors(r.vendors)).catch(() => {});
   }, []);
+  if (!session) return <AuthGate onAuthenticated={setSession} />;
   const mode: string = 'admin';
   const icon = mode === 'vendor' ? <Store /> : mode === 'tickets' ? <TicketCheck /> : mode === 'support' ? <Headphones /> : <Utensils />;
   return <main>
-    <aside><div className="brand">{icon}<b>Sokoeats</b></div><button className="active">Dashboard</button><button>Orders</button><button>Tickets</button><button>Vendors</button></aside>
+    <aside><div className="brand">{icon}<b>Sokoeats</b></div><button className="active">Dashboard</button><button>Orders</button><button>Tickets</button><button>Vendors</button><button onClick={() => { clearAuthSession(); setSession(null); }}>Logout</button></aside>
     <section className="page">
       <header><p>Marketplace admin</p><h1>Marketplace control</h1></header>
       <div className="metrics">{metrics.map((m) => <article key={m.label}><span>{m.label}</span><strong>{m.value}</strong><em>{m.delta || 'live'}</em></article>)}</div>
