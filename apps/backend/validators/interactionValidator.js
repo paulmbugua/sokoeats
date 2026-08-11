@@ -97,10 +97,21 @@ export const merchantOnboardingSubmissionSchema = Joi.object({
 }).unknown(true);
 
 export const merchantMenuItemSchema = Joi.object({
-  name: Joi.string().min(2).required(),
-  price: Joi.string().required(),
-  category: Joi.string().required(),
-}).unknown(true);
+  vendorId: Joi.string().allow('', null),
+  vendorSlug: Joi.string().pattern(/^[a-z0-9-]+$/).default('nairobi-grill-house'),
+  sectionTitle: Joi.string().min(2).max(80),
+  sectionDescription: Joi.string().max(220).allow('', null),
+  sectionSortOrder: Joi.number().integer().min(0).allow(null),
+  name: Joi.string().min(2).max(140).required(),
+  description: Joi.string().max(500).allow('', null),
+  price: Joi.alternatives().try(Joi.number().min(1), Joi.string().min(1)).required(),
+  category: Joi.string().min(2).max(80).required(),
+  unitLabel: Joi.string().max(40).allow('', null),
+  imageUrl: Joi.string().uri().allow('', null),
+  popular: Joi.boolean().default(false),
+  available: Joi.boolean().default(true),
+  sortOrder: Joi.number().integer().min(0).default(0),
+}).unknown(false);
 
 export const merchantBulkImportSchema = Joi.object({
   fileName: Joi.string().default('Restaurant_Menu_July.csv'),

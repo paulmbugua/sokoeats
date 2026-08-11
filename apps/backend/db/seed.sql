@@ -317,3 +317,86 @@ JOIN (VALUES
   ('nairobi-grill-house', 'Tusker Cider (500ml)', 'Chilled cider paired for checkout bundles.', 250, 'Drinks', false)
 ) AS item(slug, name, description, price, category, popular) ON item.slug = v.slug
 WHERE NOT EXISTS (SELECT 1 FROM sokoeats_menu_items mi WHERE mi.vendor_id = v.id AND mi.name = item.name);
+
+
+-- Marketplace shops and editable product sections for every SokoEats category.
+WITH owner AS (SELECT id FROM sokoeats_users WHERE email = 'vendor@sokoeats.local')
+INSERT INTO sokoeats_vendors (owner_user_id, name, slug, cuisine, shop_type, tagline, status, rating, prep_minutes, delivery_fee, minimum_order, image_url, address)
+VALUES
+  ((SELECT id FROM owner), 'Nairobi Grill House', 'nairobi-grill-house', 'Kenyan grill', 'restaurants', 'Charcoal grill meals, trays, and cold drinks.', 'active', 4.8, 28, 150, 200, NULL, 'The Oval, Ring Road, Westlands'),
+  ((SELECT id FROM owner), 'Mama Njeri Kitchen', 'mama-njeri-kitchen', 'Swahili plates', 'restaurants', 'Pilau, chapati, stews, and family lunch packs.', 'active', 4.6, 22, 50, 150, NULL, 'Kilimani'),
+  ((SELECT id FROM owner), 'City Fresh Grocers', 'city-fresh-grocers', 'Fresh market', 'groceries', 'Produce, pantry staples, dairy, and household basics.', 'active', 4.7, 20, 80, 300, NULL, 'Nairobi CBD'),
+  ((SELECT id FROM owner), 'Soko Pantry Express', 'soko-pantry-express', 'Convenience pantry', 'groceries', 'Breakfast kits, snacks, office supplies, and quick refills.', 'active', 4.5, 18, 60, 250, NULL, 'Upper Hill'),
+  ((SELECT id FROM owner), 'Afya Plus Pharmacy', 'afya-plus-pharmacy', 'Wellness pharmacy', 'pharmacy', 'OTC medicine, baby care, first aid, and supplements.', 'active', 4.9, 24, 70, 200, NULL, 'Hurlingham'),
+  ((SELECT id FROM owner), 'Uzima Care Chemist', 'uzima-care-chemist', 'Care chemist', 'pharmacy', 'Hygiene, vitamins, thermometers, and late-night essentials.', 'active', 4.6, 26, 90, 250, NULL, 'Ngara'),
+  ((SELECT id FROM owner), 'Mtaa Gas Express', 'mtaa-gas-express', 'LPG refills', 'gas', 'Sealed cylinder swaps, new cylinders, and gas accessories.', 'active', 4.7, 35, 120, 900, NULL, 'South B'),
+  ((SELECT id FROM owner), 'Blue Flame Depot', 'blue-flame-depot', 'Gas depot', 'gas', 'K-Gas, TotalEnergies, regulators, hoses, and burners.', 'active', 4.4, 40, 140, 950, NULL, 'Industrial Area'),
+  ((SELECT id FROM owner), 'Tech Hub CBD', 'tech-hub-cbd', 'Electronics accessories', 'electronics', 'Chargers, earbuds, routers, cables, and phone power gear.', 'active', 4.6, 24, 90, 500, NULL, 'Moi Avenue'),
+  ((SELECT id FROM owner), 'Soko Gadgets', 'soko-gadgets', 'Gadgets and repairs', 'electronics', 'Warranty-ready accessories, screen guards, and connectivity kits.', 'active', 4.5, 28, 100, 450, NULL, 'Tom Mboya Street')
+ON CONFLICT (slug) DO UPDATE SET
+  name = EXCLUDED.name,
+  cuisine = EXCLUDED.cuisine,
+  shop_type = EXCLUDED.shop_type,
+  tagline = EXCLUDED.tagline,
+  status = EXCLUDED.status,
+  rating = EXCLUDED.rating,
+  prep_minutes = EXCLUDED.prep_minutes,
+  delivery_fee = EXCLUDED.delivery_fee,
+  minimum_order = EXCLUDED.minimum_order,
+  address = EXCLUDED.address;
+
+INSERT INTO sokoeats_menu_categories (vendor_id, title, description, sort_order)
+SELECT v.id, section.title, section.description, section.sort_order
+FROM sokoeats_vendors v
+JOIN (VALUES
+  ('restaurants', 'Meals', 'Main dishes, combos, and family plates.', 10),
+  ('restaurants', 'Drinks', 'Juices, sodas, water, tea, and chilled pairings.', 20),
+  ('restaurants', 'Sides', 'Chapati, fries, kachumbari, sauces, and extras.', 30),
+  ('groceries', 'Fresh Produce', 'Vegetables, fruits, herbs, and daily market items.', 10),
+  ('groceries', 'Pantry Staples', 'Flour, rice, cooking oil, sugar, tea, and dry goods.', 20),
+  ('groceries', 'Dairy and Bakery', 'Milk, yoghurt, bread, eggs, and breakfast supplies.', 30),
+  ('pharmacy', 'Medicine', 'OTC medicine and urgent wellness products.', 10),
+  ('pharmacy', 'Baby and Personal Care', 'Baby care, hygiene, skincare, and care essentials.', 20),
+  ('pharmacy', 'First Aid', 'Bandages, antiseptics, thermometers, and safety kits.', 30),
+  ('gas', 'Cylinder Refills', '6kg, 13kg, and larger LPG refill options.', 10),
+  ('gas', 'New Cylinders', 'Starter cylinders and swap packages.', 20),
+  ('gas', 'Accessories', 'Regulators, hoses, burners, lighters, and clamps.', 30),
+  ('electronics', 'Chargers and Cables', 'Fast chargers, type-C cables, adapters, and plugs.', 10),
+  ('electronics', 'Audio and Power', 'Earbuds, headphones, power banks, and batteries.', 20),
+  ('electronics', 'Connectivity', 'Routers, MiFi devices, screen guards, and phone accessories.', 30)
+) AS section(shop_type, title, description, sort_order) ON section.shop_type = v.shop_type
+ON CONFLICT (vendor_id, title) DO UPDATE SET description = EXCLUDED.description, sort_order = EXCLUDED.sort_order;
+
+INSERT INTO sokoeats_menu_items (vendor_id, section_id, name, description, price, category, popular, available, unit_label, sort_order)
+SELECT v.id, c.id, item.name, item.description, item.price, item.category, item.popular, true, item.unit_label, item.sort_order
+FROM sokoeats_vendors v
+JOIN sokoeats_menu_categories c ON c.vendor_id = v.id
+JOIN (VALUES
+  ('nairobi-grill-house', 'Meals', 'Platter of Nyama Choma', 'Charcoal-grilled beef with ugali, kachumbari, and house spice.', 1200, 'Meals', true, 'plate', 10),
+  ('nairobi-grill-house', 'Meals', 'Grilled Tilapia Plate', 'Whole tilapia with sukuma wiki, lemon, and tomato relish.', 950, 'Meals', true, 'plate', 20),
+  ('nairobi-grill-house', 'Drinks', 'Passion Juice', 'Fresh chilled passion juice, lightly sweetened.', 250, 'Drinks', false, '500ml', 10),
+  ('mama-njeri-kitchen', 'Meals', 'Pilau Feast', 'Spiced rice with beef cubes, kachumbari, and house sauce.', 740, 'Meals', true, 'plate', 10),
+  ('mama-njeri-kitchen', 'Sides', 'Chapati Pack', 'Soft layered chapati for stew, tea, or family meals.', 180, 'Sides', false, '3 pcs', 20),
+  ('city-fresh-grocers', 'Fresh Produce', 'Spinach Bundle', 'Washed local spinach bundle for family dinner.', 80, 'Fresh Produce', true, 'bundle', 10),
+  ('city-fresh-grocers', 'Pantry Staples', 'Maize Flour', 'Premium sifted maize flour for ugali.', 230, 'Pantry Staples', true, '2kg', 20),
+  ('soko-pantry-express', 'Dairy and Bakery', 'Breakfast Kit', 'Milk, bread, eggs, and tea leaves in one basket.', 690, 'Dairy and Bakery', true, 'kit', 10),
+  ('soko-pantry-express', 'Pantry Staples', 'Office Snack Box', 'Biscuits, crisps, juice, and disposable cups.', 980, 'Pantry Staples', false, 'box', 20),
+  ('afya-plus-pharmacy', 'Medicine', 'Pain Relief Tablets', 'Fast-acting OTC pain relief pack.', 180, 'Medicine', true, 'pack', 10),
+  ('afya-plus-pharmacy', 'First Aid', 'First Aid Kit', 'Bandages, antiseptic wipes, gauze, and gloves.', 850, 'First Aid', true, 'kit', 20),
+  ('uzima-care-chemist', 'Baby and Personal Care', 'Baby Care Bundle', 'Wipes, petroleum jelly, cotton wool, and baby soap.', 760, 'Baby and Personal Care', true, 'bundle', 10),
+  ('uzima-care-chemist', 'First Aid', 'Digital Thermometer', 'Quick-read thermometer for home care.', 620, 'First Aid', false, 'piece', 20),
+  ('mtaa-gas-express', 'Cylinder Refills', '6kg LPG Refill', 'Sealed 6kg cooking gas refill with safety check.', 1350, 'Cylinder Refills', true, '6kg', 10),
+  ('mtaa-gas-express', 'Accessories', 'Gas Regulator', 'Standard low-pressure regulator for home cylinders.', 900, 'Accessories', false, 'piece', 20),
+  ('blue-flame-depot', 'Cylinder Refills', '13kg LPG Swap', 'Verified 13kg cylinder swap delivered to your door.', 3200, 'Cylinder Refills', true, '13kg', 10),
+  ('blue-flame-depot', 'Accessories', 'Burner Hose and Clips', 'Durable gas hose with clips for safe setup.', 450, 'Accessories', false, 'set', 20),
+  ('tech-hub-cbd', 'Chargers and Cables', 'USB-C Fast Charger', '20W wall charger for Android and iPhone USB-C devices.', 1200, 'Chargers and Cables', true, 'piece', 10),
+  ('tech-hub-cbd', 'Audio and Power', '10000mAh Power Bank', 'Slim power bank with dual USB output.', 2850, 'Audio and Power', true, 'piece', 20),
+  ('soko-gadgets', 'Connectivity', '4G MiFi Router', 'Portable Wi-Fi router for work and travel.', 4200, 'Connectivity', true, 'piece', 10),
+  ('soko-gadgets', 'Connectivity', 'Tempered Screen Guard', 'Clear tempered glass protector with install wipes.', 350, 'Connectivity', false, 'piece', 20)
+) AS item(slug, section_title, name, description, price, category, popular, unit_label, sort_order) ON item.slug = v.slug AND item.section_title = c.title
+WHERE NOT EXISTS (SELECT 1 FROM sokoeats_menu_items mi WHERE mi.vendor_id = v.id AND mi.name = item.name);
+
+UPDATE sokoeats_menu_items mi
+SET section_id = c.id, category = c.title
+FROM sokoeats_menu_categories c
+WHERE mi.vendor_id = c.vendor_id AND mi.section_id IS NULL AND lower(mi.category) = lower(c.title);

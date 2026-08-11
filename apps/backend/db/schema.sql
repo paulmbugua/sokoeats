@@ -258,3 +258,26 @@ CREATE TABLE IF NOT EXISTS sokoeats_auth_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sokoeats_auth_sessions_user ON sokoeats_auth_sessions(user_id, created_at DESC);
+
+-- Marketplace shop taxonomy and vendor-editable product sections.
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS shop_type TEXT NOT NULL DEFAULT 'restaurants' CHECK (shop_type IN ('restaurants','groceries','pharmacy','gas','electronics'));
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS tagline TEXT;
+
+CREATE TABLE IF NOT EXISTS sokoeats_menu_categories (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  vendor_id UUID NOT NULL REFERENCES sokoeats_vendors(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(vendor_id, title)
+);
+
+ALTER TABLE sokoeats_menu_items ADD COLUMN IF NOT EXISTS section_id UUID REFERENCES sokoeats_menu_categories(id) ON DELETE SET NULL;
+ALTER TABLE sokoeats_menu_items ADD COLUMN IF NOT EXISTS unit_label TEXT;
+ALTER TABLE sokoeats_menu_items ADD COLUMN IF NOT EXISTS sort_order INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_menu_items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
+
+CREATE INDEX IF NOT EXISTS idx_sokoeats_vendors_shop_type ON sokoeats_vendors(shop_type, status, rating DESC);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_menu_categories_vendor ON sokoeats_menu_categories(vendor_id, sort_order, title);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_menu_items_section ON sokoeats_menu_items(section_id, available, sort_order, name);

@@ -26,7 +26,7 @@ import { AppIcon, type IconName } from './AppIcon';
 
 WebBrowser.maybeCompleteAuthSession();
 
-type Screen = 'splash' | 'onboarding' | 'home' | 'categories' | 'orders' | 'favourites' | 'accountAccess' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
+type Screen = 'splash' | 'onboarding' | 'home' | 'categories' | 'shopDetail' | 'orders' | 'favourites' | 'accountAccess' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
 type PaymentMethod = 'mpesa' | 'card';
 type UserRole = 'customer' | 'rider' | 'vendor' | 'merchant' | 'support' | 'admin';
 type AuthUser = { id: string; name: string; email: string; phone?: string | null; role: UserRole; status?: string; authProvider?: string; avatarUrl?: string | null; city?: string | null; defaultAddress?: string | null; emailVerified?: boolean; phoneVerified?: boolean; profileComplete?: boolean; missingProfileFields?: string[]; profile?: Record<string, unknown> };
@@ -51,6 +51,10 @@ type ShopListing = {
   popularItems: string[];
   reorderLabel: string;
 };
+type ShopMenuItem = { id: string; name: string; description?: string | null; price: number; category: string; popular?: boolean; available?: boolean; unitLabel?: string | null; imageUrl?: string | null };
+type ShopMenuSection = { id?: string; title: string; description?: string | null; items: ShopMenuItem[] };
+type ShopMenuResponse = { vendor?: Partial<ShopListing> & { slug?: string }; sections: ShopMenuSection[] };
+type OrderItem = { quantity: string; name: string; note: string; price: number };
 const AUTH_STORAGE_KEY = 'sokoeats.auth';
 const authRoleOptions: { role: UserRole; label: string; subtitle: string; icon: IconName }[] = [
   { role: 'customer', label: 'Buyer', subtitle: 'Order meals, groceries, medicine, gas, and essentials', icon: 'bag' },
@@ -298,7 +302,44 @@ const shopListings: ShopListing[] = [
   { id: 'soko-gadgets', category: 'electronics', name: 'Soko Gadgets', meta: 'Phone accessories - Routers - Cables', rating: 4.5, time: '25-40 min', delivery: 'KES 100', minimum: 'KES 450 min', distance: '1.7 km', badge: 'Warranty ready', image: images.splashRider, popularItems: ['Type-C Cable', 'MiFi Router', 'Screen Guard'], reorderLabel: 'Reorder tech essentials' },
 ];
 
-const orderItems = [
+
+const shopMenuTemplates: Record<ShopCategoryKey, ShopMenuSection[]> = {
+  restaurants: [
+    { title: 'Meals', description: 'Main dishes the kitchen wants customers to order first.', items: [{ id: 'meal-nyama', name: 'Nyama Choma Platter', description: 'Charcoal grilled beef with ugali and kachumbari.', price: 1200, category: 'Meals', popular: true }, { id: 'meal-pilau', name: 'Chicken Pilau Bowl', description: 'Spiced rice, tender chicken, salsa, and chilli sauce.', price: 680, category: 'Meals' }] },
+    { title: 'Drinks', description: 'Cold drinks, juices, water, and daily refreshments.', items: [{ id: 'drink-passion', name: 'Passion Juice', description: 'Fresh house juice served chilled.', price: 180, category: 'Drinks' }, { id: 'drink-soda', name: 'Assorted Soda', description: 'Choose cola, orange, or lemon lime at checkout notes.', price: 120, category: 'Drinks' }] },
+    { title: 'Sides', description: 'Extras that complete the plate.', items: [{ id: 'side-ugali', name: 'Extra Ugali', description: 'Soft white ugali portion.', price: 120, category: 'Sides' }, { id: 'side-kachumbari', name: 'Kachumbari Cup', description: 'Tomato, onion, coriander, and lemon.', price: 90, category: 'Sides' }] },
+  ],
+  groceries: [
+    { title: 'Fresh Produce', description: 'Vegetables, fruits, herbs, and market baskets.', items: [{ id: 'produce-spinach', name: 'Spinach Bundle', description: 'Washed green spinach bunch from today\'s market.', price: 80, category: 'Fresh Produce', unitLabel: 'bundle' }, { id: 'produce-bananas', name: 'Sweet Bananas', description: 'Ripe bananas packed carefully for delivery.', price: 160, category: 'Fresh Produce', unitLabel: 'dozen' }] },
+    { title: 'Pantry Staples', description: 'Flour, rice, oil, sugar, tea, and household basics.', items: [{ id: 'pantry-flour', name: 'Maize Flour 2kg', description: 'Trusted everyday ugali flour.', price: 210, category: 'Pantry Staples', unitLabel: '2kg' }, { id: 'pantry-rice', name: 'Pishori Rice', description: 'Aromatic rice packed in a sealed bag.', price: 340, category: 'Pantry Staples', unitLabel: '1kg' }] },
+    { title: 'Dairy and Bakery', description: 'Milk, bread, yoghurt, eggs, and breakfast refills.', items: [{ id: 'dairy-milk', name: 'Fresh Milk', description: 'Pasteurised whole milk.', price: 75, category: 'Dairy and Bakery', unitLabel: '500ml' }, { id: 'bakery-bread', name: 'Brown Bread', description: 'Soft sliced family loaf.', price: 95, category: 'Dairy and Bakery' }] },
+  ],
+  pharmacy: [
+    { title: 'Medicine', description: 'OTC essentials with pharmacist-managed availability.', items: [{ id: 'med-pain', name: 'Pain Relief Tablets', description: 'Common pain and fever relief pack.', price: 180, category: 'Medicine' }, { id: 'med-vitamin', name: 'Vitamin C', description: 'Daily immune support tablets.', price: 450, category: 'Medicine' }] },
+    { title: 'Baby and Personal Care', description: 'Baby, hygiene, and wellness products.', items: [{ id: 'care-diapers', name: 'Baby Diapers Pack', description: 'Comfort fit pack for daily use.', price: 680, category: 'Baby and Personal Care' }, { id: 'care-sanitizer', name: 'Hand Sanitizer', description: 'Pocket sanitizer for home and travel.', price: 150, category: 'Baby and Personal Care' }] },
+    { title: 'First Aid', description: 'Bandages, antiseptic, thermometers, and urgent care basics.', items: [{ id: 'aid-bandage', name: 'Bandage Roll', description: 'Sterile roll for minor wounds.', price: 120, category: 'First Aid' }, { id: 'aid-thermo', name: 'Digital Thermometer', description: 'Fast-read thermometer with battery.', price: 650, category: 'First Aid' }] },
+  ],
+  gas: [
+    { title: 'Cylinder Refills', description: 'Fast verified refills by cylinder size.', items: [{ id: 'gas-6kg', name: '6kg LPG Refill', description: 'Sealed 6kg refill with safety check.', price: 1450, category: 'Cylinder Refills', unitLabel: '6kg' }, { id: 'gas-13kg', name: '13kg LPG Refill', description: 'Home cooking gas refill with dispatch confirmation.', price: 3150, category: 'Cylinder Refills', unitLabel: '13kg' }] },
+    { title: 'New Cylinders', description: 'Starter cylinders and full swaps.', items: [{ id: 'new-6kg', name: 'New 6kg Cylinder', description: 'Cylinder, gas, and basic setup check.', price: 4200, category: 'New Cylinders' }, { id: 'new-13kg', name: 'New 13kg Cylinder', description: 'Full 13kg cylinder for family kitchens.', price: 7200, category: 'New Cylinders' }] },
+    { title: 'Accessories', description: 'Regulators, hoses, lighters, and safety extras.', items: [{ id: 'gas-regulator', name: 'Gas Regulator', description: 'Standard regulator for home cylinders.', price: 950, category: 'Accessories' }, { id: 'gas-hose', name: 'Burner Hose', description: 'Flexible hose with safety fitting.', price: 380, category: 'Accessories' }] },
+  ],
+  electronics: [
+    { title: 'Chargers and Cables', description: 'Phone chargers, USB cables, and adapters.', items: [{ id: 'tech-usbc', name: 'USB-C Fast Charger', description: '20W wall charger with cable.', price: 1250, category: 'Chargers and Cables' }, { id: 'tech-cable', name: 'Braided Type-C Cable', description: 'Durable 1m charging cable.', price: 450, category: 'Chargers and Cables' }] },
+    { title: 'Audio and Power', description: 'Earbuds, power banks, speakers, and batteries.', items: [{ id: 'tech-earbuds', name: 'Wireless Earbuds', description: 'Compact Bluetooth earbuds with charging case.', price: 2400, category: 'Audio and Power' }, { id: 'tech-powerbank', name: '10000mAh Power Bank', description: 'Portable fast-charge power bank.', price: 2850, category: 'Audio and Power' }] },
+    { title: 'Connectivity', description: 'Routers, SIM tools, screen protectors, and setup extras.', items: [{ id: 'tech-router', name: '4G MiFi Router', description: 'Portable Wi-Fi router for home and travel.', price: 4950, category: 'Connectivity' }, { id: 'tech-screen', name: 'Tempered Screen Guard', description: 'Scratch-resistant phone screen protector.', price: 300, category: 'Connectivity' }] },
+  ],
+};
+
+function fallbackShopSections(shop: ShopListing): ShopMenuSection[] {
+  return shopMenuTemplates[shop.category].map((section, sectionIndex) => ({
+    ...section,
+    id: shop.id + '-' + section.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
+    items: section.items.map((item, itemIndex) => ({ ...item, id: shop.id + '-' + item.id, popular: item.popular || itemIndex === 0 || shop.popularItems.some((popular) => item.name.toLowerCase().includes(popular.toLowerCase().split(' ')[0])), price: item.price + sectionIndex * 15 })),
+  }));
+}
+
+const defaultOrderItems: OrderItem[] = [
   {
     quantity: '1x',
     name: 'Platter of Nyama Choma',
@@ -1922,6 +1963,11 @@ function SokoEatsApp() {
   const [maps, setMaps] = useState<MapsManifest>(fallbackMaps);
   const [selectedShopCategory, setSelectedShopCategory] = useState<ShopCategoryKey>('restaurants');
   const [shopRatings, setShopRatings] = useState<Record<string, number>>({});
+  const [selectedShop, setSelectedShop] = useState<ShopListing | null>(shopListings[0]);
+  const [shopMenuSections, setShopMenuSections] = useState<ShopMenuSection[]>(fallbackShopSections(shopListings[0]));
+  const [shopMenuLoading, setShopMenuLoading] = useState(false);
+  const [basketItems, setBasketItems] = useState<OrderItem[]>(defaultOrderItems);
+  const [checkoutShop, setCheckoutShop] = useState<ShopListing | null>(shopListings[0]);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const fade = useRef(new Animated.Value(0)).current;
   const screenHistory = useRef<Screen[]>([]);
@@ -1969,11 +2015,46 @@ function SokoEatsApp() {
     openScreen('categories');
   };
 
+  const openShopDetail = async (shop: ShopListing) => {
+    setSelectedShop(shop);
+    setSelectedShopCategory(shop.category);
+    setCheckoutShop(shop);
+    setBasketItems([]);
+    setShopMenuSections(fallbackShopSections(shop));
+    openScreen('shopDetail');
+    setShopMenuLoading(true);
+    try {
+      const data = await sokoeatsApi<ShopMenuResponse>('/api/vendors/' + shop.id + '/menu');
+      setShopMenuSections(data.sections?.length ? data.sections : fallbackShopSections(shop));
+    } catch {
+      setShopMenuSections(fallbackShopSections(shop));
+    } finally {
+      setShopMenuLoading(false);
+    }
+  };
+
+  const addShopItemToBasket = (shop: ShopListing, item: ShopMenuItem, quantity: number) => {
+    const safeQuantity = Math.max(1, quantity || 1);
+    setCheckoutShop(shop);
+    setBasketItems((prev) => {
+      const existing = prev.find((entry) => entry.name === item.name);
+      if (!existing) return [...prev, { quantity: safeQuantity + 'x', name: item.name, note: item.description || item.category, price: Math.round(item.price * safeQuantity) }];
+      const currentQuantity = Number.parseInt(existing.quantity, 10) || 1;
+      const nextQuantity = currentQuantity + safeQuantity;
+      return prev.map((entry) => entry.name === item.name ? { ...entry, quantity: nextQuantity + 'x', price: Math.round(item.price * nextQuantity) } : entry);
+    });
+  };
+
+
   const rateShop = (shopId: string, rating: number) => {
     setShopRatings((prev) => ({ ...prev, [shopId]: rating }));
   };
 
-  const reorderShop = () => {
+  const reorderShop = (shop?: ShopListing) => {
+    const nextShop = shop || checkoutShop || shopListings[0];
+    const fallbackItems = fallbackShopSections(nextShop).flatMap((section) => section.items).slice(0, 2);
+    setCheckoutShop(nextShop);
+    setBasketItems(fallbackItems.map((item) => ({ quantity: item.popular ? '2x' : '1x', name: item.name, note: item.description || item.category, price: Math.round(item.price * (item.popular ? 2 : 1)) })));
     openScreen('checkout');
   };
 
@@ -2014,7 +2095,7 @@ function SokoEatsApp() {
     return () => subscription.remove();
   }, [screen]);
 
-  const subtotal = useMemo(() => orderItems.reduce((sum, item) => sum + item.price, 0), []);
+  const subtotal = useMemo(() => basketItems.reduce((sum, item) => sum + item.price, 0), [basketItems]);
   const deliveryFee = 150;
   const serviceFee = Math.round(subtotal * 0.04);
   const discount = 250;
@@ -2040,9 +2121,10 @@ function SokoEatsApp() {
           onCategoryOpen={openShopCategory}
           />
         )}
-        {screen === 'categories' && <CategoriesScreen category={selectedShopCategory} ratings={shopRatings} onBack={() => openScreen('home')} onCategoryChange={setSelectedShopCategory} onRate={rateShop} onReorder={reorderShop} />}
-        {screen === 'orders' && <OrdersScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} />}
-        {screen === 'favourites' && <FavouritesScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} onRate={rateShop} ratings={shopRatings} />}
+        {screen === 'categories' && <CategoriesScreen category={selectedShopCategory} ratings={shopRatings} onBack={() => openScreen('home')} onCategoryChange={setSelectedShopCategory} onRate={rateShop} onReorder={reorderShop} onShopOpen={openShopDetail} />}
+        {screen === 'shopDetail' && selectedShop && <ShopDetailScreen shop={selectedShop} sections={shopMenuSections} loading={shopMenuLoading} onBack={() => openScreen('categories')} onAddItem={addShopItemToBasket} onCheckout={() => openScreen('checkout')} />}
+        {screen === 'orders' && <OrdersScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} />}
+        {screen === 'favourites' && <FavouritesScreen onBack={() => openScreen('home')} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} />}
         {screen === 'accountAccess' && <AccountAccessScreen authSession={authSession} onAuthenticated={handleAuthenticated} onSignOut={handleSignOut} onBack={() => openScreen('home')} onRider={() => openScreen('riderHome')} />}
         {screen === 'walletHome' && <WalletHomeScreen data={riderBatch.sokoeats_wallet} onBack={() => openScreen('home')} onTopUp={() => openScreen('walletTopUp')} onWithdraw={() => openScreen('walletWithdraw')} onScan={() => openScreen('scanQr')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'walletTopUp' && <WalletTopUpScreen data={riderBatch.top_up_wallet} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ topUp: GenericPayload; history: GenericPayload }>('/api/wallet/top-ups', { method: 'POST', body: JSON.stringify({ amount, method: 'M-Pesa Express' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, top_up_wallet: next.topUp, full_transaction_history: next.history })); openScreen('walletHome'); }} />}
@@ -2085,6 +2167,8 @@ function SokoEatsApp() {
             serviceFee={serviceFee}
             discount={discount}
             total={total}
+            items={basketItems}
+            shop={checkoutShop}
             paymentMethod={paymentMethod}
             onPaymentChange={setPaymentMethod}
             onBack={() => openScreen('home')}
@@ -2364,13 +2448,15 @@ function CategoriesScreen({
   onCategoryChange,
   onRate,
   onReorder,
+  onShopOpen,
 }: {
   category: ShopCategoryKey;
   ratings: Record<string, number>;
   onBack: () => void;
   onCategoryChange: (category: ShopCategoryKey) => void;
   onRate: (shopId: string, rating: number) => void;
-  onReorder: () => void;
+  onReorder: (shop: ShopListing) => void;
+  onShopOpen: (shop: ShopListing) => void;
 }) {
   const activeCopy = categoryCopy[category];
   const shops = shopListings.filter((shop) => shop.category === category);
@@ -2400,7 +2486,7 @@ function CategoriesScreen({
           <Text style={styles.smsBody}>{activeCopy.subtitle}</Text>
         </View>
         {shops.map((shop) => (
-          <ShopCard key={shop.id} shop={shop} rating={ratings[shop.id] || Math.round(shop.rating)} onRate={(value) => onRate(shop.id, value)} onReorder={onReorder} />
+          <ShopCard key={shop.id} shop={shop} rating={ratings[shop.id] || Math.round(shop.rating)} onRate={(value) => onRate(shop.id, value)} onReorder={() => onReorder(shop)} onOpen={() => onShopOpen(shop)} />
         ))}
       </ScrollView>
       <BottomNav active="Categories" />
@@ -2409,7 +2495,7 @@ function CategoriesScreen({
   );
 }
 
-function OrdersScreen({ onBack, onCheckout, onReorder, onRate, ratings }: { onBack: () => void; onCheckout: () => void; onReorder: () => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number> }) {
+function OrdersScreen({ onBack, onCheckout, onReorder, onRate, ratings, onShopOpen }: { onBack: () => void; onCheckout: () => void; onReorder: (shop?: ShopListing) => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number>; onShopOpen: (shop: ShopListing) => void }) {
   const previousShop = shopListings.find((shop) => shop.id === 'mama-njeri-kitchen') || shopListings[1];
   return (
     <View style={styles.shell}>
@@ -2428,7 +2514,7 @@ function OrdersScreen({ onBack, onCheckout, onReorder, onRate, ratings }: { onBa
           <Text style={styles.vendorName}>Previous delivery</Text>
           <Text style={styles.smsBody}>{previousShop.name} - Delivered yesterday to Nairobi CBD.</Text>
           <RatingControl value={ratings[previousShop.id] || Math.round(previousShop.rating)} onRate={(value) => onRate(previousShop.id, value)} />
-          <TouchableOpacity style={styles.reorderButton} onPress={onReorder} activeOpacity={0.86}>
+          <TouchableOpacity style={styles.reorderButton} onPress={() => onReorder(previousShop)} activeOpacity={0.86}>
             <AppIcon name="receipt" size={17} color={colors.onPrimaryContainer} />
             <Text style={styles.reorderText}>Reorder previous basket</Text>
           </TouchableOpacity>
@@ -2440,7 +2526,7 @@ function OrdersScreen({ onBack, onCheckout, onReorder, onRate, ratings }: { onBa
   );
 }
 
-function FavouritesScreen({ onBack, onCheckout, onRate, ratings }: { onBack: () => void; onCheckout: () => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number> }) {
+function FavouritesScreen({ onBack, onReorder, onRate, ratings, onShopOpen }: { onBack: () => void; onReorder: (shop: ShopListing) => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number>; onShopOpen: (shop: ShopListing) => void }) {
   const savedShops = shopListings.filter((shop) => ['nairobi-grill-house', 'mama-njeri-kitchen', 'city-fresh-grocers'].includes(shop.id));
   return (
     <View style={styles.shell}>
@@ -2448,7 +2534,7 @@ function FavouritesScreen({ onBack, onCheckout, onRate, ratings }: { onBack: () 
       <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.checkoutTitle}>Saved vendors</Text>
         <Text style={styles.checkoutSubtitle}>Quick access to restaurants and shops you love.</Text>
-        {savedShops.map((shop) => <ShopCard key={shop.id} shop={shop} rating={ratings[shop.id] || Math.round(shop.rating)} onRate={(value) => onRate(shop.id, value)} onReorder={onCheckout} />)}
+        {savedShops.map((shop) => <ShopCard key={shop.id} shop={shop} rating={ratings[shop.id] || Math.round(shop.rating)} onRate={(value) => onRate(shop.id, value)} onReorder={() => onReorder(shop)} onOpen={() => onShopOpen(shop)} />)}
       </ScrollView>
       <BottomNav active="Favourites" />
       <SourceLedger />
@@ -3014,9 +3100,9 @@ function RatingControl({ value, onRate }: { value: number; onRate: (value: numbe
   );
 }
 
-function ShopCard({ shop, rating, onRate, onReorder }: { shop: ShopListing; rating: number; onRate: (rating: number) => void; onReorder: () => void }) {
+function ShopCard({ shop, rating, onRate, onReorder, onOpen }: { shop: ShopListing; rating: number; onRate: (rating: number) => void; onReorder: () => void; onOpen: () => void }) {
   return (
-    <View style={styles.shopCard}>
+    <TouchableOpacity style={styles.shopCard} onPress={onOpen} activeOpacity={0.9}>
       <Image source={{ uri: shop.image }} style={styles.shopImage} />
       <View style={styles.shopCardBody}>
         <View style={styles.sectionHeadingRowCompact}>
@@ -3035,11 +3121,99 @@ function ShopCard({ shop, rating, onRate, onReorder }: { shop: ShopListing; rati
           {shop.popularItems.map((item) => <Text style={styles.shopItemChip} key={item}>{item}</Text>)}
         </View>
         <RatingControl value={rating} onRate={onRate} />
-        <TouchableOpacity style={styles.reorderButton} onPress={onReorder} activeOpacity={0.86}>
-          <AppIcon name="bag" size={17} color={colors.onPrimaryContainer} />
-          <Text style={styles.reorderText}>{shop.reorderLabel}</Text>
+        <View style={styles.shopActionRow}>
+          <TouchableOpacity style={styles.openShopButton} onPress={onOpen} activeOpacity={0.86}>
+            <AppIcon name="grid" size={17} color={colors.primary} />
+            <Text style={styles.openShopText}>Open shop</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.reorderButton, styles.reorderButtonCompact]} onPress={onReorder} activeOpacity={0.86}>
+            <AppIcon name="bag" size={17} color={colors.onPrimaryContainer} />
+            <Text style={styles.reorderText}>Reorder</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+
+function ShopDetailScreen({ shop, sections, loading, onBack, onAddItem, onCheckout }: { shop: ShopListing; sections: ShopMenuSection[]; loading: boolean; onBack: () => void; onAddItem: (shop: ShopListing, item: ShopMenuItem, quantity: number) => void; onCheckout: () => void }) {
+  const [activeSection, setActiveSection] = useState('All');
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [addedCount, setAddedCount] = useState(0);
+  useEffect(() => { setActiveSection('All'); setAddedCount(0); setQuantities({}); }, [shop.id]);
+  const visibleSections = activeSection === 'All' ? sections : sections.filter((section) => section.title === activeSection);
+  const selectedCount = addedCount;
+  const changeQuantity = (itemId: string, delta: number) => setQuantities((prev) => ({ ...prev, [itemId]: Math.max(1, (prev[itemId] || 1) + delta) }));
+  const addItem = (item: ShopMenuItem) => {
+    const quantity = quantities[item.id] || 1;
+    onAddItem(shop, item, quantity);
+    setAddedCount((prev) => prev + quantity);
+    Alert.alert('Added to basket', quantity + 'x ' + item.name + ' added from ' + shop.name + '.');
+  };
+  return (
+    <View style={styles.shell}>
+      <CustomerScreenHeader title={shop.name} onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+        <Image source={{ uri: shop.image }} style={styles.shopDetailHeroImage} />
+        <View style={styles.shopDetailSummary}>
+          <Text style={styles.upperLabel}>{shop.badge} - {shop.distance}</Text>
+          <Text style={styles.checkoutTitle}>{shop.name}</Text>
+          <Text style={styles.checkoutSubtitle}>{shop.meta}</Text>
+          <View style={styles.shopDetailStatsRow}>
+            <View style={styles.shopDetailStat}><AppIcon name="star" size={15} color={colors.tertiaryFixedDim} /><Text style={styles.statText}>{shop.rating.toFixed(1)}</Text></View>
+            <View style={styles.shopDetailStat}><AppIcon name="bike" size={15} color={colors.primary} /><Text style={styles.statText}>{shop.time}</Text></View>
+            <View style={styles.shopDetailStat}><AppIcon name="receipt" size={15} color={colors.secondary} /><Text style={styles.statText}>{shop.minimum}</Text></View>
+          </View>
+        </View>
+        <View style={styles.shopSectionRail}>
+          {['All', ...sections.map((section) => section.title)].map((title) => (
+            <TouchableOpacity key={title} style={[styles.shopSectionChip, activeSection === title && styles.shopSectionChipActive]} onPress={() => setActiveSection(title)} activeOpacity={0.82}>
+              <Text style={[styles.shopSectionChipText, activeSection === title && styles.shopSectionChipTextActive]}>{title}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        {loading && <Text style={styles.secureText}>Refreshing vendor uploads...</Text>}
+        {visibleSections.map((section) => (
+          <View key={section.id || section.title} style={styles.shopMenuSection}>
+            <Text style={styles.checkoutSectionTitle}>{section.title}</Text>
+            {!!section.description && <Text style={styles.restaurantMeta}>{section.description}</Text>}
+            {section.items.map((item) => {
+              const quantity = quantities[item.id] || 1;
+              return (
+                <View key={item.id} style={styles.shopMenuItemCard}>
+                  <View style={styles.shopMenuItemInfo}>
+                    <View style={styles.sectionHeadingRowCompact}>
+                      <Text style={styles.vendorName}>{item.name}</Text>
+                      {item.popular && <Text style={styles.shopPopularBadge}>Popular</Text>}
+                    </View>
+                    {!!item.description && <Text style={styles.restaurantMeta}>{item.description}</Text>}
+                    <Text style={styles.shopMenuItemPrice}>{money(item.price)}{item.unitLabel ? ' / ' + item.unitLabel : ''}</Text>
+                  </View>
+                  <View style={styles.shopQuantityPanel}>
+                    <View style={styles.quantityStepper}>
+                      <TouchableOpacity style={styles.quantityStepButton} onPress={() => changeQuantity(item.id, -1)}><Text style={styles.quantityStepText}>-</Text></TouchableOpacity>
+                      <Text style={styles.quantityStepValue}>{quantity}</Text>
+                      <TouchableOpacity style={styles.quantityStepButton} onPress={() => changeQuantity(item.id, 1)}><Text style={styles.quantityStepText}>+</Text></TouchableOpacity>
+                    </View>
+                    <TouchableOpacity style={styles.shopAddButton} onPress={() => addItem(item)} activeOpacity={0.86}>
+                      <AppIcon name="bag" size={15} color={colors.onPrimaryContainer} />
+                      <Text style={styles.reorderText}>Add</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+        ))}
+      </ScrollView>
+      <View style={styles.shopBasketBar}>
+        <TouchableOpacity style={styles.placeOrderButton} onPress={selectedCount ? onCheckout : () => Alert.alert('Choose products', 'Add at least one product before reviewing your basket.')} activeOpacity={0.86}>
+          <AppIcon name="bag" size={18} color={colors.onPrimaryContainer} />
+          <Text style={styles.placeOrderText}>Review basket</Text>
         </TouchableOpacity>
       </View>
+      <SourceLedger />
     </View>
   );
 }
@@ -3124,6 +3298,8 @@ function CheckoutScreen({
   serviceFee,
   discount,
   total,
+  items,
+  shop,
   paymentMethod,
   onPaymentChange,
   onBack,
@@ -3133,6 +3309,8 @@ function CheckoutScreen({
   serviceFee: number;
   discount: number;
   total: number;
+  items: OrderItem[];
+  shop: ShopListing | null;
   paymentMethod: PaymentMethod;
   onPaymentChange: (method: PaymentMethod) => void;
   onBack: () => void;
@@ -3171,13 +3349,13 @@ function CheckoutScreen({
           customerName: 'Amina Customer',
           customerEmail: 'amina@sokoeats.co.ke',
           phone: mobile,
-          vendorSlug: 'nairobi-grill-house',
+          vendorSlug: shop?.id || 'nairobi-grill-house',
           deliveryAddress: 'Apartment 4B, Central Business District, Nairobi',
           notes: 'Customer confirmed order updates by SMS.',
           discountCode: 'SOKO25',
           paymentMethod,
           paymentReference: reference,
-          items: orderItems.map((item) => ({ menuItemName: item.name, quantity: Number.parseInt(item.quantity, 10) || 1, notes: item.note || null })),
+          items: items.map((item) => ({ menuItemName: item.name, quantity: Number.parseInt(item.quantity, 10) || 1, notes: item.note || null })),
         }),
       });
       setPendingPayment(null);
@@ -3295,7 +3473,7 @@ function CheckoutScreen({
       <ScrollView contentContainerStyle={styles.checkoutContent} showsVerticalScrollIndicator={false}>
         <View style={styles.checkoutIntro}>
           <Text style={styles.checkoutTitle}>Checkout</Text>
-          <Text style={styles.checkoutSubtitle}>Review your order from Nairobi Grill House</Text>
+          <Text style={styles.checkoutSubtitle}>Review your order from {shop?.name || 'Nairobi Grill House'}</Text>
         </View>
 
         <View style={styles.premiumCard}>
@@ -3323,14 +3501,14 @@ function CheckoutScreen({
         <Text style={styles.checkoutSectionTitle}>Order Review</Text>
         <View style={styles.orderCard}>
           <View style={styles.vendorRow}>
-            <Image source={{ uri: images.checkoutMeal }} style={styles.orderImage} />
+            <Image source={{ uri: shop?.image || images.checkoutMeal }} style={styles.orderImage} />
             <View>
-              <Text style={styles.vendorName}>Nairobi Grill House</Text>
-              <Text style={styles.checkoutSubtitle}>2.4 km away - 25-35 mins</Text>
+              <Text style={styles.vendorName}>{shop?.name || 'Nairobi Grill House'}</Text>
+              <Text style={styles.checkoutSubtitle}>{shop ? shop.distance + ' away - ' + shop.time : '2.4 km away - 25-35 mins'}</Text>
             </View>
           </View>
           <View style={styles.orderItems}>
-            {orderItems.map((item) => (
+            {items.map((item) => (
               <View key={item.name} style={styles.orderItem}>
                 <View style={styles.orderItemLeft}>
                   <Text style={styles.quantityBadge}>{item.quantity}</Text>
@@ -4259,6 +4437,174 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '900',
   },
+
+  shopActionRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    gap: 10,
+  },
+  openShopButton: {
+    flex: 1,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  openShopText: {
+    color: colors.primary,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  reorderButtonCompact: {
+    flex: 1,
+    marginTop: 0,
+  },
+  shopDetailHeroImage: {
+    width: '100%',
+    height: 190,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceContainerHigh,
+  },
+  shopDetailSummary: {
+    marginTop: 14,
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+  },
+  shopDetailStatsRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+  },
+  shopDetailStat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    borderRadius: 999,
+    backgroundColor: colors.surfaceContainerLow,
+    paddingHorizontal: 10,
+    paddingVertical: 7,
+  },
+  shopSectionRail: {
+    marginTop: 16,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  shopSectionChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    backgroundColor: colors.surfaceContainerLowest,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  shopSectionChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryContainer,
+  },
+  shopSectionChipText: {
+    color: colors.onSurfaceVariant,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  shopSectionChipTextActive: {
+    color: colors.primary,
+  },
+  shopMenuSection: {
+    marginTop: 22,
+  },
+  shopMenuItemCard: {
+    marginTop: 12,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    padding: 14,
+    flexDirection: 'row',
+    gap: 12,
+  },
+  shopMenuItemInfo: {
+    flex: 1,
+  },
+  shopPopularBadge: {
+    borderRadius: 999,
+    backgroundColor: colors.tertiaryFixedDim,
+    color: colors.onTertiaryFixed,
+    fontSize: 10,
+    fontWeight: '900',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    overflow: 'hidden',
+  },
+  shopMenuItemPrice: {
+    marginTop: 8,
+    color: colors.primary,
+    fontSize: 15,
+    fontWeight: '900',
+  },
+  shopQuantityPanel: {
+    width: 92,
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  quantityStepper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 999,
+    backgroundColor: colors.surfaceContainerLow,
+    padding: 4,
+  },
+  quantityStepButton: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.surfaceContainerLowest,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  quantityStepText: {
+    color: colors.primary,
+    fontSize: 16,
+    fontWeight: '900',
+  },
+  quantityStepValue: {
+    color: colors.onSurface,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  shopAddButton: {
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+  },
+  shopBasketBar: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: colors.surfaceContainerLowest,
+    paddingHorizontal: 20,
+    paddingTop: 14,
+    paddingBottom: 34,
+    borderTopWidth: 1,
+    borderTopColor: colors.outlineVariant,
+  },
+
   statText: {
     marginRight: 18,
     color: colors.onSurfaceVariant,
