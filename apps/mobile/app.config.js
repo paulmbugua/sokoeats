@@ -7,7 +7,7 @@ export default {
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'light',
-    plugins: ['expo-web-browser'],
+    plugins: ['expo-web-browser', ['expo-camera', { cameraPermission: 'Allow SokoEats to scan merchant payment QR codes.' }]],
     runtimeVersion: { policy: 'appVersion' },
     updates: { url: 'https://u.expo.dev/53ff8952-ff52-45f2-b580-73e42582bcbe' },
     splash: {
@@ -25,7 +25,7 @@ export default {
       }
     },
     extra: {
-      EXPO_PUBLIC_BACKEND_URL: process.env.EXPO_PUBLIC_BACKEND_URL || 'http://10.0.2.2:4005',
+      EXPO_PUBLIC_BACKEND_URL: process.env.EXPO_PUBLIC_BACKEND_URL || 'http://10.0.2.2:4000',
       eas: { projectId: '53ff8952-ff52-45f2-b580-73e42582bcbe' }
     }
   }

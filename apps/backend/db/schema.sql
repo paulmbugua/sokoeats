@@ -281,3 +281,22 @@ ALTER TABLE sokoeats_menu_items ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ 
 CREATE INDEX IF NOT EXISTS idx_sokoeats_vendors_shop_type ON sokoeats_vendors(shop_type, status, rating DESC);
 CREATE INDEX IF NOT EXISTS idx_sokoeats_menu_categories_vendor ON sokoeats_menu_categories(vendor_id, sort_order, title);
 CREATE INDEX IF NOT EXISTS idx_sokoeats_menu_items_section ON sokoeats_menu_items(section_id, available, sort_order, name);
+
+
+CREATE TABLE IF NOT EXISTS sokoeats_scan_payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  payment_reference TEXT UNIQUE NOT NULL REFERENCES sokoeats_payment_intents(reference) ON DELETE CASCADE,
+  vendor_id UUID REFERENCES sokoeats_vendors(id) ON DELETE SET NULL,
+  vendor_slug TEXT NOT NULL,
+  vendor_name TEXT NOT NULL,
+  amount INT NOT NULL CHECK (amount > 0),
+  currency TEXT NOT NULL DEFAULT 'KES',
+  status TEXT NOT NULL DEFAULT 'requires_action' CHECK (status IN ('requires_action','paid','failed','cancelled','expired')),
+  notes TEXT,
+  qr_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  paid_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS idx_sokoeats_scan_payments_vendor ON sokoeats_scan_payments(vendor_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_scan_payments_status ON sokoeats_scan_payments(status, created_at DESC);

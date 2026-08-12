@@ -400,3 +400,22 @@ UPDATE sokoeats_menu_items mi
 SET section_id = c.id, category = c.title
 FROM sokoeats_menu_categories c
 WHERE mi.vendor_id = c.vendor_id AND mi.section_id IS NULL AND lower(mi.category) = lower(c.title);
+
+
+-- Product identity images for customer-facing menu cards.
+UPDATE sokoeats_vendors
+SET image_url = CASE slug
+  WHEN 'nairobi-grill-house' THEN 'https://lh3.googleusercontent.com/aida-public/AB6AXuC9Nh9wCGBTozFrUbzkwWRoKyktC87wqv5HNRFT3efXOszoLuZeGE625jmr-jpzCFQUX_AP3UwgWbl293oJtgQAWu7ecAhm9CTXxnEOJSz-HQy5qSLrbxI9vvfhhNsC07irDDB1iLeCe6LTajy7LOz96vigx6Y0o-dnyhsMfgqpGRyya7MWU9-i5I55OlHeRR1V-v7Lfxcr-IJ6gE0O3_kGL8elqp9u2yMd7AHprAPoHfHqSkC_3OiN'
+  WHEN 'mama-njeri-kitchen' THEN 'https://lh3.googleusercontent.com/aida-public/AB6AXuA7cYYWXY9r23h4uip_qyNtK_OCIOGitgxyPGc_TOyCaJL-LSufM0JrXeYTE0I9k2V7dDhkiIqbplX_VtQ-UJ9DgnWHpZ4thum8gcTIg2OBwrqLIFxqsezaeoRqJdbBGopcPx1FcVIVq_xEE_fNRhJTd6YfM7hvFE6nzht49LvYLb5Q9fbhEhc2vOOlYcWjH6plgIVBVOqHG0Q4M8CscTs9iveY4LCTNhp2thSZ2ipezcLw-HMzZor3'
+  ELSE COALESCE(image_url, 'https://lh3.googleusercontent.com/aida-public/AB6AXuAe6zaCa1CTOrnloHSAgFCGgNwr2An9Kf8LpfrhtyzvgLzIktTq6fb-J9Ree3AUS3YRt3SKtQo3Nw1OONkdxKM52Fc-SSIwF6IrVjxsG8KlfzaRj4Jhh0OpxTvLCH-tIzjRBkH3bUT_EkgkqjyPjCxiHK6n19i8-UbHhemmaxjC7e5XgWn2pVpGQPf0yOAEVfwzdNw0uyI5WTDblPYRn9iWHnHuGVLyQhrdoU9raABPKMvY6IBbzy9v')
+END
+WHERE slug IN ('nairobi-grill-house','mama-njeri-kitchen','city-fresh-grocers','soko-pantry-express','afya-plus-pharmacy','uzima-care-chemist','mtaa-gas-express','blue-flame-depot','tech-hub-cbd','soko-gadgets');
+
+UPDATE sokoeats_menu_items
+SET image_url = CASE
+  WHEN lower(name) LIKE '%nyama%' THEN 'https://lh3.googleusercontent.com/aida-public/AB6AXuCiyTx9kVL8XMFvS1nxiqOfo0gmaiMHVs-j-lCvUKHWclFMt4-YAU2z_6QeO2WjNGldm1RfzajIy-1MHFY91Kr_RozbmQG2OQYb-V1_nGKrA8I6DErtmzSMgJU-GskXKt-9jpitLUnCRuU3gm3yGnUREtKh82heQ4dRt5o2dZBUJS4T8BBmbl-8-IYwJq3dQ00CwWMy69Zwt7BeKpxWSGRvKV4EAS1GcwDHRQGsyDULD38_VRV2szyw'
+  WHEN lower(name) LIKE '%passion%' OR lower(category) LIKE '%drink%' THEN 'https://lh3.googleusercontent.com/aida-public/AB6AXuB6a0LzTrCuyIrSsXROdUnbifZjN6cSNOAGV1TW1PuYH8aitfBFdBoi_7WMevp880c-fYRwDyHaPBYv1G-bVE0c_bEnZwvOalV1P2BIm4syMLbHYp6cP2tawpcs7Bvoo-DJXvyHI9sXnYWhv5N9mNyeaBpN_FpvNGFlH17B8TEHsmWGpoickgksGR397MD_sZY5gjIqi3WfRIg-6MjqOJsb_WdqyU-Tozirg17ew6y9bH8hV86KfjO2'
+  WHEN lower(name) LIKE '%pain%' OR lower(category) LIKE '%medicine%' THEN 'https://lh3.googleusercontent.com/aida-public/AB6AXuDvaBwHLyWrkzZu-xOdwOATu2cETPUTQ0TlJ9hVEQ8pv-gDABkVAmye1iQFqc0pwzCei_rrRzog5uZdCfFV9wAAxzNKpPNC3JXvpz_7mAipQ6WA69aMPK7PDAnC2jX4up2MH5IlNqF-p4KfHc_sWGxpjaJNDofV0XNN-rEVHLRmYOgo-jg5uKjYqIEok7K3rC-yz8wAf-OEjn8SROkXMD8plC1xpKXZl9pfX_aRu8c_DcYL3_Kdw7tA'
+  ELSE COALESCE(image_url, 'https://lh3.googleusercontent.com/aida-public/AB6AXuCjF2WpKfILdnFl1JaCG--5MCDZkETfq4GKsLBb2v2qjgbmrPRjjeXv5GJyNNrqVbhEl3kx_BTABtmOxecGgkH-uZf2odn4GpcuSF8ggRTA1S0Mce_CuZwUoS4qaweWCL_j44_xfPiKv45zknECZHU79rzl5DwX5ui_oKtOe5EPQfJKK1HpD0-O-AZx7j9rNHgacx9UMBX4XG4FQ1WE1eLn2WWTVenIdccYiGxeF9SFEZqgPErbjPZ7')
+END
+WHERE name IN ('Platter of Nyama Choma','Nyama Choma Platter','Passion Juice','Pain Relief Tablets','Tusker Cider (500ml)');

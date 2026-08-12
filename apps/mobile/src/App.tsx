@@ -20,6 +20,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
 import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
+import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import nextArrowIcon from '../assets/next-arrow.png';
 import { AppIcon, type IconName } from './AppIcon';
@@ -33,6 +34,7 @@ type AuthUser = { id: string; name: string; email: string; phone?: string | null
 type AuthSession = { token: string; expiresAt: string; user: AuthUser };
 type CheckoutPayment = { reference: string; method: PaymentMethod; amount: number; status: string; actionUrl?: string; promptMessage?: string; providerMessage?: string | null; providerReference?: string; simulation?: boolean };
 type CheckoutOrderResult = { order: { code: string; total: number; paymentStatus: string } };
+type ScanPaymentDraft = { merchantQr: string; vendorId?: string; vendorSlug: string; vendorName: string; location?: string; amount: number; currency: 'KES'; paymentMethod: PaymentMethod; phone: string; notes: string; shortcode?: string };
 type BottomNavVariant = 'customer' | 'rider';
 type BottomNavItem = { icon: IconName; label: string; screen: Screen };
 type ShopCategoryKey = 'restaurants' | 'groceries' | 'pharmacy' | 'gas' | 'electronics';
@@ -54,7 +56,7 @@ type ShopListing = {
 type ShopMenuItem = { id: string; name: string; description?: string | null; price: number; category: string; popular?: boolean; available?: boolean; unitLabel?: string | null; imageUrl?: string | null };
 type ShopMenuSection = { id?: string; title: string; description?: string | null; items: ShopMenuItem[] };
 type ShopMenuResponse = { vendor?: Partial<ShopListing> & { slug?: string }; sections: ShopMenuSection[] };
-type OrderItem = { quantity: string; name: string; note: string; price: number };
+type OrderItem = { quantity: string; name: string; note: string; price: number; imageUrl?: string | null };
 const AUTH_STORAGE_KEY = 'sokoeats.auth';
 const authRoleOptions: { role: UserRole; label: string; subtitle: string; icon: IconName }[] = [
   { role: 'customer', label: 'Buyer', subtitle: 'Order meals, groceries, medicine, gas, and essentials', icon: 'bag' },
@@ -305,7 +307,7 @@ const shopListings: ShopListing[] = [
 
 const shopMenuTemplates: Record<ShopCategoryKey, ShopMenuSection[]> = {
   restaurants: [
-    { title: 'Meals', description: 'Main dishes the kitchen wants customers to order first.', items: [{ id: 'meal-nyama', name: 'Nyama Choma Platter', description: 'Charcoal grilled beef with ugali and kachumbari.', price: 1200, category: 'Meals', popular: true }, { id: 'meal-pilau', name: 'Chicken Pilau Bowl', description: 'Spiced rice, tender chicken, salsa, and chilli sauce.', price: 680, category: 'Meals' }] },
+    { title: 'Meals', description: 'Main dishes the kitchen wants customers to order first.', items: [{ id: 'meal-nyama', name: 'Nyama Choma Platter', description: 'Charcoal grilled beef with ugali and kachumbari.', price: 1200, imageUrl: images.nyama, category: 'Meals', popular: true }, { id: 'meal-pilau', name: 'Chicken Pilau Bowl', description: 'Spiced rice, tender chicken, salsa, and chilli sauce.', price: 680, category: 'Meals' }] },
     { title: 'Drinks', description: 'Cold drinks, juices, water, and daily refreshments.', items: [{ id: 'drink-passion', name: 'Passion Juice', description: 'Fresh house juice served chilled.', price: 180, category: 'Drinks' }, { id: 'drink-soda', name: 'Assorted Soda', description: 'Choose cola, orange, or lemon lime at checkout notes.', price: 120, category: 'Drinks' }] },
     { title: 'Sides', description: 'Extras that complete the plate.', items: [{ id: 'side-ugali', name: 'Extra Ugali', description: 'Soft white ugali portion.', price: 120, category: 'Sides' }, { id: 'side-kachumbari', name: 'Kachumbari Cup', description: 'Tomato, onion, coriander, and lemon.', price: 90, category: 'Sides' }] },
   ],
@@ -331,12 +333,60 @@ const shopMenuTemplates: Record<ShopCategoryKey, ShopMenuSection[]> = {
   ],
 };
 
+function menuItemImage(item: Pick<ShopMenuItem, 'name' | 'category' | 'imageUrl'>): string {
+  if (item.imageUrl) return item.imageUrl;
+  const key = `${item.name} ${item.category}`.toLowerCase();
+  if (key.includes('nyama') || key.includes('choma') || key.includes('grill')) return images.nyama;
+  if (key.includes('pilau') || key.includes('meal') || key.includes('plate')) return images.pilau;
+  if (key.includes('passion') || key.includes('juice') || key.includes('soda') || key.includes('drink')) return images.mpesaBanner;
+  if (key.includes('pain') || key.includes('tablet') || key.includes('medicine') || key.includes('first aid') || key.includes('thermometer')) return images.deliveryBanner;
+  if (key.includes('spinach') || key.includes('flour') || key.includes('milk') || key.includes('bread') || key.includes('produce')) return images.groceries;
+  if (key.includes('gas') || key.includes('lpg') || key.includes('cylinder') || key.includes('regulator')) return images.grillHouse;
+  if (key.includes('charger') || key.includes('cable') || key.includes('power') || key.includes('router') || key.includes('screen')) return images.checkoutAvatar;
+  return images.checkoutMeal;
+}
+
 function fallbackShopSections(shop: ShopListing): ShopMenuSection[] {
   return shopMenuTemplates[shop.category].map((section, sectionIndex) => ({
     ...section,
     id: shop.id + '-' + section.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    items: section.items.map((item, itemIndex) => ({ ...item, id: shop.id + '-' + item.id, popular: item.popular || itemIndex === 0 || shop.popularItems.some((popular) => item.name.toLowerCase().includes(popular.toLowerCase().split(' ')[0])), price: item.price + sectionIndex * 15 })),
+    items: section.items.map((item, itemIndex) => ({ ...item, id: shop.id + '-' + item.id, imageUrl: item.imageUrl || menuItemImage(item), popular: item.popular || itemIndex === 0 || shop.popularItems.some((popular) => item.name.toLowerCase().includes(popular.toLowerCase().split(' ')[0])), price: item.price + sectionIndex * 15 })),
   }));
+}
+
+function parseScanPaymentQr(raw: string): ScanPaymentDraft {
+  const text = String(raw || '').trim();
+  if (!text) throw new Error('Scan a valid SokoEats merchant QR code.');
+  let payload: Record<string, unknown> = {};
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    try {
+      const url = new URL(text);
+      if (!['sokoeats:', 'https:', 'http:'].includes(url.protocol)) throw new Error('Unsupported QR protocol');
+      payload = Object.fromEntries(url.searchParams.entries());
+      if (!payload.vendorSlug && url.hostname && url.protocol === 'sokoeats:') payload.vendorSlug = url.hostname === 'pay' ? url.searchParams.get('vendorSlug') : url.hostname;
+    } catch {
+      throw new Error('This is not a SokoEats payment QR.');
+    }
+  }
+  const vendorSlug = String(payload.vendorSlug || payload.slug || payload.merchantSlug || '').trim().toLowerCase();
+  const vendorId = String(payload.vendorId || payload.merchantId || '').trim();
+  const vendorName = String(payload.vendorName || payload.merchantName || payload.name || '').trim();
+  if (!vendorSlug && !vendorId) throw new Error('Merchant identity is missing from this QR code.');
+  return {
+    merchantQr: text,
+    vendorId: vendorId || undefined,
+    vendorSlug: vendorSlug || vendorId,
+    vendorName: vendorName || vendorSlug.replace(/-/g, ' '),
+    location: String(payload.location || payload.address || '').trim() || undefined,
+    amount: Number(payload.amount || 0) || 0,
+    currency: 'KES',
+    paymentMethod: 'mpesa',
+    phone: '',
+    notes: String(payload.notes || '').trim(),
+    shortcode: String(payload.shortcode || '').trim() || undefined,
+  };
 }
 
 const defaultOrderItems: OrderItem[] = [
@@ -345,12 +395,14 @@ const defaultOrderItems: OrderItem[] = [
     name: 'Platter of Nyama Choma',
     note: 'Extra Kachumbari, Spicy',
     price: 1200,
+    imageUrl: images.nyama,
   },
   {
     quantity: '2x',
     name: 'Tusker Cider (500ml)',
     note: '',
     price: 500,
+    imageUrl: images.mpesaBanner,
   },
 ];
 
@@ -1968,6 +2020,7 @@ function SokoEatsApp() {
   const [shopMenuLoading, setShopMenuLoading] = useState(false);
   const [basketItems, setBasketItems] = useState<OrderItem[]>(defaultOrderItems);
   const [checkoutShop, setCheckoutShop] = useState<ShopListing | null>(shopListings[0]);
+  const [scanPaymentDraft, setScanPaymentDraft] = useState<ScanPaymentDraft | null>(null);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const fade = useRef(new Animated.Value(0)).current;
   const screenHistory = useRef<Screen[]>([]);
@@ -2038,7 +2091,7 @@ function SokoEatsApp() {
     setCheckoutShop(shop);
     setBasketItems((prev) => {
       const existing = prev.find((entry) => entry.name === item.name);
-      if (!existing) return [...prev, { quantity: safeQuantity + 'x', name: item.name, note: item.description || item.category, price: Math.round(item.price * safeQuantity) }];
+      if (!existing) return [...prev, { quantity: safeQuantity + 'x', name: item.name, note: item.description || item.category, price: Math.round(item.price * safeQuantity), imageUrl: menuItemImage(item) }];
       const currentQuantity = Number.parseInt(existing.quantity, 10) || 1;
       const nextQuantity = currentQuantity + safeQuantity;
       return prev.map((entry) => entry.name === item.name ? { ...entry, quantity: nextQuantity + 'x', price: Math.round(item.price * nextQuantity) } : entry);
@@ -2054,8 +2107,13 @@ function SokoEatsApp() {
     const nextShop = shop || checkoutShop || shopListings[0];
     const fallbackItems = fallbackShopSections(nextShop).flatMap((section) => section.items).slice(0, 2);
     setCheckoutShop(nextShop);
-    setBasketItems(fallbackItems.map((item) => ({ quantity: item.popular ? '2x' : '1x', name: item.name, note: item.description || item.category, price: Math.round(item.price * (item.popular ? 2 : 1)) })));
+    setBasketItems(fallbackItems.map((item) => ({ quantity: item.popular ? '2x' : '1x', name: item.name, note: item.description || item.category, price: Math.round(item.price * (item.popular ? 2 : 1)), imageUrl: menuItemImage(item) })));
     openScreen('checkout');
+  };
+
+  const completeScanPayment = (success: GenericPayload, history: GenericPayload) => {
+    setRiderBatch((prev) => ({ ...prev, payment_successful: success, full_transaction_history: history }));
+    openScreen('paymentSuccessful');
   };
 
   const routeForRole = (role: UserRole) => {
@@ -2129,8 +2187,8 @@ function SokoEatsApp() {
         {screen === 'walletHome' && <WalletHomeScreen data={riderBatch.sokoeats_wallet} onBack={() => openScreen('home')} onTopUp={() => openScreen('walletTopUp')} onWithdraw={() => openScreen('walletWithdraw')} onScan={() => openScreen('scanQr')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'walletTopUp' && <WalletTopUpScreen data={riderBatch.top_up_wallet} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ topUp: GenericPayload; history: GenericPayload }>('/api/wallet/top-ups', { method: 'POST', body: JSON.stringify({ amount, method: 'M-Pesa Express' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, top_up_wallet: next.topUp, full_transaction_history: next.history })); openScreen('walletHome'); }} />}
         {screen === 'walletWithdraw' && <WalletWithdrawScreen data={riderBatch.withdraw_to_m_pesa} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ withdrawal: GenericPayload }>('/api/wallet/withdrawals', { method: 'POST', body: JSON.stringify({ amount, destination: 'M-Pesa Account' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, withdraw_to_m_pesa: next.withdrawal })); openScreen('walletHome'); }} />}
-        {screen === 'scanQr' && <ScanQrScreen data={riderBatch.scan_qr_code} onBack={() => openScreen('walletHome')} onContinue={() => openScreen('confirmPayment')} />}
-        {screen === 'confirmPayment' && <ConfirmPaymentScreen data={riderBatch.confirm_payment} onBack={() => openScreen('scanQr')} onConfirm={async () => { const next = await sokoeatsApi<{ success: GenericPayload; history: GenericPayload }>('/api/wallet/scan-payments', { method: 'POST', body: JSON.stringify({ amount: 1450, vendor: "Mama Njeri's Kitchen", notes: 'Community lunch pickup' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, payment_successful: next.success, full_transaction_history: next.history })); openScreen('paymentSuccessful'); }} />}
+        {screen === 'scanQr' && <ScanQrScreen data={riderBatch.scan_qr_code} onBack={() => openScreen('walletHome')} onScanned={(draft) => { setScanPaymentDraft(draft); openScreen('confirmPayment'); }} />}
+        {screen === 'confirmPayment' && <ConfirmPaymentScreen data={riderBatch.confirm_payment} draft={scanPaymentDraft} onBack={() => openScreen('scanQr')} onSuccess={completeScanPayment} />}
         {screen === 'paymentSuccessful' && <PaymentSuccessfulScreen data={riderBatch.payment_successful} onBack={() => openScreen('walletHome')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'transactionHistory' && <TransactionHistoryScreen data={riderBatch.full_transaction_history} onBack={() => openScreen('walletHome')} />}
         {screen === 'riderHome' && <RiderHomeScreen data={riderHome} onBack={() => openScreen('home')} onOnboarding={() => openScreen('riderOnboardingWelcome')} onEarnings={() => openScreen('riderEarnings')} onLeaderboard={() => openScreen('riderLeaderboard')} onProfile={() => openScreen('riderProfile')} onHelp={() => openScreen('riderHelpCenter')} onIncident={() => openScreen('riderIncidentReport')} onTraining={() => openScreen('riderTraining')} onOrderDetail={() => openScreen('riderOrderDetail')} onReferral={() => openScreen('referralHome')} onTickets={() => openScreen('supportTicketHistory')} onAccept={async () => { try { const next = await sokoeatsApi<{ riderHome: RiderHomePayload; delivery: ActiveDeliveryPayload }>(`/api/rider/requests/${riderHome.request.id}/accept`, { method: 'POST' }); setRiderHome(next.riderHome); setActiveDelivery(next.delivery); } catch {} openScreen('activeDelivery'); }} />}
@@ -3183,6 +3241,7 @@ function ShopDetailScreen({ shop, sections, loading, onBack, onAddItem, onChecko
               const quantity = quantities[item.id] || 1;
               return (
                 <View key={item.id} style={styles.shopMenuItemCard}>
+                  <Image source={{ uri: menuItemImage(item) }} style={styles.shopMenuItemImage} />
                   <View style={styles.shopMenuItemInfo}>
                     <View style={styles.sectionHeadingRowCompact}>
                       <Text style={styles.vendorName}>{item.name}</Text>
@@ -3234,12 +3293,137 @@ function WalletWithdrawScreen({ data, onBack, onSubmit }: { data: GenericPayload
   return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.balanceCard}><Text style={styles.upperLabel}>Current Balance</Text><Text style={styles.balanceText}>{data.currentBalance}</Text></View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>Withdrawal Amount</Text><TextInput style={styles.formFieldInput} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="KES" placeholderTextColor={colors.outline} /></View><View style={styles.tabsRow}>{data.presets.map((preset: string) => <Text style={styles.tabPillActive} onPress={() => setAmount(preset.replace(/\D/g, ''))} key={preset}>{preset}</Text>)}</View><View style={styles.deliveryRequestCard}><Text style={styles.upperLabel}>Withdraw To</Text><Text style={styles.vendorName}>{data.destination.title}</Text><Text style={styles.restaurantMeta}>{data.destination.phone}</Text><Text style={styles.changeText}>Change</Text></View><View style={styles.breakdownCard}>{Object.entries(data.summary).map(([label, value]) => <View style={styles.priceLine} key={label}><Text style={styles.priceLabel}>{label}</Text><Text style={styles.priceValue}>{String(value)}</Text></View>)}</View><Text style={styles.secureText}>{data.assurance}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={() => onSubmit(Number(amount) || 500)}><Text style={styles.placeOrderText}>Confirm Withdrawal</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
 }
 
-function ScanQrScreen({ data, onBack, onContinue }: { data: GenericPayload; onBack: () => void; onContinue: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ImageBackground source={{ uri: data.imageUrl }} style={[styles.riderContent, styles.centerPanel]} imageStyle={styles.riderMapImage}><View style={styles.deliveryRequestCard}><Text style={styles.checkoutTitle}>{data.frameLabel}</Text><Text style={styles.checkoutSubtitle}>{data.subtitle}</Text><View style={styles.riderQuickGrid}>{data.actions.map((action: string) => <View style={styles.riderQuickButton} key={action}><Text style={styles.riderQuickTitle}>{action}</Text></View>)}</View></View><View style={styles.smsCard}><Text style={styles.vendorName}>{data.fallback}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={onContinue}><Text style={styles.placeOrderText}>Continue</Text></TouchableOpacity></ImageBackground><BottomNav active="Wallet" /><SourceLedger /></View>;
+function ScanQrScreen({ data, onBack, onScanned }: { data: GenericPayload; onBack: () => void; onScanned: (draft: ScanPaymentDraft) => void }) {
+  const [permission, requestPermission] = useCameraPermissions();
+  const [locked, setLocked] = useState(false);
+  const [error, setError] = useState('');
+  const onBarcodeScanned = ({ data: raw }: BarcodeScanningResult) => {
+    if (locked) return;
+    setLocked(true);
+    try {
+      onScanned(parseScanPaymentQr(raw));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to read this merchant QR.');
+      setTimeout(() => setLocked(false), 1200);
+    }
+  };
+  return (
+    <View style={styles.riderShell}>
+      <RiderScreenHeader title={data.title || 'Scan to Pay'} onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.riderContent}>
+        <View style={styles.scanFrame}>
+          {permission?.granted ? (
+            <CameraView style={styles.scanCamera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={locked ? undefined : onBarcodeScanned}>
+              <View style={styles.scanReticle}><Text style={styles.scanReticleText}>Align merchant QR</Text></View>
+            </CameraView>
+          ) : (
+            <View style={styles.scanPermissionCard}>
+              <AppIcon name="qr" size={42} color={colors.primary} />
+              <Text style={styles.checkoutTitle}>Camera access required</Text>
+              <Text style={styles.checkoutSubtitle}>SokoEats needs your camera to scan the vendor or merchant payment QR.</Text>
+              <TouchableOpacity style={styles.placeOrderButton} onPress={() => { void requestPermission(); }}>
+                <Text style={styles.placeOrderText}>Allow Camera</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+        <View style={styles.smsCard}>
+          <Text style={styles.vendorName}>{data.frameLabel || 'Scan merchant QR'}</Text>
+          <Text style={styles.smsBody}>{data.subtitle || 'Only SokoEats merchant QR codes can continue to payment.'}</Text>
+          {!!error && <Text style={styles.mpesaModalError}>{error}</Text>}
+        </View>
+        <View style={styles.deliveryRequestCard}>
+          <Text style={styles.upperLabel}>Accepted QR payload</Text>
+          <Text style={styles.smsBody}>Merchant ID or slug, merchant name, optional amount, and shortcode. No manual fallback merchant can be used.</Text>
+        </View>
+      </ScrollView>
+      <BottomNav active="Wallet" />
+      <SourceLedger />
+    </View>
+  );
 }
 
-function ConfirmPaymentScreen({ data, onBack, onConfirm }: { data: GenericPayload; onBack: () => void; onConfirm: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Image source={{ uri: data.images[0] }} style={styles.successImage} /><Text style={styles.checkoutTitle}>{data.vendor.name}</Text><Text style={styles.restaurantMeta}>{data.vendor.location}</Text><View style={styles.balanceCard}><Text style={styles.upperLabel}>Amount to Pay</Text><Text style={styles.balanceText}>{data.amount}</Text><Text style={styles.restaurantMeta}>Available Balance {data.balance}</Text></View><View style={styles.smsCard}><Text style={styles.vendorName}>Soko Points</Text><Text style={styles.totalAmount}>You'll earn {data.points.earn}</Text><Text style={styles.secureText}>{data.points.next}</Text></View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>{data.noteLabel}</Text><TextInput style={styles.formFieldInput} placeholder="Add a note" placeholderTextColor={colors.outline} /></View><Text style={styles.secureText}>{data.assurance}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={onConfirm}><Text style={styles.placeOrderText}>Confirm Payment</Text></TouchableOpacity><Text style={styles.secureText}>{data.secure}</Text></ScrollView><SourceLedger /></View>;
+function ConfirmPaymentScreen({ data, draft, onBack, onSuccess }: { data: GenericPayload; draft: ScanPaymentDraft | null; onBack: () => void; onSuccess: (success: GenericPayload, history: GenericPayload) => void }) {
+  const [amount, setAmount] = useState(draft?.amount ? String(draft.amount) : '');
+  const [phone, setPhone] = useState(draft?.phone || '');
+  const [notes, setNotes] = useState(draft?.notes || '');
+  const [method, setMethod] = useState<PaymentMethod>(draft?.paymentMethod || 'mpesa');
+  const [pendingPayment, setPendingPayment] = useState<CheckoutPayment | null>(null);
+  const [status, setStatus] = useState('Payment will start only after you confirm the scanned merchant details.');
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setAmount(draft?.amount ? String(draft.amount) : '');
+    setPhone(draft?.phone || '');
+    setNotes(draft?.notes || '');
+    setMethod(draft?.paymentMethod || 'mpesa');
+    setPendingPayment(null);
+    setStatus('Payment will start only after you confirm the scanned merchant details.');
+  }, [draft?.merchantQr]);
+  const startOrVerify = async () => {
+    if (!draft) {
+      Alert.alert('Scan required', 'Scan a valid SokoEats merchant QR before confirming payment.');
+      return;
+    }
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      setStatus('Enter the amount shown by the merchant.');
+      return;
+    }
+    if (method === 'mpesa' && !phone.trim()) {
+      setStatus('Enter the Safaricom number that should receive the STK push.');
+      return;
+    }
+    setBusy(true);
+    try {
+      if (pendingPayment) {
+        const next = await sokoeatsApi<{ payment: CheckoutPayment; success?: GenericPayload; history?: GenericPayload }>(`/api/wallet/scan-payments/${pendingPayment.reference}/confirm`, { method: 'POST' });
+        setStatus(next.payment.status === 'paid' ? 'Payment confirmed.' : next.payment.providerMessage || next.payment.promptMessage || 'Payment is still pending.');
+        if (next.success && next.history) onSuccess(next.success, next.history);
+        return;
+      }
+      const next = await sokoeatsApi<{ payment: CheckoutPayment }>('/api/wallet/scan-payments', {
+        method: 'POST',
+        body: JSON.stringify({ ...draft, amount: numericAmount, phone, notes, paymentMethod: method }),
+      });
+      setPendingPayment(next.payment);
+      setStatus(next.payment.promptMessage || next.payment.providerMessage || 'Payment prompt sent. Complete payment, then verify.');
+      if (method === 'card' && next.payment.actionUrl) {
+        void Linking.openURL(next.payment.actionUrl).catch(() => setStatus('Unable to open Paystack checkout. Try again.'));
+      }
+    } catch (err) {
+      setStatus(err instanceof Error ? err.message : 'Unable to complete scan payment.');
+    } finally {
+      setBusy(false);
+    }
+  };
+  if (!draft) {
+    return <View style={styles.riderShell}><RiderScreenHeader title={data.title || 'Confirm Payment'} onBack={onBack} /><View style={[styles.riderContent, styles.centerPanel]}><AppIcon name="qr" size={44} color={colors.primary} /><Text style={styles.checkoutTitle}>Scan merchant QR first</Text><Text style={styles.checkoutSubtitle}>SokoEats will not create a scan payment without a verified merchant QR payload.</Text><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Scan QR</Text></TouchableOpacity></View><SourceLedger /></View>;
+  }
+  return (
+    <View style={styles.riderShell}>
+      <RiderScreenHeader title={data.title || 'Confirm Payment'} onBack={onBack} />
+      <ScrollView contentContainerStyle={styles.riderContent}>
+        <Image source={{ uri: data.images?.[0] || images.mpesaBanner }} style={styles.successImage} />
+        <Text style={styles.checkoutTitle}>{draft.vendorName}</Text>
+        <Text style={styles.restaurantMeta}>{draft.location || 'Verified SokoEats merchant'}{draft.shortcode ? ' - Paybill ' + draft.shortcode : ''}</Text>
+        <View style={styles.balanceCard}>
+          <Text style={styles.upperLabel}>Amount to Pay</Text>
+          <TextInput style={styles.scanAmountInput} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="KES amount" placeholderTextColor={colors.outline} />
+        </View>
+        <Text style={styles.paymentTitle}>Payment method</Text>
+        <PaymentOption active={method === 'mpesa'} title="M-Pesa STK Push" subtitle="Safaricom will prompt for your PIN" icon="M" mpesa onPress={() => { setMethod('mpesa'); setPendingPayment(null); }} />
+        <PaymentOption active={method === 'card'} title="Pay with card" subtitle="Paystack card checkout only" icon="card" onPress={() => { setMethod('card'); setPendingPayment(null); }} />
+        {method === 'mpesa' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Safaricom number</Text><TextInput style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="7XX XXX XXX" placeholderTextColor={colors.outline} /></View>}
+        <View style={styles.formFieldCard}><Text style={styles.upperLabel}>{data.noteLabel || 'Payment note'}</Text><TextInput style={styles.formFieldInput} value={notes} onChangeText={setNotes} placeholder="Receipt note" placeholderTextColor={colors.outline} /></View>
+        <View style={styles.smsCard}><Text style={styles.vendorName}>Payment status</Text><Text style={styles.smsBody}>{status}</Text>{pendingPayment && <Text style={styles.secureText}>Reference: {pendingPayment.reference}</Text>}</View>
+        <Text style={styles.secureText}>{data.secure || 'Encrypted SokoPay confirmation. Payment must be verified before a receipt is issued.'}</Text>
+        <TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={startOrVerify}>
+          <Text style={styles.placeOrderText}>{busy ? 'Processing...' : pendingPayment ? 'Verify Payment' : method === 'mpesa' ? 'Send M-Pesa Prompt' : 'Open Paystack Card'}</Text>
+        </TouchableOpacity>
+      </ScrollView>
+      <SourceLedger />
+    </View>
+  );
 }
 
 function PaymentSuccessfulScreen({ data, onBack, onHistory }: { data: GenericPayload; onBack: () => void; onHistory: () => void }) {
@@ -3513,6 +3697,7 @@ function CheckoutScreen({
               <View key={item.name} style={styles.orderItem}>
                 <View style={styles.orderItemLeft}>
                   <Text style={styles.quantityBadge}>{item.quantity}</Text>
+                  {!!item.imageUrl && <Image source={{ uri: item.imageUrl }} style={styles.orderItemThumb} />}
                   <View style={styles.orderItemTextBlock}>
                     <Text style={styles.orderItemName}>{item.name}</Text>
                     {!!item.note && <Text style={styles.orderNote}>{item.note}</Text>}
@@ -4536,6 +4721,13 @@ const styles = StyleSheet.create({
   shopMenuItemInfo: {
     flex: 1,
   },
+  shopMenuItemImage: {
+    width: 76,
+    height: 76,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceContainerHigh,
+    alignSelf: 'flex-start',
+  },
   shopPopularBadge: {
     borderRadius: 999,
     backgroundColor: colors.tertiaryFixedDim,
@@ -4866,6 +5058,12 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     marginRight: 12,
     marginTop: 2,
+  },
+  orderItemThumb: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: colors.surfaceContainerHigh,
   },
   orderItemTextBlock: {
     flex: 1,
@@ -5448,6 +5646,12 @@ const styles = StyleSheet.create({
   leaderRow: { borderRadius: 14, backgroundColor: colors.surfaceContainerLowest, padding: 14, marginBottom: 10, flexDirection: 'row', gap: 12, alignItems: 'center' },
   profileHero: { alignItems: 'center', borderRadius: 20, backgroundColor: colors.surfaceContainerLowest, padding: 18, marginBottom: 16 },
   profileAvatar: { width: 92, height: 92, borderRadius: 46, marginBottom: 12 },
+  scanFrame: { height: 420, borderRadius: 24, overflow: 'hidden', backgroundColor: colors.inverseSurface, marginBottom: 16 },
+  scanCamera: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  scanReticle: { width: 240, height: 240, borderRadius: 24, borderWidth: 3, borderColor: colors.primaryContainer, alignItems: 'center', justifyContent: 'flex-end', padding: 16 },
+  scanReticleText: { color: colors.onPrimary, fontWeight: '900', backgroundColor: 'rgba(0,0,0,0.48)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, overflow: 'hidden' },
+  scanPermissionCard: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 22, gap: 12 },
+  scanAmountInput: { color: colors.primary, fontSize: 34, lineHeight: 40, fontWeight: '900', marginVertical: 8, padding: 0 },
   ratingLine: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
   avatarInitial: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primaryContainer, color: colors.onPrimaryContainer, textAlign: 'center', textAlignVertical: 'center', fontWeight: '900' },
   emergencyCard: { borderRadius: 16, backgroundColor: colors.errorContainer, padding: 16, marginBottom: 16 },

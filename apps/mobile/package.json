@@ -21,6 +21,7 @@
     "axios": "^1.12.2",
     "expo": "~54.0.33",
     "expo-auth-session": "~7.0.11",
+    "expo-camera": "~17.0.10",
     "expo-dev-client": "~6.0.21",
     "expo-status-bar": "~3.0.9",
     "expo-updates": "~29.0.19",

@@ -81,10 +81,20 @@ export const walletWithdrawSchema = Joi.object({
 }).unknown(true);
 
 export const scanPaymentSchema = Joi.object({
+  merchantQr: Joi.string().min(8).required(),
+  vendorId: Joi.string().allow('', null),
+  vendorSlug: Joi.string().pattern(/^[a-z0-9-]+$/).allow('', null),
+  vendorName: Joi.string().min(2).allow('', null),
   amount: Joi.number().min(1).required(),
-  vendor: Joi.string().allow('', null),
+  currency: Joi.string().valid('KES').default('KES'),
+  paymentMethod: Joi.string().valid('mpesa', 'card').required(),
+  phone: Joi.string().min(9).required(),
+  email: Joi.string().email({ tlds: { allow: false } }).allow('', null),
+  customerName: Joi.string().allow('', null),
+  callbackUrl: Joi.string().uri().allow('', null),
+  shortcode: Joi.string().allow('', null),
   notes: Joi.string().allow('', null),
-}).unknown(true);
+}).unknown(false);
 
 export const merchantPayoutRequestSchema = Joi.object({
   amount: Joi.number().min(1).required(),
