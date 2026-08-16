@@ -7,6 +7,7 @@ import {
   ImageBackground,
   Linking,
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -34,6 +35,11 @@ type AuthUser = { id: string; name: string; email: string; phone?: string | null
 type AuthSession = { token: string; expiresAt: string; user: AuthUser };
 type CheckoutPayment = { reference: string; method: PaymentMethod; amount: number; status: string; actionUrl?: string; promptMessage?: string; providerMessage?: string | null; providerReference?: string; simulation?: boolean };
 type CheckoutOrderResult = { order: { code: string; total: number; paymentStatus: string } };
+type NativeVersionUpdate = { platform: 'android' | 'ios'; currentVersion: string; latestVersion: string; minimumVersion?: string; available: boolean; required: boolean; storeUrl?: string; title?: string; message?: string };
+type NativeVersionResponse = { update?: NativeVersionUpdate };
+type UpdateSheetKind = 'native' | 'ota';
+type UpdateSheetPhase = 'available' | 'downloading' | 'ready' | 'failed';
+type UpdateSheetState = { visible: boolean; kind: UpdateSheetKind; phase: UpdateSheetPhase; required: boolean; title: string; message: string; storeUrl?: string; latestVersion?: string; error?: string };
 type ScanPaymentDraft = { merchantQr: string; vendorId?: string; vendorSlug: string; vendorName: string; location?: string; amount: number; currency: 'KES'; paymentMethod: PaymentMethod; phone: string; notes: string; shortcode?: string };
 type BottomNavVariant = 'customer' | 'rider';
 type BottomNavItem = { icon: IconName; label: string; screen: Screen };
@@ -58,6 +64,7 @@ type ShopMenuSection = { id?: string; title: string; description?: string | null
 type ShopMenuResponse = { vendor?: Partial<ShopListing> & { slug?: string }; sections: ShopMenuSection[] };
 type OrderItem = { quantity: string; name: string; note: string; price: number; imageUrl?: string | null };
 const AUTH_STORAGE_KEY = 'sokoeats.auth';
+const MOBILE_APP_VERSION = '1.0.0';
 const authRoleOptions: { role: UserRole; label: string; subtitle: string; icon: IconName }[] = [
   { role: 'customer', label: 'Buyer', subtitle: 'Order meals, groceries, medicine, gas, and essentials', icon: 'bag' },
   { role: 'rider', label: 'Rider', subtitle: 'Accept deliveries, earnings, training, and safety tools', icon: 'bike' },
@@ -67,27 +74,7 @@ const authRoleOptions: { role: UserRole; label: string; subtitle: string; icon: 
 const BottomNavNavigationContext = createContext<((screen: Screen) => void) | null>(null);
 
 export async function checkForAppUpdate() {
-  if (__DEV__) return;
-
-  try {
-    const Updates = await import('expo-updates');
-    const update = await Updates.checkForUpdateAsync();
-
-    if (update.isAvailable) {
-      await Updates.fetchUpdateAsync();
-
-      Alert.alert(
-        'Update available',
-        'A new version is ready. Restart the app now to update.',
-        [
-          { text: 'Later', style: 'cancel' },
-          { text: 'Update now', onPress: () => { void Updates.reloadAsync(); } },
-        ],
-      );
-    }
-  } catch {
-    // Updates are opportunistic; app startup should not fail if the check fails.
-  }
+  console.info('[SokoEats][Update] root sheet manages update checks.');
 }
 
 const colors = {
@@ -1965,6 +1952,165 @@ function profileCompletionTitle(role: UserRole) {
   return 'Complete your delivery profile';
 }
 
+function AppUpdateSheet() {
+  const insets = useSafeAreaInsets();
+  const [sheet, setSheet] = useState<UpdateSheetState | null>(null);
+  const updatesModule = useRef<typeof import('expo-updates') | null>(null);
+
+  const dismiss = () => {
+    setSheet((current) => current && !current.required ? { ...current, visible: false } : current);
+  };
+
+  const loadUpdatesModule = async () => {
+    if (updatesModule.current) return updatesModule.current;
+    const Updates = await import('expo-updates');
+    updatesModule.current = Updates;
+    return Updates;
+  };
+
+  const checkNativeVersion = async () => {
+    console.info('[SokoEats][Update] native:check', { platform: Platform.OS, version: MOBILE_APP_VERSION });
+    const query = '?platform=' + encodeURIComponent(Platform.OS) + '&version=' + encodeURIComponent(MOBILE_APP_VERSION);
+    const payload = await sokoeatsApi<NativeVersionResponse>('/api/mobile/version' + query);
+    const update = payload.update;
+    console.info('[SokoEats][Update] native:result', {
+      available: Boolean(update?.available),
+      required: Boolean(update?.required),
+      latestVersion: update?.latestVersion,
+    });
+    if (!update?.available) return false;
+    setSheet({
+      visible: true,
+      kind: 'native',
+      phase: 'available',
+      required: Boolean(update.required),
+      title: update.title || 'SokoEats update available',
+      message: update.message || 'Install the latest SokoEats version from the store.',
+      storeUrl: update.storeUrl,
+      latestVersion: update.latestVersion,
+    });
+    return true;
+  };
+
+  const checkOtaUpdate = async () => {
+    console.info('[SokoEats][Update] ota:check', { dev: __DEV__ });
+    if (__DEV__) return;
+    const Updates = await loadUpdatesModule();
+    const update = await Updates.checkForUpdateAsync();
+    console.info('[SokoEats][Update] ota:result', { isAvailable: update.isAvailable });
+    if (!update.isAvailable) return;
+    setSheet({
+      visible: true,
+      kind: 'ota',
+      phase: 'available',
+      required: false,
+      title: 'SokoEats update available',
+      message: 'A fresh app update is ready to download. You can keep using SokoEats while it downloads.',
+    });
+  };
+
+  useEffect(() => {
+    let mounted = true;
+    const runChecks = async () => {
+      let nativeShown = false;
+      try {
+        nativeShown = await checkNativeVersion();
+      } catch (error) {
+        console.info('[SokoEats][Update] native:check-failed', { message: error instanceof Error ? error.message : 'unknown' });
+      }
+      if (!mounted || nativeShown) return;
+      try {
+        await checkOtaUpdate();
+      } catch (error) {
+        console.info('[SokoEats][Update] ota:check-failed', { message: error instanceof Error ? error.message : 'unknown' });
+      }
+    };
+    void runChecks();
+    return () => { mounted = false; };
+  }, []);
+
+  const downloadOtaUpdate = async () => {
+    if (!sheet || sheet.kind !== 'ota' || sheet.phase === 'downloading') return;
+    setSheet((current) => current ? { ...current, visible: false, phase: 'downloading', title: 'Downloading update', message: 'The update is downloading in the background. You can keep using SokoEats.' } : current);
+    console.info('[SokoEats][Update] ota:download-start');
+    try {
+      const Updates = await loadUpdatesModule();
+      await Updates.fetchUpdateAsync();
+      console.info('[SokoEats][Update] ota:download-success');
+      setSheet((current) => current ? { ...current, visible: true, phase: 'ready', title: 'Update ready', message: 'Restart SokoEats when you are ready to apply the new update.' } : current);
+    } catch (error) {
+      console.info('[SokoEats][Update] ota:download-failure', { message: error instanceof Error ? error.message : 'unknown' });
+      setSheet((current) => current ? { ...current, visible: true, phase: 'failed', title: 'Download failed', message: 'We could not download the update. Check your connection and try again.', error: error instanceof Error ? error.message : 'unknown' } : current);
+    }
+  };
+
+  const restartNow = async () => {
+    console.info('[SokoEats][Update] ota:reload-action');
+    const Updates = await loadUpdatesModule();
+    await Updates.reloadAsync();
+  };
+
+  const openStore = async () => {
+    if (!sheet?.storeUrl) return;
+    console.info('[SokoEats][Update] native:open-store', { url: sheet.storeUrl });
+    await Linking.openURL(sheet.storeUrl).catch((error) => {
+      console.info('[SokoEats][Update] native:open-store-failed', { message: error instanceof Error ? error.message : 'unknown' });
+    });
+  };
+
+  if (!sheet?.visible) return null;
+
+  const primaryLabel = sheet.kind === 'native'
+    ? 'Update in store'
+    : sheet.phase === 'ready'
+      ? 'Restart now'
+      : sheet.phase === 'downloading'
+        ? 'Downloading...'
+        : sheet.phase === 'failed'
+          ? 'Try again'
+          : 'Download update';
+  const primaryDisabled = sheet.kind === 'ota' && sheet.phase === 'downloading';
+  const primaryAction = sheet.kind === 'native'
+    ? openStore
+    : sheet.phase === 'ready'
+      ? restartNow
+      : downloadOtaUpdate;
+  const canDismiss = !sheet.required;
+
+  return (
+    <Modal visible transparent animationType="slide" onRequestClose={canDismiss ? dismiss : undefined}>
+      <View style={styles.updateOverlay}>
+        {canDismiss && <Pressable style={styles.updateBackdrop} onPress={dismiss} />}
+        {!canDismiss && <View style={styles.updateBackdrop} />}
+        <View style={[styles.updateSheet, { paddingBottom: Math.max(insets.bottom + 20, 36) }]}>
+          <View style={styles.updateHandle} />
+          <View style={styles.updateBadgeRow}>
+            <View style={styles.updateIconBubble}>
+              <AppIcon name={sheet.kind === 'native' ? 'tech' : 'bolt'} size={22} color={colors.onTertiaryFixed} />
+            </View>
+            <View style={styles.updateCopy}>
+              <Text style={styles.updateEyebrow}>{sheet.kind === 'native' ? 'Store version' : sheet.phase === 'ready' ? 'Ready to install' : 'OTA update'}</Text>
+              <Text style={styles.updateTitle}>{sheet.title}</Text>
+            </View>
+          </View>
+          <Text style={styles.updateMessage}>{sheet.message}</Text>
+          {!!sheet.latestVersion && <Text style={styles.updateVersion}>Latest version {sheet.latestVersion}</Text>}
+          <View style={styles.updateActions}>
+            {canDismiss && (
+              <TouchableOpacity style={styles.updateSecondaryButton} onPress={dismiss} activeOpacity={0.85}>
+                <Text style={styles.updateSecondaryText}>Later</Text>
+              </TouchableOpacity>
+            )}
+            <TouchableOpacity style={[styles.updatePrimaryButton, primaryDisabled && styles.updatePrimaryDisabled]} disabled={primaryDisabled} onPress={() => { void primaryAction(); }} activeOpacity={0.88}>
+              <Text style={styles.updatePrimaryText}>{primaryLabel}</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
 
 function MapPanel({ title, subtitle, map, actionUrl, actionLabel = 'Open navigation' }: { title: string; subtitle?: string; map?: MapViewport; actionUrl?: string; actionLabel?: string }) {
   return (
@@ -2042,7 +2188,6 @@ function SokoEatsApp() {
   }, []);
 
   useEffect(() => {
-    void checkForAppUpdate();
     sokoeatsApi<{ wallet: Record<string, GenericPayload> }>('/api/wallet/payment-suite').then((r) => setRiderBatch((prev) => ({ ...prev, ...r.wallet }))).catch(() => {});
     sokoeatsApi<{ maps: MapsManifest }>('/api/maps/manifest').then((r) => setMaps(r.maps)).catch(() => {});
   }, []);
@@ -2235,6 +2380,7 @@ function SokoEatsApp() {
           </MapsContext.Provider>
         </BottomNavNavigationContext.Provider>
       </Animated.View>
+      <AppUpdateSheet />
     </View>
   );
 
@@ -3857,6 +4003,111 @@ const styles = StyleSheet.create({
   sourceLedgerText: {
     color: 'transparent',
     fontSize: 1,
+  },
+  updateOverlay: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  updateBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.48)',
+  },
+  updateSheet: {
+    backgroundColor: '#171b1f',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 22,
+    paddingTop: 12,
+    shadowColor: '#000',
+    shadowOpacity: 0.32,
+    shadowRadius: 24,
+    elevation: 24,
+  },
+  updateHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 5,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.28)',
+    marginBottom: 18,
+  },
+  updateBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  updateIconBubble: {
+    width: 52,
+    height: 52,
+    borderRadius: 18,
+    backgroundColor: colors.tertiaryFixed,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  updateCopy: {
+    flex: 1,
+  },
+  updateEyebrow: {
+    color: colors.inversePrimary,
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  updateTitle: {
+    color: '#ffffff',
+    fontSize: 22,
+    lineHeight: 28,
+    fontWeight: '900',
+  },
+  updateMessage: {
+    color: '#dbe3e6',
+    fontSize: 15,
+    lineHeight: 22,
+    marginTop: 16,
+  },
+  updateVersion: {
+    color: 'rgba(255,255,255,0.62)',
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 8,
+    fontWeight: '700',
+  },
+  updateActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 22,
+  },
+  updateSecondaryButton: {
+    minHeight: 52,
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+  },
+  updateSecondaryText: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+  updatePrimaryButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 18,
+    backgroundColor: colors.primaryContainer,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  updatePrimaryDisabled: {
+    opacity: 0.62,
+  },
+  updatePrimaryText: {
+    color: colors.onPrimaryContainer,
+    fontSize: 15,
+    fontWeight: '900',
   },
   splashPage: {
     flex: 1,

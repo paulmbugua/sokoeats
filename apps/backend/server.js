@@ -13,6 +13,7 @@ import supportRoutes from './routes/supportRoutes.js';
 import mapRoutes from './routes/mapRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import versionRoutes from './routes/versionRoutes.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4005);
@@ -31,6 +32,7 @@ app.use('/api', vendorRoutes);
 app.use('/api', riderRoutes);
 app.use('/api', supportRoutes);
 app.use('/api', mapRoutes);
+app.use('/api', versionRoutes);
 app.use('/api/admin', adminRoutes);
 app.use((req, res) => res.status(404).json({ message: `No Sokoeats route for ${req.method} ${req.path}` }));
 app.use((err, _req, res, _next) => {
