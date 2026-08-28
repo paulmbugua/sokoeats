@@ -8,7 +8,7 @@ export default {
     icon: './assets/icon.png',
     userInterfaceStyle: 'light',
     plugins: ['expo-web-browser', ['expo-camera', { cameraPermission: 'Allow SokoEats to scan merchant payment QR codes.' }]],
-    runtimeVersion: { policy: 'appVersion' },
+    runtimeVersion: process.env.EXPO_RUNTIME_VERSION || '1.0.0',
     updates: { url: 'https://u.expo.dev/53ff8952-ff52-45f2-b580-73e42582bcbe' },
     splash: {
       image: './assets/logo.png',
@@ -21,6 +21,7 @@ export default {
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon-foreground.png',
+        monochromeImage: './assets/adaptive-icon-monochrome.png',
         backgroundColor: '#10231d'
       }
     },

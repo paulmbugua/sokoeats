@@ -4,12 +4,21 @@
     "jsx": "react-jsx",
     "strict": true,
     "skipLibCheck": true,
-    "types": ["react"],
+    "types": [
+      "react"
+    ],
     "baseUrl": ".",
     "paths": {
-      "@sokoeats/shared": ["../../packages/shared/types/index.ts"],
-      "@sokoeats/shared/*": ["../../packages/shared/*"]
+      "@sokoeats/shared": [
+        "../../packages/shared/types/index.ts"
+      ],
+      "@sokoeats/shared/*": [
+        "../../packages/shared/*"
+      ]
     }
   },
-  "include": ["src", "expo-env.d.ts", "images.d.ts"]
+  "include": [
+    "src",
+    "images.d.ts"
+  ]
 }
