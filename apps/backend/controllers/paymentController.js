@@ -1,5 +1,6 @@
 import pool from '../config/db.js';
 import { createPaymentPrompt, confirmGatewayPayment, normalizeKenyanPhone, paymentReference } from '../services/paymentGateway.js';
+import { lockedQuote } from '../services/pricingService.js';
 
 const providerMessage = (payload = {}) => payload.mpesaCallback?.ResultDesc || payload.mpesaQuery?.ResultDesc || payload.CustomerMessage || payload.ResponseDescription || payload.initiationError || null;
 
@@ -30,6 +31,9 @@ const paymentJson = (row) => ({
 export async function initiateCheckoutPayment(req, res, next) {
   const reference = paymentReference(req.body.method);
   try {
+    const quote = await lockedQuote(pool, req.body.pricingQuoteId, req.auth.sub);
+    if (Number(req.body.amount) !== Number(quote.total)) throw Object.assign(new Error('Payment amount does not match the current pricing quote'), { status: 409 });
+
     const phone = normalizeKenyanPhone(req.body.phone);
     const method = req.body.method;
     const currency = req.body.currency || 'KES';
@@ -39,9 +43,9 @@ export async function initiateCheckoutPayment(req, res, next) {
 
     await pool.query(
       `INSERT INTO sokoeats_payment_intents
-        (reference, user_id, method, provider, amount, currency, status, phone, customer_email, provider_payload)
-       VALUES ($1,$2,$3,$4,$5,$6,'requires_action',$7,$8,$9)`,
-      [reference, req.auth.sub, method, provider, req.body.amount, currency, phone, req.body.email || req.auth.email || null, { initiatedAt: new Date().toISOString() }],
+        (reference, user_id, pricing_quote_id, method, provider, amount, currency, status, phone, customer_email, provider_payload)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'requires_action',$8,$9,$10)`,
+      [reference, req.auth.sub, quote.id, method, provider, quote.total, currency, phone, req.body.email || req.auth.email || null, { initiatedAt: new Date().toISOString() }],
     );
 
     try {

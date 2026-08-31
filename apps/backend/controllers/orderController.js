@@ -1,6 +1,7 @@
 import pool from '../config/db.js';
 import { sendOrderUpdateSms } from '../services/smsService.js';
 import { initializeOrderFinance } from '../services/financeService.js';
+import { lockedQuote } from '../services/pricingService.js';
 
 const code = () => `SE-${Date.now().toString(36).toUpperCase().slice(-6)}`;
 const orderJson = (row) => ({
@@ -75,10 +76,15 @@ export async function createOrder(req, res, next) {
       return { ...line, item, quantity, lineTotal };
     });
 
-    const deliveryFee = Number(vendor.delivery_fee);
-    const serviceFee = Math.round(subtotal * 0.04);
-    const discountAmount = discountCode === 'SOKO25' ? Math.min(250, subtotal) : 0;
-    const total = subtotal + deliveryFee + serviceFee - discountAmount;
+    const quote = await lockedQuote(client, req.body.pricingQuoteId, customer.id);
+    if (String(quote.vendor_id) !== String(vendor.id)) throw Object.assign(new Error('Pricing quote belongs to another shop'), { status: 409 });
+    const signature = (value) => JSON.stringify(value.map((item) => [String(item.menuItemId), Number(item.quantity)]).sort());
+    if (signature(items) !== signature(quote.items)) throw Object.assign(new Error('Basket changed after pricing. Refresh checkout before paying.'), { status: 409 });
+    subtotal = Number(quote.subtotal);
+    const deliveryFee = Number(quote.delivery_fee);
+    const serviceFee = Number(quote.service_fee);
+    const discountAmount = Number(quote.discount_amount);
+    const total = Number(quote.total);
 
     const payment = await client.query('SELECT * FROM sokoeats_payment_intents WHERE reference = $1 FOR UPDATE', [paymentReference]);
     if (!payment.rows.length) throw Object.assign(new Error('Payment is required before placing an order'), { status: 402 });
@@ -87,14 +93,15 @@ export async function createOrder(req, res, next) {
     if (paid.user_id && String(paid.user_id) !== String(customer.id)) throw Object.assign(new Error('Payment belongs to a different SokoEats account'), { status: 403 });
     if (paid.order_id) throw Object.assign(new Error('Payment reference has already been used for an order'), { status: 409 });
     if (paid.method !== paymentMethod) throw Object.assign(new Error('Payment method does not match the paid reference'), { status: 409 });
+    if (String(paid.pricing_quote_id) !== String(quote.id)) throw Object.assign(new Error('Payment belongs to a different pricing quote'), { status: 409 });
     if (Number(paid.amount) < total) throw Object.assign(new Error('Paid amount does not cover the order total'), { status: 402 });
 
     const order = await client.query(
       `INSERT INTO sokoeats_orders
-        (code, customer_user_id, vendor_id, subtotal, delivery_fee, service_fee, discount_amount, total, delivery_address, notes, payment_method, payment_status, payment_reference, payment_provider_reference)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'paid',$12,$13)
+        (code, customer_user_id, vendor_id, pricing_quote_id, subtotal, delivery_fee, service_fee, surge_fee, discount_amount, total, delivery_address, notes, payment_method, payment_status, payment_reference, payment_provider_reference,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude,route_polyline,estimated_distance_km,estimated_duration_min,surge_multiplier,rider_surge_bonus,vendor_surge_bonus,platform_surge_revenue)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'paid',$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
        RETURNING *`,
-      [code(), customer.id, vendor.id, subtotal, deliveryFee, serviceFee, discountAmount, total, deliveryAddress, notes || null, paymentMethod, paymentReference, paid.provider_reference || null],
+      [code(),customer.id,vendor.id,quote.id,subtotal,deliveryFee,serviceFee,quote.surge_fee,discountAmount,total,deliveryAddress,notes||null,paymentMethod,paymentReference,paid.provider_reference||null,vendor.latitude,vendor.longitude,quote.dropoff_latitude,quote.dropoff_longitude,quote.route_polyline,quote.distance_km,quote.duration_min,quote.surge_multiplier,quote.rider_surge_bonus,quote.vendor_surge_bonus,quote.platform_surge_revenue],
     );
 
     for (const line of lines) {
@@ -106,6 +113,7 @@ export async function createOrder(req, res, next) {
     }
 
     await client.query('UPDATE sokoeats_payment_intents SET order_id = $1, updated_at = NOW() WHERE reference = $2', [order.rows[0].id, paymentReference]);
+    await client.query('UPDATE sokoeats_pricing_quotes SET consumed_at=NOW() WHERE id=$1', [quote.id]);
     const finance = await initializeOrderFinance(client, { order: order.rows[0], payment: paid, vendor, createdBy: customer.id });
     await sendOrderUpdateSms(client, { orderId: order.rows[0].id, orderCode: order.rows[0].code, phone, status: 'placed', extra: `Total KES ${total.toLocaleString('en-KE')}. Delivery OTP: ${finance.deliveryOtp}. Share it with the rider only after receiving your order.` });
     await client.query('COMMIT');

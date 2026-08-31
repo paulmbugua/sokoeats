@@ -13,7 +13,7 @@ export const vendorComplianceSchema = Joi.object({
   settlementAccount: Joi.string().trim().min(6).max(30).required(),
   pspSubaccountId: Joi.string().trim().max(100).allow('', null),
   pspRecipientCode: Joi.string().trim().max(100).allow('', null),
-  commissionRateBps: Joi.number().integer().min(0).max(5000).default(1500),
+  commissionRateBps: Joi.number().integer().valid(1000).default(1000),
   commissionAgreementVersion: Joi.string().trim().min(1).max(40).required(),
   commissionAccepted: Joi.boolean().valid(true).required(),
 }).custom((value, helpers) => {

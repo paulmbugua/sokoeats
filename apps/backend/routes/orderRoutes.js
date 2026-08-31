@@ -3,8 +3,11 @@ import { createOrder, listOrders, updateOrderStatus } from '../controllers/order
 import { validate } from '../validators/validate.js';
 import { createOrderSchema, updateOrderStatusSchema } from '../validators/orderValidator.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
+import { quoteOrder } from '../controllers/pricingController.js';
+import { pricingQuoteSchema } from '../validators/pricingValidator.js';
 const router = Router();
 router.get('/orders', requireAuth, requireRole('admin', 'support'), listOrders);
+router.post('/orders/quote', requireAuth, requireRole('customer'), validate(pricingQuoteSchema), quoteOrder);
 router.post('/orders', requireAuth, validate(createOrderSchema), createOrder);
 router.patch('/orders/:id/status', requireAuth, requireRole('admin', 'support'), validate(updateOrderStatusSchema), updateOrderStatus);
 export default router;

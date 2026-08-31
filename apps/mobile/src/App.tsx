@@ -19,8 +19,7 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
-import * as Google from 'expo-auth-session/providers/google';
+import { GoogleSignin, isSuccessResponse } from '@react-native-google-signin/google-signin';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import nextArrowIcon from '../assets/next-arrow.png';
@@ -35,6 +34,7 @@ type AuthUser = { id: string; name: string; email: string; phone?: string | null
 type AuthSession = { token: string; expiresAt: string; user: AuthUser };
 type CheckoutPayment = { reference: string; method: PaymentMethod; amount: number; status: string; actionUrl?: string; promptMessage?: string; providerMessage?: string | null; providerReference?: string; simulation?: boolean };
 type CheckoutOrderResult = { order: { code: string; total: number; paymentStatus: string } };
+type PricingQuote = { id: string; subtotal: number; deliveryFee: number; serviceFee: number; surgeFee: number; discountAmount: number; total: number; distanceKm: number; durationMin: number; surgeMultiplier: number; expiresAt: string; route: { encodedPolyline?: string | null; destination: { lat: number; lng: number }; navigationUrl: string } };
 type NativeVersionUpdate = { platform: 'android' | 'ios'; currentVersion: string; latestVersion: string; minimumVersion?: string; available: boolean; required: boolean; storeUrl?: string; title?: string; message?: string };
 type NativeVersionResponse = { update?: NativeVersionUpdate };
 type UpdateSheetKind = 'native' | 'ota';
@@ -337,7 +337,7 @@ const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
 const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
 const FIREBASE_API_KEY = process.env.EXPO_PUBLIC_FIREBASE_API_KEY || '';
 const FIREBASE_PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || '';
-const GOOGLE_REDIRECT_URI = AuthSession.makeRedirectUri({ scheme: 'sokoeats', path: 'google-auth' });
+const FIREBASE_AUTH_DOMAIN = process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || '';
 
 type MapPoint = { id?: string; label: string; address?: string; lat: number; lng: number; kind?: string };
 type MapViewport = { center?: MapPoint; markers: MapPoint[]; path?: MapPoint[]; staticUrlTemplate?: string };
@@ -1863,7 +1863,7 @@ async function exchangeGoogleTokenForFirebaseIdToken(googleIdToken: string) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       postBody: `id_token=${encodeURIComponent(googleIdToken)}&providerId=google.com`,
-      requestUri: GOOGLE_REDIRECT_URI,
+      requestUri: `https://${FIREBASE_AUTH_DOMAIN || `${FIREBASE_PROJECT_ID}.firebaseapp.com`}`,
       returnIdpCredential: true,
       returnSecureToken: true,
     }),
@@ -2760,6 +2760,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   const [nationalId, setNationalId] = useState('');
   const [businessCategory, setBusinessCategory] = useState('Restaurant');
   const [payoutPhone, setPayoutPhone] = useState('');
+  const [settlementMethod, setSettlementMethod] = useState<'mpesa_wallet' | 'mpesa_till' | 'mpesa_paybill'>('mpesa_wallet');
   const [businessRegistrationNumber, setBusinessRegistrationNumber] = useState('');
   const [kraPin, setKraPin] = useState('');
   const [directorName, setDirectorName] = useState('');
@@ -2768,13 +2769,6 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   const [commissionAccepted, setCommissionAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
-  const [googleRequest, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
-    androidClientId: GOOGLE_ANDROID_CLIENT_ID || undefined,
-    iosClientId: GOOGLE_IOS_CLIENT_ID || undefined,
-    webClientId: GOOGLE_WEB_CLIENT_ID || undefined,
-    scopes: ['openid', 'profile', 'email'],
-  }, { scheme: 'sokoeats', path: 'google-auth' });
-
   const authPayload = () => ({
     role,
     fullName: fullName.trim(),
@@ -2811,10 +2805,10 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
         kraPin: kraPin.trim().toUpperCase(),
         directorName: directorName.trim(),
         directorNationalId: directorNationalId.trim(),
-        settlementMethod: 'mpesa_wallet',
+        settlementMethod,
         settlementAccount: payoutPhone.trim() || phone.trim(),
         pspSubaccountId: pspSubaccountId.trim() || undefined,
-        commissionRateBps: 1500,
+        commissionRateBps: 1000,
         commissionAgreementVersion: 'marketplace-v1',
         commissionAccepted,
       }),
@@ -2874,21 +2868,6 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   };
 
   useEffect(() => {
-    if (!googleResponse) return;
-    if (googleResponse.type === 'error') {
-      setMessage(googleResponse.error?.message || 'Google sign-in returned an authorization error.');
-      return;
-    }
-    if (googleResponse.type !== 'success') return;
-    const idToken = googleResponse.params?.id_token;
-    if (!idToken) {
-      setMessage('Google did not return an ID token. Check the configured web/android client IDs.');
-      return;
-    }
-    void submitGoogleAuth(idToken);
-  }, [googleResponse]);
-
-  useEffect(() => {
     if (!authSession?.user) return;
     const profile = authSession.user.profile || {};
     setPhone(authSession.user.phone || '');
@@ -2904,20 +2883,25 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   }, [authSession?.user?.id]);
 
   const continueWithGoogle = async () => {
-    if (!GOOGLE_ANDROID_CLIENT_ID && !GOOGLE_IOS_CLIENT_ID && !GOOGLE_WEB_CLIENT_ID) {
-      Alert.alert('Google sign-in not configured', 'Add the SokoEats Google client IDs to the Expo environment first.');
+    if (!GOOGLE_WEB_CLIENT_ID || !FIREBASE_API_KEY) {
+      Alert.alert('Google sign-in not configured', 'The Firebase web client ID and API key are required.');
       return;
     }
-    if (!FIREBASE_API_KEY) {
-      Alert.alert('Firebase login not configured', 'Add EXPO_PUBLIC_FIREBASE_API_KEY to the mobile environment.');
-      return;
-    }
-    console.info('[SokoEats][Auth] google:start', { hasRequest: Boolean(googleRequest), redirectUri: GOOGLE_REDIRECT_URI, hasAndroidClient: Boolean(GOOGLE_ANDROID_CLIENT_ID), hasWebClient: Boolean(GOOGLE_WEB_CLIENT_ID), firebaseProjectId: FIREBASE_PROJECT_ID || null });
+    console.info('[SokoEats][Auth] google:native-start', { packageName: 'com.paulmbugua2.sokoeats', hasWebClient: true, firebaseProjectId: FIREBASE_PROJECT_ID || null });
     setMessage('');
+    setBusy(true);
     try {
-      await promptGoogle();
+      GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID, offlineAccess: false });
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      const response = await GoogleSignin.signIn();
+      if (!isSuccessResponse(response) || !response.data.idToken) throw new Error('Google did not return an ID token. Confirm the Firebase Android package and SHA-1 certificate.');
+      console.info('[SokoEats][Auth] google:native-token', { hasIdToken: true });
+      await submitGoogleAuth(response.data.idToken);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : 'Google sign-in could not open. Check the redirect URI and Firebase Android client.');
+      console.warn('[SokoEats][Auth] google:native-error', { message: err instanceof Error ? err.message : String(err) });
+      setMessage(err instanceof Error ? err.message : 'Google sign-in failed. Confirm Firebase SHA-1 and package configuration.');
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -2937,7 +2921,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.kraPin) missing.push('KRA PIN');
     if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.directorName) missing.push('director name');
     if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.directorNationalId) missing.push('director national ID');
-    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.payoutPhone) missing.push('settlement M-Pesa number');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.payoutPhone) missing.push(settlementMethod === 'mpesa_wallet' ? 'settlement M-Pesa number' : settlementMethod === 'mpesa_till' ? 'till number' : 'paybill number');
     if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.commissionAccepted) missing.push('commission agreement');
     if (missing.length) {
       Alert.alert('Complete your profile', 'Add ' + missing.join(', ') + ' to continue.');
@@ -2996,13 +2980,16 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business name</Text><TextInput style={styles.formFieldInput} value={businessName} onChangeText={setBusinessName} placeholder="Nairobi Grill House" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business category</Text><TextInput style={styles.formFieldInput} value={businessCategory} onChangeText={setBusinessCategory} placeholder="Restaurant" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Store address</Text><TextInput style={styles.formFieldInput} value={storeAddress} onChangeText={setStoreAddress} placeholder="Westlands, Nairobi" placeholderTextColor={colors.outline} /></View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Settlement M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.authModeSwitch}>
+                  {([['mpesa_wallet','M-Pesa'],['mpesa_till','Till'],['mpesa_paybill','Paybill']] as const).map(([value,label]) => <TouchableOpacity key={value} style={settlementMethod === value ? styles.tabPillActive : styles.tabPill} onPress={() => setSettlementMethod(value)}><Text style={settlementMethod === value ? styles.authPillActiveText : styles.authPillText}>{label}</Text></TouchableOpacity>)}
+                </View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>{settlementMethod === 'mpesa_wallet' ? 'Settlement M-Pesa number' : settlementMethod === 'mpesa_till' ? 'M-Pesa till number' : 'M-Pesa paybill number'}</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="number-pad" placeholder={settlementMethod === 'mpesa_wallet' ? '+254 712 345 678' : settlementMethod === 'mpesa_till' ? '123456' : '400200'} placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business registration number</Text><TextInput style={styles.formFieldInput} value={businessRegistrationNumber} onChangeText={setBusinessRegistrationNumber} autoCapitalize="characters" placeholder="BN-123456" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>KRA PIN</Text><TextInput style={styles.formFieldInput} value={kraPin} onChangeText={setKraPin} autoCapitalize="characters" placeholder="A123456789B" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director or proprietor name</Text><TextInput style={styles.formFieldInput} value={directorName} onChangeText={setDirectorName} placeholder="Legal representative" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director national ID</Text><TextInput style={styles.formFieldInput} value={directorNationalId} onChangeText={setDirectorNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>PSP subaccount ID optional</Text><TextInput style={styles.formFieldInput} value={pspSubaccountId} onChangeText={setPspSubaccountId} autoCapitalize="none" placeholder="Created automatically when blank" placeholderTextColor={colors.outline} /></View>
-                <TouchableOpacity style={styles.signedInCard} onPress={() => setCommissionAccepted((value) => !value)}><View style={styles.sectionHeadingRow}><AppIcon name={commissionAccepted ? 'check' : 'receipt'} size={20} color={colors.primary} /><Text style={styles.vendorName}>Marketplace commission agreement</Text></View><Text style={styles.smsBody}>I accept the SokoEats marketplace-v1 agreement and the displayed 15% commission on product sales.</Text><Text style={styles.discountText}>{commissionAccepted ? 'Accepted' : 'Tap to accept'}</Text></TouchableOpacity>
+                <TouchableOpacity style={styles.signedInCard} onPress={() => setCommissionAccepted((value) => !value)}><View style={styles.sectionHeadingRow}><AppIcon name={commissionAccepted ? 'check' : 'receipt'} size={20} color={colors.primary} /><Text style={styles.vendorName}>Marketplace commission agreement</Text></View><Text style={styles.smsBody}>I accept the SokoEats marketplace-v1 agreement and the 10% launch commission on product sales.</Text><Text style={styles.discountText}>{commissionAccepted ? 'Accepted' : 'Tap to accept'}</Text></TouchableOpacity>
               </>
             )}
             {!!user.missingProfileFields?.length && <Text style={styles.secureText}>Required: {user.missingProfileFields.join(', ')}</Text>}
@@ -3086,13 +3073,16 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business name</Text><TextInput style={styles.formFieldInput} value={businessName} onChangeText={setBusinessName} placeholder="Nairobi Grill House" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business category</Text><TextInput style={styles.formFieldInput} value={businessCategory} onChangeText={setBusinessCategory} placeholder="Restaurant" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Store address</Text><TextInput style={styles.formFieldInput} value={storeAddress} onChangeText={setStoreAddress} placeholder="Westlands, Nairobi" placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Settlement M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.authModeSwitch}>
+                  {([['mpesa_wallet','M-Pesa'],['mpesa_till','Till'],['mpesa_paybill','Paybill']] as const).map(([value,label]) => <TouchableOpacity key={value} style={settlementMethod === value ? styles.tabPillActive : styles.tabPill} onPress={() => setSettlementMethod(value)}><Text style={settlementMethod === value ? styles.authPillActiveText : styles.authPillText}>{label}</Text></TouchableOpacity>)}
+                </View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>{settlementMethod === 'mpesa_wallet' ? 'Settlement M-Pesa number' : settlementMethod === 'mpesa_till' ? 'M-Pesa till number' : 'M-Pesa paybill number'}</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="number-pad" placeholder={settlementMethod === 'mpesa_wallet' ? '+254 712 345 678' : settlementMethod === 'mpesa_till' ? '123456' : '400200'} placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business registration number</Text><TextInput style={styles.formFieldInput} value={businessRegistrationNumber} onChangeText={setBusinessRegistrationNumber} autoCapitalize="characters" placeholder="BN-123456" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>KRA PIN</Text><TextInput style={styles.formFieldInput} value={kraPin} onChangeText={setKraPin} autoCapitalize="characters" placeholder="A123456789B" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director or proprietor name</Text><TextInput style={styles.formFieldInput} value={directorName} onChangeText={setDirectorName} placeholder="Legal representative" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director national ID</Text><TextInput style={styles.formFieldInput} value={directorNationalId} onChangeText={setDirectorNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>PSP subaccount ID optional</Text><TextInput style={styles.formFieldInput} value={pspSubaccountId} onChangeText={setPspSubaccountId} autoCapitalize="none" placeholder="Created automatically when blank" placeholderTextColor={colors.outline} /></View>
-            <TouchableOpacity style={styles.signedInCard} onPress={() => setCommissionAccepted((value) => !value)}><View style={styles.sectionHeadingRow}><AppIcon name={commissionAccepted ? 'check' : 'receipt'} size={20} color={colors.primary} /><Text style={styles.vendorName}>Marketplace commission agreement</Text></View><Text style={styles.smsBody}>I accept the SokoEats marketplace-v1 agreement and the displayed 15% commission on product sales.</Text><Text style={styles.discountText}>{commissionAccepted ? 'Accepted' : 'Tap to accept'}</Text></TouchableOpacity>
+            <TouchableOpacity style={styles.signedInCard} onPress={() => setCommissionAccepted((value) => !value)}><View style={styles.sectionHeadingRow}><AppIcon name={commissionAccepted ? 'check' : 'receipt'} size={20} color={colors.primary} /><Text style={styles.vendorName}>Marketplace commission agreement</Text></View><Text style={styles.smsBody}>I accept the SokoEats marketplace-v1 agreement and the 10% launch commission on product sales.</Text><Text style={styles.discountText}>{commissionAccepted ? 'Accepted' : 'Tap to accept'}</Text></TouchableOpacity>
           </>
         )}
         <MapPanel title="Default delivery address" subtitle={maps.customer.savedAddresses?.[0]?.address || defaultAddress} map={maps.customer.savedAddresses?.[0]?.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Edit pin" />
@@ -3724,11 +3714,36 @@ function CheckoutScreen({
   const [mpesaModalVisible, setMpesaModalVisible] = useState(false);
   const [mpesaPaymentPhone, setMpesaPaymentPhone] = useState('');
   const [mpesaModalError, setMpesaModalError] = useState('');
-  const [checkoutStatus, setCheckoutStatus] = useState('Payment is required before SokoEats submits this order.');
+  const [checkoutStatus, setCheckoutStatus] = useState('Calculating live delivery price and route...');
+  const [pricingQuote, setPricingQuote] = useState<PricingQuote | null>(null);
+  const [pricingBusy, setPricingBusy] = useState(false);
 
   useEffect(() => {
     if (authSession?.user.phone) setPhone(authSession.user.phone.replace('+254', ''));
   }, [authSession?.user.phone]);
+
+  useEffect(() => {
+    if (!authSession || authSession.user.role !== 'customer' || !shop?.id || !items.length) return;
+    const quoteItems = items.filter((item) => item.menuItemId).map((item) => ({ menuItemId: item.menuItemId, quantity: Number.parseInt(item.quantity, 10) || 1, notes: item.note || null }));
+    if (quoteItems.length !== items.length) {
+      setCheckoutStatus('Refresh this shop before checkout so every product can be priced securely.');
+      return;
+    }
+    let active = true;
+    setPricingBusy(true);
+    setPricingQuote(null);
+    sokoeatsApi<{ quote: PricingQuote }>('/api/orders/quote', { method: 'POST', body: JSON.stringify({ vendorSlug: shop.id, deliveryAddress: authSession.user.defaultAddress, discountCode: 'SOKO25', items: quoteItems }) })
+      .then(({ quote }) => { if (active) { setPricingQuote(quote); setCheckoutStatus(quote.surgeFee ? 'Busy-area pricing is active. KES ' + quote.surgeFee + ' supports faster rider supply and vendor readiness.' : 'Live route: ' + quote.distanceKm.toFixed(1) + ' km, about ' + quote.durationMin + ' min.'); } })
+      .catch((error) => { if (active) setCheckoutStatus(error instanceof Error ? error.message : 'Live delivery pricing is unavailable.'); })
+      .finally(() => { if (active) setPricingBusy(false); });
+    return () => { active = false; };
+  }, [authSession?.user.id, authSession?.user.defaultAddress, shop?.id, items]);
+
+  const checkoutSubtotal = pricingQuote?.subtotal ?? subtotal;
+  const checkoutDeliveryFee = pricingQuote?.deliveryFee ?? deliveryFee;
+  const checkoutServiceFee = pricingQuote?.serviceFee ?? serviceFee;
+  const checkoutDiscount = pricingQuote?.discountAmount ?? discount;
+  const checkoutTotal = pricingQuote?.total ?? total;
 
   const createOrderAfterPayment = async (reference: string) => {
     const mobile = normalizeCheckoutPhone(phone);
@@ -3754,6 +3769,7 @@ function CheckoutScreen({
           deliveryAddress: authSession?.user.defaultAddress,
           notes: 'Customer confirmed order updates by SMS.',
           discountCode: 'SOKO25',
+          pricingQuoteId: pricingQuote?.id,
           paymentMethod,
           paymentReference: reference,
           items: items.map((item) => ({ menuItemId: item.menuItemId, menuItemName: item.name, quantity: Number.parseInt(item.quantity, 10) || 1, notes: item.note || null })),
@@ -3781,13 +3797,14 @@ function CheckoutScreen({
       else Alert.alert('Mobile number required', message);
       return;
     }
-    console.info('[SokoEats][M-Pesa][mobile] payment:start', { method: paymentMethod, amount: total, phone: maskCheckoutPhone(paymentPhone !== undefined ? paymentPhone : phone) });
+    if (!pricingQuote) { setCheckoutStatus('Wait for live delivery pricing before paying.'); return; }
+    console.info('[SokoEats][M-Pesa][mobile] payment:start', { method: paymentMethod, amount: checkoutTotal, pricingQuoteId: pricingQuote.id, phone: maskCheckoutPhone(paymentPhone !== undefined ? paymentPhone : phone) });
     setPlacing(true);
     try {
-      console.info('[SokoEats][M-Pesa][mobile] checkout-request', { method: paymentMethod, amount: total, phone: maskCheckoutPhone(mobile) });
+      console.info('[SokoEats][M-Pesa][mobile] checkout-request', { method: paymentMethod, amount: checkoutTotal, pricingQuoteId: pricingQuote.id, phone: maskCheckoutPhone(mobile) });
       const { payment } = await sokoeatsApi<{ payment: CheckoutPayment }>('/api/payments/checkout', {
         method: 'POST',
-        body: JSON.stringify({ method: paymentMethod, amount: total, currency: 'KES', phone: mobile, email: authSession?.user.email, customerName: authSession?.user.name }),
+        body: JSON.stringify({ pricingQuoteId: pricingQuote.id, method: paymentMethod, amount: checkoutTotal, currency: 'KES', phone: mobile, email: authSession?.user.email, customerName: authSession?.user.name }),
       });
       setPhone(mobile.replace('+254', ''));
       console.info('[SokoEats][M-Pesa][mobile] checkout-response', { reference: payment.reference, status: payment.status, providerReference: payment.providerReference, providerMessage: payment.providerMessage || payment.promptMessage || null });
@@ -3814,7 +3831,7 @@ function CheckoutScreen({
   };
 
   const submitMpesaNumber = () => {
-    console.info('[SokoEats][M-Pesa][mobile] modal-submit', { phone: maskCheckoutPhone(mpesaPaymentPhone), amount: total });
+    console.info('[SokoEats][M-Pesa][mobile] modal-submit', { phone: maskCheckoutPhone(mpesaPaymentPhone), amount: checkoutTotal });
     setMpesaModalError('');
     void startPayment(mpesaPaymentPhone);
   };
@@ -3826,7 +3843,7 @@ function CheckoutScreen({
     }
     if (!pendingPayment) {
       if (paymentMethod === 'mpesa') {
-        console.info('[SokoEats][M-Pesa][mobile] modal-open', { amount: total });
+        console.info('[SokoEats][M-Pesa][mobile] modal-open', { amount: checkoutTotal });
         setMpesaPaymentPhone('');
         setMpesaModalError('');
         setMpesaModalVisible(true);
@@ -3965,19 +3982,20 @@ function CheckoutScreen({
         </View>
 
         <View style={styles.breakdownCard}>
-          <PriceLine label="Subtotal" value={money(subtotal)} />
-          <PriceLine label="Delivery fee" value={money(deliveryFee)} />
-          <PriceLine label="Service fee" value={money(serviceFee)} />
-          <PriceLine label="Discount (Promo: SOKO25)" value={`-${money(discount)}`} discount />
+          <PriceLine label="Subtotal" value={money(checkoutSubtotal)} />
+          <PriceLine label="Delivery fee" value={money(checkoutDeliveryFee)} />
+          <PriceLine label="Service fee" value={money(checkoutServiceFee)} />
+          {!!pricingQuote?.surgeFee && <PriceLine label={`Busy area x${pricingQuote.surgeMultiplier.toFixed(2)}`} value={money(pricingQuote.surgeFee)} />}
+          <PriceLine label="Discount (Promo: SOKO25)" value={`-${money(checkoutDiscount)}`} discount />
           <View style={styles.totalLine}>
             <Text style={styles.totalLabel}>Total</Text>
-            <Text style={styles.totalAmount}>{money(total)}</Text>
+            <Text style={styles.totalAmount}>{money(checkoutTotal)}</Text>
           </View>
         </View>
       </ScrollView>
 
       <View style={[styles.placeOrderBar, checkoutFooterSafeStyle]}>
-        <TouchableOpacity style={[styles.placeOrderButton, placing && styles.disabledButton]} activeOpacity={0.86} disabled={placing} onPress={checkoutAction}>
+        <TouchableOpacity style={[styles.placeOrderButton, placing && styles.disabledButton]} activeOpacity={0.86} disabled={placing || pricingBusy || !pricingQuote} onPress={checkoutAction}>
           <AppIcon name="bag" size={20} color={colors.onPrimary} style={styles.inlineIcon} />
           <Text style={styles.placeOrderText}>{checkoutLabel}</Text>
         </TouchableOpacity>
