@@ -15,7 +15,7 @@ const AUTH_KEY = 'sokoeats.auth';
 export type StoredAuthSession = {
   token: string;
   expiresAt: string;
-  user: { id: string; name: string; email: string; role: string; status?: string; avatarUrl?: string; profile?: Record<string, unknown> };
+  user: { id: string; name: string; email: string; role: string; status?: string; avatarUrl?: string; phone?: string | null; city?: string | null; defaultAddress?: string | null; profileComplete?: boolean; missingProfileFields?: string[]; profile?: Record<string, unknown> };
 };
 
 export function readAuthSession(): StoredAuthSession | null {

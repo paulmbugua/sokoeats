@@ -62,8 +62,9 @@ type ShopListing = {
 type ShopMenuItem = { id: string; name: string; description?: string | null; price: number; category: string; popular?: boolean; available?: boolean; unitLabel?: string | null; imageUrl?: string | null };
 type ShopMenuSection = { id?: string; title: string; description?: string | null; items: ShopMenuItem[] };
 type ShopMenuResponse = { vendor?: Partial<ShopListing> & { slug?: string }; sections: ShopMenuSection[] };
-type OrderItem = { quantity: string; name: string; note: string; price: number; imageUrl?: string | null };
+type OrderItem = { menuItemId?: string; quantity: string; name: string; note: string; price: number; imageUrl?: string | null };
 const AUTH_STORAGE_KEY = 'sokoeats.auth';
+const BASKET_STORAGE_KEY = 'sokoeats.basket.v1';
 const MOBILE_APP_VERSION = '1.0.0';
 const authRoleOptions: { role: UserRole; label: string; subtitle: string; icon: IconName }[] = [
   { role: 'customer', label: 'Buyer', subtitle: 'Order meals, groceries, medicine, gas, and essentials', icon: 'bag' },
@@ -278,48 +279,6 @@ const categoryCopy: Record<ShopCategoryKey, { title: string; subtitle: string }>
   electronics: { title: 'Electronics and accessories', subtitle: 'Chargers, power banks, earbuds, routers, and quick tech replacements.' },
 };
 
-const shopListings: ShopListing[] = [
-  { id: 'nairobi-grill-house', category: 'restaurants', name: 'Nairobi Grill House', meta: 'Kenyan grill - Nyama choma - Family trays', rating: 4.8, time: '25-35 min', delivery: 'Free', minimum: 'KES 200 min', distance: '1.2 km', badge: 'Most reordered', image: images.grillHouse, popularItems: ['Nyama Choma', 'Ugali', 'Kachumbari'], reorderLabel: 'Reorder grill platter' },
-  { id: 'mama-njeri-kitchen', category: 'restaurants', name: 'Mama Njeri Kitchen', meta: 'Swahili plates - Chapati - Pilau', rating: 4.6, time: '15-25 min', delivery: 'KES 50', minimum: 'KES 150 min', distance: '0.8 km', badge: 'Top rated', image: images.mamaNjeri, popularItems: ['Pilau', 'Beef Stew', 'Samosas'], reorderLabel: 'Reorder Swahili lunch' },
-  { id: 'city-fresh-grocers', category: 'groceries', name: 'City Fresh Grocers', meta: 'Vegetables - Fruits - Pantry staples', rating: 4.7, time: '20-30 min', delivery: 'KES 80', minimum: 'KES 300 min', distance: '1.5 km', badge: 'Fresh today', image: images.groceries, popularItems: ['Spinach Bundle', 'Bananas', 'Maize Flour'], reorderLabel: 'Reorder weekly basket' },
-  { id: 'soko-pantry-express', category: 'groceries', name: 'Soko Pantry Express', meta: 'Milk - Bread - Snacks - Office supplies', rating: 4.5, time: '18-28 min', delivery: 'KES 60', minimum: 'KES 250 min', distance: '1.1 km', badge: 'Office favorite', image: images.checkoutMeal, popularItems: ['Milk', 'Bread', 'Tea Leaves'], reorderLabel: 'Reorder breakfast kit' },
-  { id: 'afya-plus-pharmacy', category: 'pharmacy', name: 'Afya Plus Pharmacy', meta: 'OTC medicine - Baby care - First aid', rating: 4.9, time: '20-32 min', delivery: 'KES 70', minimum: 'KES 200 min', distance: '1.9 km', badge: 'Pharmacist online', image: images.mpesaBanner, popularItems: ['Pain Relief', 'Vitamin C', 'Bandages'], reorderLabel: 'Reorder wellness pack' },
-  { id: 'uzima-care-chemist', category: 'pharmacy', name: 'Uzima Care Chemist', meta: 'Supplements - Personal care - Hygiene', rating: 4.6, time: '25-38 min', delivery: 'KES 90', minimum: 'KES 250 min', distance: '2.4 km', badge: 'Open late', image: images.deliveryBanner, popularItems: ['ORS Sachets', 'Thermometer', 'Sanitizer'], reorderLabel: 'Reorder care kit' },
-  { id: 'mtaa-gas-express', category: 'gas', name: 'Mtaa Gas Express', meta: '6kg and 13kg LPG - Cylinder swaps', rating: 4.7, time: '30-45 min', delivery: 'KES 120', minimum: 'KES 900 min', distance: '2.0 km', badge: 'Sealed cylinders', image: images.nyama, popularItems: ['6kg Refill', '13kg Refill', 'Regulator'], reorderLabel: 'Reorder 6kg refill' },
-  { id: 'blue-flame-depot', category: 'gas', name: 'Blue Flame Depot', meta: 'K-Gas - TotalEnergies - Accessories', rating: 4.4, time: '35-50 min', delivery: 'KES 140', minimum: 'KES 950 min', distance: '2.8 km', badge: 'Safety checked', image: images.pilau, popularItems: ['13kg Swap', 'Burner Hose', 'Lighter'], reorderLabel: 'Reorder gas swap' },
-  { id: 'tech-hub-cbd', category: 'electronics', name: 'Tech Hub CBD', meta: 'Chargers - Earbuds - Power banks', rating: 4.6, time: '22-35 min', delivery: 'KES 90', minimum: 'KES 500 min', distance: '1.4 km', badge: 'Genuine accessories', image: images.checkoutAvatar, popularItems: ['USB-C Charger', 'Power Bank', 'Earbuds'], reorderLabel: 'Reorder charger kit' },
-  { id: 'soko-gadgets', category: 'electronics', name: 'Soko Gadgets', meta: 'Phone accessories - Routers - Cables', rating: 4.5, time: '25-40 min', delivery: 'KES 100', minimum: 'KES 450 min', distance: '1.7 km', badge: 'Warranty ready', image: images.splashRider, popularItems: ['Type-C Cable', 'MiFi Router', 'Screen Guard'], reorderLabel: 'Reorder tech essentials' },
-];
-
-
-const shopMenuTemplates: Record<ShopCategoryKey, ShopMenuSection[]> = {
-  restaurants: [
-    { title: 'Meals', description: 'Main dishes the kitchen wants customers to order first.', items: [{ id: 'meal-nyama', name: 'Nyama Choma Platter', description: 'Charcoal grilled beef with ugali and kachumbari.', price: 1200, imageUrl: images.nyama, category: 'Meals', popular: true }, { id: 'meal-pilau', name: 'Chicken Pilau Bowl', description: 'Spiced rice, tender chicken, salsa, and chilli sauce.', price: 680, category: 'Meals' }] },
-    { title: 'Drinks', description: 'Cold drinks, juices, water, and daily refreshments.', items: [{ id: 'drink-passion', name: 'Passion Juice', description: 'Fresh house juice served chilled.', price: 180, category: 'Drinks' }, { id: 'drink-soda', name: 'Assorted Soda', description: 'Choose cola, orange, or lemon lime at checkout notes.', price: 120, category: 'Drinks' }] },
-    { title: 'Sides', description: 'Extras that complete the plate.', items: [{ id: 'side-ugali', name: 'Extra Ugali', description: 'Soft white ugali portion.', price: 120, category: 'Sides' }, { id: 'side-kachumbari', name: 'Kachumbari Cup', description: 'Tomato, onion, coriander, and lemon.', price: 90, category: 'Sides' }] },
-  ],
-  groceries: [
-    { title: 'Fresh Produce', description: 'Vegetables, fruits, herbs, and market baskets.', items: [{ id: 'produce-spinach', name: 'Spinach Bundle', description: 'Washed green spinach bunch from today\'s market.', price: 80, category: 'Fresh Produce', unitLabel: 'bundle' }, { id: 'produce-bananas', name: 'Sweet Bananas', description: 'Ripe bananas packed carefully for delivery.', price: 160, category: 'Fresh Produce', unitLabel: 'dozen' }] },
-    { title: 'Pantry Staples', description: 'Flour, rice, oil, sugar, tea, and household basics.', items: [{ id: 'pantry-flour', name: 'Maize Flour 2kg', description: 'Trusted everyday ugali flour.', price: 210, category: 'Pantry Staples', unitLabel: '2kg' }, { id: 'pantry-rice', name: 'Pishori Rice', description: 'Aromatic rice packed in a sealed bag.', price: 340, category: 'Pantry Staples', unitLabel: '1kg' }] },
-    { title: 'Dairy and Bakery', description: 'Milk, bread, yoghurt, eggs, and breakfast refills.', items: [{ id: 'dairy-milk', name: 'Fresh Milk', description: 'Pasteurised whole milk.', price: 75, category: 'Dairy and Bakery', unitLabel: '500ml' }, { id: 'bakery-bread', name: 'Brown Bread', description: 'Soft sliced family loaf.', price: 95, category: 'Dairy and Bakery' }] },
-  ],
-  pharmacy: [
-    { title: 'Medicine', description: 'OTC essentials with pharmacist-managed availability.', items: [{ id: 'med-pain', name: 'Pain Relief Tablets', description: 'Common pain and fever relief pack.', price: 180, category: 'Medicine' }, { id: 'med-vitamin', name: 'Vitamin C', description: 'Daily immune support tablets.', price: 450, category: 'Medicine' }] },
-    { title: 'Baby and Personal Care', description: 'Baby, hygiene, and wellness products.', items: [{ id: 'care-diapers', name: 'Baby Diapers Pack', description: 'Comfort fit pack for daily use.', price: 680, category: 'Baby and Personal Care' }, { id: 'care-sanitizer', name: 'Hand Sanitizer', description: 'Pocket sanitizer for home and travel.', price: 150, category: 'Baby and Personal Care' }] },
-    { title: 'First Aid', description: 'Bandages, antiseptic, thermometers, and urgent care basics.', items: [{ id: 'aid-bandage', name: 'Bandage Roll', description: 'Sterile roll for minor wounds.', price: 120, category: 'First Aid' }, { id: 'aid-thermo', name: 'Digital Thermometer', description: 'Fast-read thermometer with battery.', price: 650, category: 'First Aid' }] },
-  ],
-  gas: [
-    { title: 'Cylinder Refills', description: 'Fast verified refills by cylinder size.', items: [{ id: 'gas-6kg', name: '6kg LPG Refill', description: 'Sealed 6kg refill with safety check.', price: 1450, category: 'Cylinder Refills', unitLabel: '6kg' }, { id: 'gas-13kg', name: '13kg LPG Refill', description: 'Home cooking gas refill with dispatch confirmation.', price: 3150, category: 'Cylinder Refills', unitLabel: '13kg' }] },
-    { title: 'New Cylinders', description: 'Starter cylinders and full swaps.', items: [{ id: 'new-6kg', name: 'New 6kg Cylinder', description: 'Cylinder, gas, and basic setup check.', price: 4200, category: 'New Cylinders' }, { id: 'new-13kg', name: 'New 13kg Cylinder', description: 'Full 13kg cylinder for family kitchens.', price: 7200, category: 'New Cylinders' }] },
-    { title: 'Accessories', description: 'Regulators, hoses, lighters, and safety extras.', items: [{ id: 'gas-regulator', name: 'Gas Regulator', description: 'Standard regulator for home cylinders.', price: 950, category: 'Accessories' }, { id: 'gas-hose', name: 'Burner Hose', description: 'Flexible hose with safety fitting.', price: 380, category: 'Accessories' }] },
-  ],
-  electronics: [
-    { title: 'Chargers and Cables', description: 'Phone chargers, USB cables, and adapters.', items: [{ id: 'tech-usbc', name: 'USB-C Fast Charger', description: '20W wall charger with cable.', price: 1250, category: 'Chargers and Cables' }, { id: 'tech-cable', name: 'Braided Type-C Cable', description: 'Durable 1m charging cable.', price: 450, category: 'Chargers and Cables' }] },
-    { title: 'Audio and Power', description: 'Earbuds, power banks, speakers, and batteries.', items: [{ id: 'tech-earbuds', name: 'Wireless Earbuds', description: 'Compact Bluetooth earbuds with charging case.', price: 2400, category: 'Audio and Power' }, { id: 'tech-powerbank', name: '10000mAh Power Bank', description: 'Portable fast-charge power bank.', price: 2850, category: 'Audio and Power' }] },
-    { title: 'Connectivity', description: 'Routers, SIM tools, screen protectors, and setup extras.', items: [{ id: 'tech-router', name: '4G MiFi Router', description: 'Portable Wi-Fi router for home and travel.', price: 4950, category: 'Connectivity' }, { id: 'tech-screen', name: 'Tempered Screen Guard', description: 'Scratch-resistant phone screen protector.', price: 300, category: 'Connectivity' }] },
-  ],
-};
-
 function menuItemImage(item: Pick<ShopMenuItem, 'name' | 'category' | 'imageUrl'>): string {
   if (item.imageUrl) return item.imageUrl;
   const key = `${item.name} ${item.category}`.toLowerCase();
@@ -331,14 +290,6 @@ function menuItemImage(item: Pick<ShopMenuItem, 'name' | 'category' | 'imageUrl'
   if (key.includes('gas') || key.includes('lpg') || key.includes('cylinder') || key.includes('regulator')) return images.grillHouse;
   if (key.includes('charger') || key.includes('cable') || key.includes('power') || key.includes('router') || key.includes('screen')) return images.checkoutAvatar;
   return images.checkoutMeal;
-}
-
-function fallbackShopSections(shop: ShopListing): ShopMenuSection[] {
-  return shopMenuTemplates[shop.category].map((section, sectionIndex) => ({
-    ...section,
-    id: shop.id + '-' + section.title.toLowerCase().replace(/[^a-z0-9]+/g, '-'),
-    items: section.items.map((item, itemIndex) => ({ ...item, id: shop.id + '-' + item.id, imageUrl: item.imageUrl || menuItemImage(item), popular: item.popular || itemIndex === 0 || shop.popularItems.some((popular) => item.name.toLowerCase().includes(popular.toLowerCase().split(' ')[0])), price: item.price + sectionIndex * 15 })),
-  }));
 }
 
 function parseScanPaymentQr(raw: string): ScanPaymentDraft {
@@ -376,22 +327,7 @@ function parseScanPaymentQr(raw: string): ScanPaymentDraft {
   };
 }
 
-const defaultOrderItems: OrderItem[] = [
-  {
-    quantity: '1x',
-    name: 'Platter of Nyama Choma',
-    note: 'Extra Kachumbari, Spicy',
-    price: 1200,
-    imageUrl: images.nyama,
-  },
-  {
-    quantity: '2x',
-    name: 'Tusker Cider (500ml)',
-    note: '',
-    price: 500,
-    imageUrl: images.mpesaBanner,
-  },
-];
+const defaultOrderItems: OrderItem[] = [];
 
 const money = (value: number) => `KSh ${value.toLocaleString('en-KE')}`;
 const API_BASE = process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://10.0.2.2:4005';
@@ -1921,7 +1857,7 @@ function openExternalUrl(url?: string) {
 }
 
 async function exchangeGoogleTokenForFirebaseIdToken(googleIdToken: string) {
-  if (!FIREBASE_API_KEY) return googleIdToken;
+  if (!FIREBASE_API_KEY) throw new Error('Firebase API key is not configured for Google sign-in.');
   const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=${encodeURIComponent(FIREBASE_API_KEY)}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2161,15 +2097,20 @@ function SokoEatsApp() {
   const [maps, setMaps] = useState<MapsManifest>(fallbackMaps);
   const [selectedShopCategory, setSelectedShopCategory] = useState<ShopCategoryKey>('restaurants');
   const [shopRatings, setShopRatings] = useState<Record<string, number>>({});
-  const [selectedShop, setSelectedShop] = useState<ShopListing | null>(shopListings[0]);
-  const [shopMenuSections, setShopMenuSections] = useState<ShopMenuSection[]>(fallbackShopSections(shopListings[0]));
+  const [availableShops, setAvailableShops] = useState<ShopListing[]>([]);
+  const [selectedShop, setSelectedShop] = useState<ShopListing | null>(null);
+  const [shopMenuSections, setShopMenuSections] = useState<ShopMenuSection[]>([]);
   const [shopMenuLoading, setShopMenuLoading] = useState(false);
+  const [shopMenuError, setShopMenuError] = useState('');
+  const [similarItems, setSimilarItems] = useState<ShopMenuItem[]>([]);
   const [basketItems, setBasketItems] = useState<OrderItem[]>(defaultOrderItems);
-  const [checkoutShop, setCheckoutShop] = useState<ShopListing | null>(shopListings[0]);
+  const [checkoutShop, setCheckoutShop] = useState<ShopListing | null>(null);
   const [scanPaymentDraft, setScanPaymentDraft] = useState<ScanPaymentDraft | null>(null);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const fade = useRef(new Animated.Value(0)).current;
   const screenHistory = useRef<Screen[]>([]);
+  const pendingAfterAuth = useRef<Screen | null>(null);
+  const basketHydrated = useRef(false);
 
   useEffect(() => {
     Animated.timing(fade, {
@@ -2180,16 +2121,44 @@ function SokoEatsApp() {
   }, [fade]);
 
   useEffect(() => {
-    AsyncStorage.getItem(AUTH_STORAGE_KEY)
-      .then((raw) => {
-        if (raw) setAuthSession(JSON.parse(raw));
+    Promise.all([AsyncStorage.getItem(AUTH_STORAGE_KEY), AsyncStorage.getItem(BASKET_STORAGE_KEY)])
+      .then(([authRaw, basketRaw]) => {
+        if (authRaw) setAuthSession(JSON.parse(authRaw));
+        if (basketRaw) {
+          const saved = JSON.parse(basketRaw);
+          if (Array.isArray(saved.items)) setBasketItems(saved.items);
+          if (saved.shop) setCheckoutShop(saved.shop);
+        }
       })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { basketHydrated.current = true; });
   }, []);
+
+  useEffect(() => {
+    if (!basketHydrated.current) return;
+    AsyncStorage.setItem(BASKET_STORAGE_KEY, JSON.stringify({ items: basketItems, shop: checkoutShop })).catch(() => {});
+  }, [basketItems, checkoutShop]);
 
   useEffect(() => {
     sokoeatsApi<{ wallet: Record<string, GenericPayload> }>('/api/wallet/payment-suite').then((r) => setRiderBatch((prev) => ({ ...prev, ...r.wallet }))).catch(() => {});
     sokoeatsApi<{ maps: MapsManifest }>('/api/maps/manifest').then((r) => setMaps(r.maps)).catch(() => {});
+    sokoeatsApi<{ vendors: Array<Record<string, any>> }>('/api/vendors').then(({ vendors }) => {
+      setAvailableShops(vendors.map((vendor) => ({
+        id: vendor.slug || vendor.id,
+        category: vendor.category as ShopCategoryKey,
+        name: vendor.name,
+        meta: vendor.tagline || vendor.cuisine || vendor.category,
+        rating: Number(vendor.rating || 0),
+        time: String(Number(vendor.prepMinutes || 0)) + '-' + String(Number(vendor.prepMinutes || 0) + 10) + ' min',
+        delivery: Number(vendor.deliveryFee || 0) ? money(Number(vendor.deliveryFee)) : 'Free',
+        minimum: money(Number(vendor.minimumOrder || 0)) + ' min',
+        distance: vendor.address || 'Nearby',
+        badge: vendor.sections?.[0]?.title || 'Open shop',
+        image: vendor.imageUrl,
+        popularItems: vendor.sections?.map((section: any) => section.title).slice(0, 3) || [],
+        reorderLabel: 'Order again from ' + vendor.name,
+      })));
+    }).catch(() => setAvailableShops([]));
   }, []);
 
   const transitionToScreen = (next: Screen) => {
@@ -2216,16 +2185,26 @@ function SokoEatsApp() {
   const openShopDetail = async (shop: ShopListing) => {
     setSelectedShop(shop);
     setSelectedShopCategory(shop.category);
-    setCheckoutShop(shop);
-    setBasketItems([]);
-    setShopMenuSections(fallbackShopSections(shop));
+    if (!checkoutShop || checkoutShop.id !== shop.id) {
+      setCheckoutShop(shop);
+      setBasketItems([]);
+    }
+    setShopMenuSections([]);
+    setSimilarItems([]);
+    setShopMenuError('');
     openScreen('shopDetail');
     setShopMenuLoading(true);
     try {
       const data = await sokoeatsApi<ShopMenuResponse>('/api/vendors/' + shop.id + '/menu');
-      setShopMenuSections(data.sections?.length ? data.sections : fallbackShopSections(shop));
-    } catch {
-      setShopMenuSections(fallbackShopSections(shop));
+      const sections = data.sections || [];
+      setShopMenuSections(sections);
+      const first = sections.flatMap((section) => section.items)[0];
+      if (first?.id) {
+        const recommendations = await sokoeatsApi<{ similar: ShopMenuItem[] }>('/api/menu/' + first.id + '/similar').catch(() => ({ similar: [] }));
+        setSimilarItems(recommendations.similar || []);
+      }
+    } catch (error) {
+      setShopMenuError(error instanceof Error ? error.message : 'This shop catalogue is unavailable.');
     } finally {
       setShopMenuLoading(false);
     }
@@ -2236,7 +2215,7 @@ function SokoEatsApp() {
     setCheckoutShop(shop);
     setBasketItems((prev) => {
       const existing = prev.find((entry) => entry.name === item.name);
-      if (!existing) return [...prev, { quantity: safeQuantity + 'x', name: item.name, note: item.description || item.category, price: Math.round(item.price * safeQuantity), imageUrl: menuItemImage(item) }];
+      if (!existing) return [...prev, { menuItemId: item.id, quantity: safeQuantity + 'x', name: item.name, note: item.description || item.category, price: Math.round(item.price * safeQuantity), imageUrl: menuItemImage(item) }];
       const currentQuantity = Number.parseInt(existing.quantity, 10) || 1;
       const nextQuantity = currentQuantity + safeQuantity;
       return prev.map((entry) => entry.name === item.name ? { ...entry, quantity: nextQuantity + 'x', price: Math.round(item.price * nextQuantity) } : entry);
@@ -2248,12 +2227,27 @@ function SokoEatsApp() {
     setShopRatings((prev) => ({ ...prev, [shopId]: rating }));
   };
 
-  const reorderShop = (shop?: ShopListing) => {
-    const nextShop = shop || checkoutShop || shopListings[0];
-    const fallbackItems = fallbackShopSections(nextShop).flatMap((section) => section.items).slice(0, 2);
-    setCheckoutShop(nextShop);
-    setBasketItems(fallbackItems.map((item) => ({ quantity: item.popular ? '2x' : '1x', name: item.name, note: item.description || item.category, price: Math.round(item.price * (item.popular ? 2 : 1)), imageUrl: menuItemImage(item) })));
-    openScreen('checkout');
+  const reorderShop = async (shop?: ShopListing) => {
+    const nextShop = shop || checkoutShop;
+    if (!nextShop) {
+      Alert.alert('Shop unavailable', 'Open a live shop before reordering.');
+      return;
+    }
+    try {
+      const data = await sokoeatsApi<ShopMenuResponse>('/api/vendors/' + nextShop.id + '/menu');
+      const liveItems = (data.sections || []).flatMap((section) => section.items).filter((item) => item.available !== false).slice(0, 2);
+      if (!liveItems.length) throw new Error('This shop has no available products to reorder.');
+      setCheckoutShop(nextShop);
+      setBasketItems(liveItems.map((item) => ({ menuItemId: item.id, quantity: '1x', name: item.name, note: item.description || item.category, price: Math.round(item.price), imageUrl: menuItemImage(item) })));
+      if (!authSession || authSession.user.role !== 'customer' || authSession.user.profileComplete === false) {
+        pendingAfterAuth.current = 'checkout';
+        openScreen('accountAccess');
+      } else {
+        openScreen('checkout');
+      }
+    } catch (error) {
+      Alert.alert('Unable to reorder', error instanceof Error ? error.message : 'The shop catalogue could not be loaded.');
+    }
   };
 
   const completeScanPayment = (success: GenericPayload, history: GenericPayload) => {
@@ -2270,8 +2264,27 @@ function SokoEatsApp() {
   const handleAuthenticated = async (session: AuthSession) => {
     setAuthSession(session);
     await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
-    if (session.user.profileComplete === false) openScreen('accountAccess');
+    if (session.user.profileComplete === false) {
+      openScreen('accountAccess');
+      return;
+    }
+    const destination = pendingAfterAuth.current;
+    pendingAfterAuth.current = null;
+    if (destination && session.user.role === 'customer') openScreen(destination);
     else routeForRole(session.user.role);
+  };
+
+  const openCheckout = () => {
+    if (!basketItems.length) {
+      Alert.alert('Your basket is empty', 'Add at least one item from a shop before checkout.');
+      return;
+    }
+    if (!authSession || authSession.user.role !== 'customer' || authSession.user.profileComplete === false) {
+      pendingAfterAuth.current = 'checkout';
+      openScreen('accountAccess');
+      return;
+    }
+    openScreen('checkout');
   };
 
   const handleSignOut = async () => {
@@ -2316,18 +2329,19 @@ function SokoEatsApp() {
         {screen === 'onboarding' && <OnboardingScreen onNext={() => openScreen('home')} onSkip={() => openScreen('home')} />}
         {screen === 'home' && (
           <HomeScreen
+            user={authSession?.user || null}
             activeChip={activeChip}
             onChipChange={setActiveChip}
-            onCheckout={() => openScreen('checkout')}
+            onCheckout={openCheckout}
             onWallet={() => openScreen('walletHome')}
             onScan={() => openScreen('scanQr')}
           onCategoryOpen={openShopCategory}
           />
         )}
-        {screen === 'categories' && <CategoriesScreen category={selectedShopCategory} ratings={shopRatings} onBack={() => openScreen('home')} onCategoryChange={setSelectedShopCategory} onRate={rateShop} onReorder={reorderShop} onShopOpen={openShopDetail} />}
-        {screen === 'shopDetail' && selectedShop && <ShopDetailScreen shop={selectedShop} sections={shopMenuSections} loading={shopMenuLoading} onBack={() => openScreen('categories')} onAddItem={addShopItemToBasket} onCheckout={() => openScreen('checkout')} />}
-        {screen === 'orders' && <OrdersScreen onBack={() => openScreen('home')} onCheckout={() => openScreen('checkout')} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} />}
-        {screen === 'favourites' && <FavouritesScreen onBack={() => openScreen('home')} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} />}
+        {screen === 'categories' && <CategoriesScreen shops={availableShops} category={selectedShopCategory} ratings={shopRatings} onBack={() => openScreen('home')} onCategoryChange={setSelectedShopCategory} onRate={rateShop} onReorder={reorderShop} onShopOpen={openShopDetail} />}
+        {screen === 'shopDetail' && selectedShop && <ShopDetailScreen shop={selectedShop} sections={shopMenuSections} similarItems={similarItems} loading={shopMenuLoading} error={shopMenuError} onBack={() => openScreen('categories')} onAddItem={addShopItemToBasket} onCheckout={openCheckout} />}
+        {screen === 'orders' && <OrdersScreen shops={availableShops} basket={basketItems} checkoutShop={checkoutShop} onBack={() => openScreen('home')} onCheckout={openCheckout} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} />}
+        {screen === 'favourites' && <FavouritesScreen shops={availableShops} onBack={() => openScreen('home')} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} />}
         {screen === 'accountAccess' && <AccountAccessScreen authSession={authSession} onAuthenticated={handleAuthenticated} onSignOut={handleSignOut} onBack={() => openScreen('home')} onRider={() => openScreen('riderHome')} />}
         {screen === 'walletHome' && <WalletHomeScreen data={riderBatch.sokoeats_wallet} onBack={() => openScreen('home')} onTopUp={() => openScreen('walletTopUp')} onWithdraw={() => openScreen('walletWithdraw')} onScan={() => openScreen('scanQr')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'walletTopUp' && <WalletTopUpScreen data={riderBatch.top_up_wallet} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ topUp: GenericPayload; history: GenericPayload }>('/api/wallet/top-ups', { method: 'POST', body: JSON.stringify({ amount, method: 'M-Pesa Express' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, top_up_wallet: next.topUp, full_transaction_history: next.history })); openScreen('walletHome'); }} />}
@@ -2374,6 +2388,8 @@ function SokoEatsApp() {
             shop={checkoutShop}
             paymentMethod={paymentMethod}
             onPaymentChange={setPaymentMethod}
+            authSession={authSession}
+            onAuthRequired={() => { pendingAfterAuth.current = 'checkout'; openScreen('accountAccess'); }}
             onBack={() => openScreen('home')}
           />
         )}
@@ -2460,53 +2476,25 @@ function SplashScreen({ onContinue }: { onContinue: () => void }) {
 
 function OnboardingScreen({ onNext, onSkip }: { onNext: () => void; onSkip: () => void }) {
   const insets = useSafeAreaInsets();
-  const onboardingFooterLiftStyle = useMemo(
-    () => ({ paddingBottom: Math.max(insets.bottom + 56, 96) }),
-    [insets.bottom]
-  );
-
+  const [step, setStep] = useState(0);
+  const pages = [
+    { title: 'Discover shops around you', subtitle: 'Browse restaurants, groceries, pharmacies, gas, and electronics before creating an account.', image: images.pilau, icon: 'search' as IconName },
+    { title: 'Build your basket freely', subtitle: 'Open a shop, compare its full catalogue, and keep your selected items while you sign in.', image: images.groceries, icon: 'bag' as IconName },
+    { title: 'Pay securely and track delivery', subtitle: 'Use M-Pesa or card after login, then receive verified order and delivery updates.', image: images.deliveryBanner, icon: 'bike' as IconName },
+  ];
+  const page = pages[step];
+  const finish = () => step === pages.length - 1 ? onNext() : setStep((value) => value + 1);
   return (
-    <View style={[styles.onboardingPage, onboardingFooterLiftStyle]}>
-      <View style={styles.onboardingHeader}>
-        <Text style={styles.topBrand}>SokoEats</Text>
-        <TouchableOpacity onPress={onSkip} style={styles.skipButton}>
-          <Text style={styles.skipText}>Skip</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.bentoGrid}>
-        <View style={styles.bentoLarge}>
-          <Image source={{ uri: images.pilau }} style={styles.coverImage} />
-          <View style={styles.pill}>
-            <AppIcon name="fork" size={14} color={colors.primary} style={styles.inlineIcon} />
-            <Text style={styles.pillText}>Nairobi's Finest</Text>
-          </View>
-        </View>
-        <View style={styles.bentoColumn}>
-          <Image source={{ uri: images.nyama }} style={styles.bentoSmallImage} />
-          <Image source={{ uri: images.groceries }} style={styles.bentoSmallImage} />
-        </View>
-      </View>
-
-      <View style={styles.onboardingCopy}>
-        <Text style={styles.onboardingTitle}>
-          Food from your <Text style={styles.primaryText}>favourite</Text> restaurants.
-        </Text>
-        <Text style={styles.onboardingSubtitle}>
-          Groceries and shopping made easy. Everything you need, delivered with modern Kenyan warmth.
-        </Text>
-      </View>
-
+    <View style={[styles.onboardingPage, { paddingBottom: Math.max(insets.bottom + 56, 96) }]}>
+      <View style={styles.onboardingHeader}><Text style={styles.topBrand}>SokoEats</Text><TouchableOpacity onPress={onSkip} style={styles.skipButton}><Text style={styles.skipText}>Skip</Text></TouchableOpacity></View>
+      <TouchableOpacity style={styles.bentoLarge} onPress={finish} activeOpacity={0.9}>
+        <Image source={{ uri: page.image }} style={styles.coverImage} />
+        <View style={styles.pill}><AppIcon name={page.icon} size={16} color={colors.primary} /><Text style={styles.pillText}>Step {step + 1} of {pages.length}</Text></View>
+      </TouchableOpacity>
+      <View style={styles.onboardingCopy}><Text style={styles.onboardingTitle}>{page.title}</Text><Text style={styles.onboardingSubtitle}>{page.subtitle}</Text></View>
       <View style={styles.onboardingControls}>
-        <View style={styles.dots}>
-          <View style={styles.dotActive} />
-          <View style={styles.dot} />
-          <View style={styles.dot} />
-        </View>
-        <TouchableOpacity style={styles.primaryButton} onPress={onNext} activeOpacity={0.86}>
-          <Text style={styles.primaryButtonText}>Next</Text>
-          <Image source={nextArrowIcon} style={styles.buttonArrowImage} />
-        </TouchableOpacity>
+        <View style={styles.dots}>{pages.map((_, index) => <TouchableOpacity key={index} onPress={() => setStep(index)} style={index === step ? styles.dotActive : styles.dot} />)}</View>
+        <TouchableOpacity style={styles.primaryButton} onPress={finish} activeOpacity={0.86}><Text style={styles.primaryButtonText}>{step === pages.length - 1 ? 'Start shopping' : 'Next'}</Text><Image source={nextArrowIcon} style={styles.buttonArrowImage} /></TouchableOpacity>
       </View>
       <SourceLedger />
     </View>
@@ -2514,6 +2502,7 @@ function OnboardingScreen({ onNext, onSkip }: { onNext: () => void; onSkip: () =
 }
 
 function HomeScreen({
+  user,
   activeChip,
   onChipChange,
   onCheckout,
@@ -2521,6 +2510,7 @@ function HomeScreen({
   onScan,
   onCategoryOpen,
 }: {
+  user: AuthUser | null;
   activeChip: string;
   onChipChange: (chip: string) => void;
   onCheckout: () => void;
@@ -2533,12 +2523,12 @@ function HomeScreen({
     <View style={styles.shell}>
       <View style={styles.homeHeader}>
         <View style={styles.headerProfileRow}>
-          <Image source={{ uri: images.avatar }} style={styles.avatar} />
+          {user?.avatarUrl ? <Image source={{ uri: user.avatarUrl }} style={styles.avatar} /> : <View style={styles.iconCircle}><AppIcon name="person" size={20} color={colors.primary} /></View>}
           <View>
-            <Text style={styles.caption}>Good afternoon, Paul</Text>
+            <Text style={styles.caption}>{user ? `Welcome back, ${user.name}` : 'Browse as guest'}</Text>
             <View style={styles.locationRow}>
               <AppIcon name="pin" size={15} color={colors.primary} style={styles.inlineIcon} />
-              <Text style={styles.locationText}>Nairobi CBD</Text>
+              <Text style={styles.locationText}>{user?.city || 'Choose your delivery area at checkout'}</Text>
             </View>
           </View>
         </View>
@@ -2646,6 +2636,7 @@ function CustomerScreenHeader({ title, onBack }: { title: string; onBack: () => 
 }
 
 function CategoriesScreen({
+  shops,
   category,
   ratings,
   onBack,
@@ -2654,6 +2645,7 @@ function CategoriesScreen({
   onReorder,
   onShopOpen,
 }: {
+  shops: ShopListing[];
   category: ShopCategoryKey;
   ratings: Record<string, number>;
   onBack: () => void;
@@ -2663,7 +2655,7 @@ function CategoriesScreen({
   onShopOpen: (shop: ShopListing) => void;
 }) {
   const activeCopy = categoryCopy[category];
-  const shops = shopListings.filter((shop) => shop.category === category);
+  const visibleShops = shops.filter((shop) => shop.category === category);
 
   return (
     <View style={styles.shell}>
@@ -2689,7 +2681,7 @@ function CategoriesScreen({
           <Text style={styles.checkoutSectionTitle}>{activeCopy.title}</Text>
           <Text style={styles.smsBody}>{activeCopy.subtitle}</Text>
         </View>
-        {shops.map((shop) => (
+        {visibleShops.map((shop) => (
           <ShopCard key={shop.id} shop={shop} rating={ratings[shop.id] || Math.round(shop.rating)} onRate={(value) => onRate(shop.id, value)} onReorder={() => onReorder(shop)} onOpen={() => onShopOpen(shop)} />
         ))}
       </ScrollView>
@@ -2699,30 +2691,35 @@ function CategoriesScreen({
   );
 }
 
-function OrdersScreen({ onBack, onCheckout, onReorder, onRate, ratings, onShopOpen }: { onBack: () => void; onCheckout: () => void; onReorder: (shop?: ShopListing) => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number>; onShopOpen: (shop: ShopListing) => void }) {
-  const previousShop = shopListings.find((shop) => shop.id === 'mama-njeri-kitchen') || shopListings[1];
+function OrdersScreen({ shops, basket, checkoutShop, onBack, onCheckout, onReorder, onRate, ratings, onShopOpen }: { shops: ShopListing[]; basket: OrderItem[]; checkoutShop: ShopListing | null; onBack: () => void; onCheckout: () => void; onReorder: (shop?: ShopListing) => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number>; onShopOpen: (shop: ShopListing) => void }) {
+  const previousShop = shops[0];
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title="Orders" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
         <Text style={styles.checkoutTitle}>Your orders</Text>
-        <Text style={styles.checkoutSubtitle}>Review current baskets and recent SokoEats activity.</Text>
-        <TouchableOpacity style={styles.orderCard} onPress={onCheckout}>
-          <View style={styles.vendorRow}>
-            <Image source={{ uri: images.checkoutMeal }} style={styles.orderImage} />
-            <View style={{ flex: 1 }}><Text style={styles.vendorName}>Nairobi Grill House</Text><Text style={styles.checkoutSubtitle}>Ready to checkout - 3 items</Text></View>
-            <AppIcon name="chevron" size={20} color={colors.primary} />
-          </View>
-        </TouchableOpacity>
-        <View style={styles.deliveryRequestCard}>
-          <Text style={styles.vendorName}>Previous delivery</Text>
-          <Text style={styles.smsBody}>{previousShop.name} - Delivered yesterday to Nairobi CBD.</Text>
-          <RatingControl value={ratings[previousShop.id] || Math.round(previousShop.rating)} onRate={(value) => onRate(previousShop.id, value)} />
-          <TouchableOpacity style={styles.reorderButton} onPress={() => onReorder(previousShop)} activeOpacity={0.86}>
-            <AppIcon name="receipt" size={17} color={colors.onPrimaryContainer} />
-            <Text style={styles.reorderText}>Reorder previous basket</Text>
+        <Text style={styles.checkoutSubtitle}>Review your current basket and order again from active shops.</Text>
+        {!!basket.length && checkoutShop && (
+          <TouchableOpacity style={styles.orderCard} onPress={onCheckout}>
+            <View style={styles.vendorRow}>
+              <Image source={{ uri: checkoutShop.image }} style={styles.orderImage} />
+              <View style={{ flex: 1 }}><Text style={styles.vendorName}>{checkoutShop.name}</Text><Text style={styles.checkoutSubtitle}>Ready to checkout - {basket.length} item{basket.length === 1 ? '' : 's'}</Text></View>
+              <AppIcon name="chevron" size={20} color={colors.primary} />
+            </View>
           </TouchableOpacity>
-        </View>
+        )}
+        {!basket.length && <Text style={styles.smsBody}>Your basket is empty. Browse a shop to start an order.</Text>}
+        {previousShop && (
+          <View style={styles.deliveryRequestCard}>
+            <TouchableOpacity onPress={() => onShopOpen(previousShop)}><Text style={styles.vendorName}>{previousShop.name}</Text></TouchableOpacity>
+            <Text style={styles.smsBody}>Live catalogue available for reorder.</Text>
+            <RatingControl value={ratings[previousShop.id] || Math.round(previousShop.rating)} onRate={(value) => onRate(previousShop.id, value)} />
+            <TouchableOpacity style={styles.reorderButton} onPress={() => { void onReorder(previousShop); }} activeOpacity={0.86}>
+              <AppIcon name="receipt" size={17} color={colors.onPrimaryContainer} />
+              <Text style={styles.reorderText}>Reorder available items</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </ScrollView>
       <BottomNav active="Orders" />
       <SourceLedger />
@@ -2730,15 +2727,15 @@ function OrdersScreen({ onBack, onCheckout, onReorder, onRate, ratings, onShopOp
   );
 }
 
-function FavouritesScreen({ onBack, onReorder, onRate, ratings, onShopOpen }: { onBack: () => void; onReorder: (shop: ShopListing) => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number>; onShopOpen: (shop: ShopListing) => void }) {
-  const savedShops = shopListings.filter((shop) => ['nairobi-grill-house', 'mama-njeri-kitchen', 'city-fresh-grocers'].includes(shop.id));
+function FavouritesScreen({ shops, onBack, onReorder, onRate, ratings, onShopOpen }: { shops: ShopListing[]; onBack: () => void; onReorder: (shop: ShopListing) => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number>; onShopOpen: (shop: ShopListing) => void }) {
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title="Favourites" onBack={onBack} />
       <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.checkoutTitle}>Saved vendors</Text>
-        <Text style={styles.checkoutSubtitle}>Quick access to restaurants and shops you love.</Text>
-        {savedShops.map((shop) => <ShopCard key={shop.id} shop={shop} rating={ratings[shop.id] || Math.round(shop.rating)} onRate={(value) => onRate(shop.id, value)} onReorder={() => onReorder(shop)} onOpen={() => onShopOpen(shop)} />)}
+        <Text style={styles.checkoutTitle}>Available shops</Text>
+        <Text style={styles.checkoutSubtitle}>Save and revisit active SokoEats vendors.</Text>
+        {shops.map((shop) => <ShopCard key={shop.id} shop={shop} rating={ratings[shop.id] || Math.round(shop.rating)} onRate={(value) => onRate(shop.id, value)} onReorder={() => { void onReorder(shop); }} onOpen={() => onShopOpen(shop)} />)}
+        {!shops.length && <Text style={styles.smsBody}>No shops are available right now.</Text>}
       </ScrollView>
       <BottomNav active="Favourites" />
       <SourceLedger />
@@ -2755,7 +2752,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [city, setCity] = useState('Nairobi');
-  const [defaultAddress, setDefaultAddress] = useState(maps.customer.savedAddresses?.[0]?.address || 'Nairobi CBD');
+  const [defaultAddress, setDefaultAddress] = useState('');
   const [businessName, setBusinessName] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
   const [vehicleType, setVehicleType] = useState('Motorbike');
@@ -2763,6 +2760,12 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   const [nationalId, setNationalId] = useState('');
   const [businessCategory, setBusinessCategory] = useState('Restaurant');
   const [payoutPhone, setPayoutPhone] = useState('');
+  const [businessRegistrationNumber, setBusinessRegistrationNumber] = useState('');
+  const [kraPin, setKraPin] = useState('');
+  const [directorName, setDirectorName] = useState('');
+  const [directorNationalId, setDirectorNationalId] = useState('');
+  const [pspSubaccountId, setPspSubaccountId] = useState('');
+  const [commissionAccepted, setCommissionAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [googleRequest, googleResponse, promptGoogle] = Google.useIdTokenAuthRequest({
@@ -2787,9 +2790,36 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     nationalId: nationalId.trim(),
     businessCategory: businessCategory.trim(),
     payoutPhone: payoutPhone.trim() || phone.trim(),
+    businessRegistrationNumber: businessRegistrationNumber.trim(),
+    kraPin: kraPin.trim().toUpperCase(),
+    directorName: directorName.trim(),
+    directorNationalId: directorNationalId.trim(),
+    pspSubaccountId: pspSubaccountId.trim(),
+    commissionAccepted,
     marketingOptIn: true,
     preferredLanguage: 'English',
   });
+
+  const submitBusinessCompliance = async (session: AuthSession) => {
+    if (!['vendor', 'merchant'].includes(session.user.role)) return;
+    await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+    await sokoeatsApi('/api/vendor/compliance', {
+      method: 'PUT',
+      body: JSON.stringify({
+        legalBusinessName: businessName.trim(),
+        registrationNumber: businessRegistrationNumber.trim(),
+        kraPin: kraPin.trim().toUpperCase(),
+        directorName: directorName.trim(),
+        directorNationalId: directorNationalId.trim(),
+        settlementMethod: 'mpesa_wallet',
+        settlementAccount: payoutPhone.trim() || phone.trim(),
+        pspSubaccountId: pspSubaccountId.trim() || undefined,
+        commissionRateBps: 1500,
+        commissionAgreementVersion: 'marketplace-v1',
+        commissionAccepted,
+      }),
+    });
+  };
 
   const finishAuth = async (session: AuthSession) => {
     setMessage('');
@@ -2813,6 +2843,11 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
         method: 'POST',
         body: JSON.stringify(mode === 'login' ? { role, email: payload.email, password: payload.password } : payload),
       });
+      if (mode === 'register' && (role === 'vendor' || role === 'merchant')) await submitBusinessCompliance(session);
+      if (mode === 'register' && role === 'rider' && payoutPhone.trim()) {
+        await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+        await sokoeatsApi('/api/rider/payout-profile', { method: 'PUT', body: JSON.stringify({ method: 'mpesa_wallet', accountNumber: payoutPhone.trim(), schedule: 'daily' }) });
+      }
       await finishAuth(session);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'SokoEats could not complete sign-in');
@@ -2898,6 +2933,12 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     if (currentRole === 'rider' && !payload.registrationNumber) missing.push('registration number');
     if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.businessName) missing.push('business name');
     if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.storeAddress) missing.push('store address');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.businessRegistrationNumber) missing.push('business registration');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.kraPin) missing.push('KRA PIN');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.directorName) missing.push('director name');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.directorNationalId) missing.push('director national ID');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.payoutPhone) missing.push('settlement M-Pesa number');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.commissionAccepted) missing.push('commission agreement');
     if (missing.length) {
       Alert.alert('Complete your profile', 'Add ' + missing.join(', ') + ' to continue.');
       return;
@@ -2910,7 +2951,13 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
         method: 'PATCH',
         body: JSON.stringify(profilePayload),
       });
-      await finishAuth({ ...authSession, user: result.user });
+      const completedSession = { ...authSession, user: result.user };
+      if (currentRole === 'vendor' || currentRole === 'merchant') await submitBusinessCompliance(completedSession);
+      if (currentRole === 'rider' && payload.payoutPhone) {
+        await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(completedSession));
+        await sokoeatsApi('/api/rider/payout-profile', { method: 'PUT', body: JSON.stringify({ method: 'mpesa_wallet', accountNumber: payload.payoutPhone, schedule: 'daily' }) });
+      }
+      await finishAuth(completedSession);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Profile details could not be saved');
     } finally {
@@ -2940,6 +2987,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
               <>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>National ID optional</Text><TextInput style={styles.formFieldInput} value={nationalId} onChangeText={setNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
               </>
             )}
@@ -2948,7 +2996,13 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business name</Text><TextInput style={styles.formFieldInput} value={businessName} onChangeText={setBusinessName} placeholder="Nairobi Grill House" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business category</Text><TextInput style={styles.formFieldInput} value={businessCategory} onChangeText={setBusinessCategory} placeholder="Restaurant" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Store address</Text><TextInput style={styles.formFieldInput} value={storeAddress} onChangeText={setStoreAddress} placeholder="Westlands, Nairobi" placeholderTextColor={colors.outline} /></View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Settlement M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business registration number</Text><TextInput style={styles.formFieldInput} value={businessRegistrationNumber} onChangeText={setBusinessRegistrationNumber} autoCapitalize="characters" placeholder="BN-123456" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>KRA PIN</Text><TextInput style={styles.formFieldInput} value={kraPin} onChangeText={setKraPin} autoCapitalize="characters" placeholder="A123456789B" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director or proprietor name</Text><TextInput style={styles.formFieldInput} value={directorName} onChangeText={setDirectorName} placeholder="Legal representative" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director national ID</Text><TextInput style={styles.formFieldInput} value={directorNationalId} onChangeText={setDirectorNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>PSP subaccount ID optional</Text><TextInput style={styles.formFieldInput} value={pspSubaccountId} onChangeText={setPspSubaccountId} autoCapitalize="none" placeholder="Created automatically when blank" placeholderTextColor={colors.outline} /></View>
+                <TouchableOpacity style={styles.signedInCard} onPress={() => setCommissionAccepted((value) => !value)}><View style={styles.sectionHeadingRow}><AppIcon name={commissionAccepted ? 'check' : 'receipt'} size={20} color={colors.primary} /><Text style={styles.vendorName}>Marketplace commission agreement</Text></View><Text style={styles.smsBody}>I accept the SokoEats marketplace-v1 agreement and the displayed 15% commission on product sales.</Text><Text style={styles.discountText}>{commissionAccepted ? 'Accepted' : 'Tap to accept'}</Text></TouchableOpacity>
               </>
             )}
             {!!user.missingProfileFields?.length && <Text style={styles.secureText}>Required: {user.missingProfileFields.join(', ')}</Text>}
@@ -3014,7 +3068,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
             </TouchableOpacity>
           ))}
         </View>
-        {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>{role === 'vendor' || role === 'merchant' ? 'Owner or admin name' : 'Full name'}</Text><TextInput style={styles.formFieldInput} value={fullName} onChangeText={setFullName} placeholder="Paul Mbugua" placeholderTextColor={colors.outline} /></View>}
+        {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>{role === 'vendor' || role === 'merchant' ? 'Owner or admin name' : 'Full name'}</Text><TextInput style={styles.formFieldInput} value={fullName} onChangeText={setFullName} placeholder="Your full name" placeholderTextColor={colors.outline} /></View>}
         <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Email address</Text><TextInput style={styles.formFieldInput} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="paul@sokoeats.co.ke" placeholderTextColor={colors.outline} /></View>
         <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Password</Text><TextInput style={styles.formFieldInput} value={password} onChangeText={setPassword} secureTextEntry placeholder={mode === 'register' ? 'At least 8 characters' : 'Your password'} placeholderTextColor={colors.outline} /></View>
         {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Mobile number</Text><TextInput style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>}
@@ -3024,6 +3078,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
           <>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
           </>
         )}
         {mode === 'register' && (role === 'vendor' || role === 'merchant') && (
@@ -3031,7 +3086,13 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business name</Text><TextInput style={styles.formFieldInput} value={businessName} onChangeText={setBusinessName} placeholder="Nairobi Grill House" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business category</Text><TextInput style={styles.formFieldInput} value={businessCategory} onChangeText={setBusinessCategory} placeholder="Restaurant" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Store address</Text><TextInput style={styles.formFieldInput} value={storeAddress} onChangeText={setStoreAddress} placeholder="Westlands, Nairobi" placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Settlement M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business registration number</Text><TextInput style={styles.formFieldInput} value={businessRegistrationNumber} onChangeText={setBusinessRegistrationNumber} autoCapitalize="characters" placeholder="BN-123456" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>KRA PIN</Text><TextInput style={styles.formFieldInput} value={kraPin} onChangeText={setKraPin} autoCapitalize="characters" placeholder="A123456789B" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director or proprietor name</Text><TextInput style={styles.formFieldInput} value={directorName} onChangeText={setDirectorName} placeholder="Legal representative" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director national ID</Text><TextInput style={styles.formFieldInput} value={directorNationalId} onChangeText={setDirectorNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>PSP subaccount ID optional</Text><TextInput style={styles.formFieldInput} value={pspSubaccountId} onChangeText={setPspSubaccountId} autoCapitalize="none" placeholder="Created automatically when blank" placeholderTextColor={colors.outline} /></View>
+            <TouchableOpacity style={styles.signedInCard} onPress={() => setCommissionAccepted((value) => !value)}><View style={styles.sectionHeadingRow}><AppIcon name={commissionAccepted ? 'check' : 'receipt'} size={20} color={colors.primary} /><Text style={styles.vendorName}>Marketplace commission agreement</Text></View><Text style={styles.smsBody}>I accept the SokoEats marketplace-v1 agreement and the displayed 15% commission on product sales.</Text><Text style={styles.discountText}>{commissionAccepted ? 'Accepted' : 'Tap to accept'}</Text></TouchableOpacity>
           </>
         )}
         <MapPanel title="Default delivery address" subtitle={maps.customer.savedAddresses?.[0]?.address || defaultAddress} map={maps.customer.savedAddresses?.[0]?.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Edit pin" />
@@ -3342,7 +3403,7 @@ function ShopCard({ shop, rating, onRate, onReorder, onOpen }: { shop: ShopListi
 }
 
 
-function ShopDetailScreen({ shop, sections, loading, onBack, onAddItem, onCheckout }: { shop: ShopListing; sections: ShopMenuSection[]; loading: boolean; onBack: () => void; onAddItem: (shop: ShopListing, item: ShopMenuItem, quantity: number) => void; onCheckout: () => void }) {
+function ShopDetailScreen({ shop, sections, similarItems, loading, error, onBack, onAddItem, onCheckout }: { shop: ShopListing; sections: ShopMenuSection[]; similarItems: ShopMenuItem[]; loading: boolean; error: string; onBack: () => void; onAddItem: (shop: ShopListing, item: ShopMenuItem, quantity: number) => void; onCheckout: () => void }) {
   const [activeSection, setActiveSection] = useState('All');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [addedCount, setAddedCount] = useState(0);
@@ -3378,7 +3439,9 @@ function ShopDetailScreen({ shop, sections, loading, onBack, onAddItem, onChecko
             </TouchableOpacity>
           ))}
         </View>
-        {loading && <Text style={styles.secureText}>Refreshing vendor uploads...</Text>}
+        {loading && <Text style={styles.secureText}>Loading this shop's live catalogue...</Text>}
+        {!!error && <View style={styles.smsCard}><Text style={styles.vendorName}>Catalogue unavailable</Text><Text style={styles.smsBody}>{error}</Text></View>}
+        {!loading && !error && !sections.length && <Text style={styles.secureText}>This shop has not published any available items yet.</Text>}
         {visibleSections.map((section) => (
           <View key={section.id || section.title} style={styles.shopMenuSection}>
             <Text style={styles.checkoutSectionTitle}>{section.title}</Text>
@@ -3412,6 +3475,7 @@ function ShopDetailScreen({ shop, sections, loading, onBack, onAddItem, onChecko
             })}
           </View>
         ))}
+        {!!similarItems.length && <View style={styles.shopMenuSection}><Text style={styles.checkoutSectionTitle}>Similar items</Text><Text style={styles.restaurantMeta}>More choices from this shop and related SokoEats stores.</Text>{similarItems.slice(0, 6).map((item) => <View key={item.id} style={styles.shopMenuItemCard}><Image source={{ uri: menuItemImage(item) }} style={styles.shopMenuItemImage} /><View style={styles.shopMenuItemInfo}><Text style={styles.vendorName}>{item.name}</Text><Text style={styles.restaurantMeta}>{item.description}</Text><Text style={styles.shopMenuItemPrice}>{money(item.price)}</Text></View></View>)}</View>}
       </ScrollView>
       <View style={styles.shopBasketBar}>
         <TouchableOpacity style={styles.placeOrderButton} onPress={selectedCount ? onCheckout : () => Alert.alert('Choose products', 'Add at least one product before reviewing your basket.')} activeOpacity={0.86}>
@@ -3633,6 +3697,8 @@ function CheckoutScreen({
   shop,
   paymentMethod,
   onPaymentChange,
+  authSession,
+  onAuthRequired,
   onBack,
 }: {
   subtotal: number;
@@ -3644,6 +3710,8 @@ function CheckoutScreen({
   shop: ShopListing | null;
   paymentMethod: PaymentMethod;
   onPaymentChange: (method: PaymentMethod) => void;
+  authSession: AuthSession | null;
+  onAuthRequired: () => void;
   onBack: () => void;
 }) {
   const maps = useContext(MapsContext) || fallbackMaps;
@@ -3657,6 +3725,10 @@ function CheckoutScreen({
   const [mpesaPaymentPhone, setMpesaPaymentPhone] = useState('');
   const [mpesaModalError, setMpesaModalError] = useState('');
   const [checkoutStatus, setCheckoutStatus] = useState('Payment is required before SokoEats submits this order.');
+
+  useEffect(() => {
+    if (authSession?.user.phone) setPhone(authSession.user.phone.replace('+254', ''));
+  }, [authSession?.user.phone]);
 
   const createOrderAfterPayment = async (reference: string) => {
     const mobile = normalizeCheckoutPhone(phone);
@@ -3677,16 +3749,14 @@ function CheckoutScreen({
       const result = await sokoeatsApi<CheckoutOrderResult>('/api/orders', {
         method: 'POST',
         body: JSON.stringify({
-          customerName: 'Amina Customer',
-          customerEmail: 'amina@sokoeats.co.ke',
           phone: mobile,
-          vendorSlug: shop?.id || 'nairobi-grill-house',
-          deliveryAddress: 'Apartment 4B, Central Business District, Nairobi',
+          vendorSlug: shop?.id,
+          deliveryAddress: authSession?.user.defaultAddress,
           notes: 'Customer confirmed order updates by SMS.',
           discountCode: 'SOKO25',
           paymentMethod,
           paymentReference: reference,
-          items: items.map((item) => ({ menuItemName: item.name, quantity: Number.parseInt(item.quantity, 10) || 1, notes: item.note || null })),
+          items: items.map((item) => ({ menuItemId: item.menuItemId, menuItemName: item.name, quantity: Number.parseInt(item.quantity, 10) || 1, notes: item.note || null })),
         }),
       });
       setPendingPayment(null);
@@ -3717,7 +3787,7 @@ function CheckoutScreen({
       console.info('[SokoEats][M-Pesa][mobile] checkout-request', { method: paymentMethod, amount: total, phone: maskCheckoutPhone(mobile) });
       const { payment } = await sokoeatsApi<{ payment: CheckoutPayment }>('/api/payments/checkout', {
         method: 'POST',
-        body: JSON.stringify({ method: paymentMethod, amount: total, currency: 'KES', phone: mobile, email: 'amina@sokoeats.co.ke', customerName: 'Amina Customer' }),
+        body: JSON.stringify({ method: paymentMethod, amount: total, currency: 'KES', phone: mobile, email: authSession?.user.email, customerName: authSession?.user.name }),
       });
       setPhone(mobile.replace('+254', ''));
       console.info('[SokoEats][M-Pesa][mobile] checkout-response', { reference: payment.reference, status: payment.status, providerReference: payment.providerReference, providerMessage: payment.providerMessage || payment.promptMessage || null });
@@ -3750,6 +3820,10 @@ function CheckoutScreen({
   };
 
   const checkoutAction = () => {
+    if (!authSession || authSession.user.role !== 'customer' || authSession.user.profileComplete === false) {
+      onAuthRequired();
+      return;
+    }
     if (!pendingPayment) {
       if (paymentMethod === 'mpesa') {
         console.info('[SokoEats][M-Pesa][mobile] modal-open', { amount: total });
@@ -3797,14 +3871,14 @@ function CheckoutScreen({
         </View>
         <View style={styles.checkoutHeaderRight}>
           <AppIcon name="bell" size={19} color={colors.primary} />
-          <Image source={{ uri: images.checkoutAvatar }} style={styles.checkoutAvatar} />
+          {authSession?.user.avatarUrl ? <Image source={{ uri: authSession.user.avatarUrl }} style={styles.checkoutAvatar} /> : <AppIcon name="person" size={20} color={colors.primary} />}
         </View>
       </View>
 
       <ScrollView contentContainerStyle={styles.checkoutContent} showsVerticalScrollIndicator={false}>
         <View style={styles.checkoutIntro}>
           <Text style={styles.checkoutTitle}>Checkout</Text>
-          <Text style={styles.checkoutSubtitle}>Review your order from {shop?.name || 'Nairobi Grill House'}</Text>
+          <Text style={styles.checkoutSubtitle}>Review your order from {shop?.name || 'your selected shop'}</Text>
         </View>
 
         <View style={styles.premiumCard}>
@@ -3815,7 +3889,7 @@ function CheckoutScreen({
               </View>
               <View>
                 <Text style={styles.upperLabel}>Delivery Address</Text>
-                <Text style={styles.addressName}>Home - Nairobi CBD</Text>
+                <Text style={styles.addressName}>{authSession?.user.city || 'Delivery address'}</Text>
               </View>
             </View>
             <TouchableOpacity>
@@ -3823,7 +3897,7 @@ function CheckoutScreen({
             </TouchableOpacity>
           </View>
           <View style={styles.addressDetail}>
-            <Text style={styles.addressDetailText}>Apartment 4B, Central Business District, Nairobi</Text>
+            <Text style={styles.addressDetailText}>{authSession?.user.defaultAddress || 'Sign in and add your delivery address to continue.'}</Text>
           </View>
         </View>
 
@@ -3832,9 +3906,9 @@ function CheckoutScreen({
         <Text style={styles.checkoutSectionTitle}>Order Review</Text>
         <View style={styles.orderCard}>
           <View style={styles.vendorRow}>
-            <Image source={{ uri: shop?.image || images.checkoutMeal }} style={styles.orderImage} />
+            {!!shop?.image && <Image source={{ uri: shop.image }} style={styles.orderImage} />}
             <View>
-              <Text style={styles.vendorName}>{shop?.name || 'Nairobi Grill House'}</Text>
+              <Text style={styles.vendorName}>{shop?.name || 'Selected shop'}</Text>
               <Text style={styles.checkoutSubtitle}>{shop ? shop.distance + ' away - ' + shop.time : '2.4 km away - 25-35 mins'}</Text>
             </View>
           </View>

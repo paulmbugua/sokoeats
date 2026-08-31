@@ -123,6 +123,17 @@ export const merchantMenuItemSchema = Joi.object({
   sortOrder: Joi.number().integer().min(0).default(0),
 }).unknown(false);
 
+export const merchantMenuCategorySchema = Joi.object({
+  title: Joi.string().min(2).max(80).required(),
+  description: Joi.string().max(220).allow('', null),
+  sortOrder: Joi.number().integer().min(0).default(0),
+}).unknown(false);
+
+export const vendorImageUploadSchema = Joi.object({
+  filename: Joi.string().min(3).max(180).required(),
+  contentType: Joi.string().valid('image/jpeg', 'image/png', 'image/webp', 'image/avif').required(),
+}).unknown(false);
+
 export const merchantBulkImportSchema = Joi.object({
   fileName: Joi.string().default('Restaurant_Menu_July.csv'),
   itemCount: Joi.number().integer().min(1).default(142),

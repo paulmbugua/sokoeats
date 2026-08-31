@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
-import { Bike, CheckCircle2, Clock, Headphones, PackageCheck, Store, TicketCheck, Utensils } from 'lucide-react';
+import { Banknote, Bike, CheckCircle2, Clock, Headphones, PackageCheck, ShieldCheck, Store, TicketCheck, Utensils, WalletCards } from 'lucide-react';
 import { adminAccountGuidance, adminRoleLabel, api, clearAuthSession, exchangeGoogleCredentialForFirebaseIdToken, googleWebClientId, readAuthSession, saveAuthSession, type StoredAuthSession } from '@sokoeats/shared/api';
 import type { DashboardMetric, Order, Ticket, Vendor } from '@sokoeats/shared/types';
 import './styles.css';
@@ -30,6 +30,9 @@ function AuthGate({ onAuthenticated }: { onAuthenticated: (session: StoredAuthSe
 type MapPoint = { label: string; lat: number; lng: number };
 type MapViewport = { center?: MapPoint; markers?: MapPoint[]; path?: MapPoint[] };
 type MapsManifest = Record<string, any>;
+type ComplianceSubmission = { vendorId: string; vendorName: string; ownerName?: string; ownerEmail?: string; legalBusinessName: string; registrationNumber: string; kraPinMasked: string; directorName: string; directorNationalIdMasked: string; settlementMethod: string; settlementAccountMasked: string; commissionRateBps: number; verificationStatus: string; payoutStatus: string; riskTier: string };
+type FinancePayout = { reference: string; beneficiary_type: string; vendor_name?: string; rider_name?: string; amount: number; status: string; scheduled_for: string; failure_reason?: string };
+type FinanceDashboard = { accounts: Array<{ code: string; name: string; balance: number }>; settlementSummary: Array<{ state: string; count: number; exposure: number }>; payoutSummary: Array<{ status: string; beneficiary_type: string; count: number; amount: number }>; vendorSubmissions: ComplianceSubmission[]; payouts: FinancePayout[] };
 const googleMapUrl = (map?: MapViewport) => {
   const markers = map?.markers?.length ? map.markers : [{ label: 'Nairobi CBD', lat: -1.286389, lng: 36.817223 }];
   const center = map?.center || markers[0];
@@ -47,13 +50,33 @@ function App() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [vendors, setVendors] = useState<Vendor[]>([]);
+  const [finance, setFinance] = useState<FinanceDashboard | null>(null);
+  const [financeMessage, setFinanceMessage] = useState('');
+  const loadFinance = () => api<FinanceDashboard>('/api/admin/finance').then(setFinance).catch((error) => setFinanceMessage(error.message));
   useEffect(() => {
+    if (!session) return;
     api<{ maps: MapsManifest }>('/api/maps/manifest').then((r) => setMaps(r.maps)).catch(() => {});
     api<{ metrics: DashboardMetric[] }>('/api/admin/overview').then((r) => setMetrics(r.metrics)).catch(() => {});
     api<{ orders: Order[] }>('/api/orders').then((r) => setOrders(r.orders)).catch(() => {});
     api<{ tickets: Ticket[] }>('/api/tickets').then((r) => setTickets(r.tickets)).catch(() => {});
     api<{ vendors: Vendor[] }>('/api/vendors').then((r) => setVendors(r.vendors)).catch(() => {});
-  }, []);
+    void loadFinance();
+  }, [session?.user.id]);
+  const reviewVendor = async (vendorId: string, status: 'verified' | 'under_review' | 'rejected' | 'suspended', riskTier?: 'new' | 'standard' | 'trusted' | 'restricted') => {
+    setFinanceMessage('Saving compliance decision...');
+    try { await api('/api/admin/vendors/' + vendorId + '/compliance', { method: 'PATCH', body: JSON.stringify({ status, riskTier, note: status === 'verified' ? 'Identity, business, tax, and settlement profile verified.' : 'Updated by SokoEats operations.' }) }); await loadFinance(); setFinanceMessage('Compliance decision saved.'); }
+    catch (error) { setFinanceMessage(error instanceof Error ? error.message : 'Unable to review vendor'); }
+  };
+  const processDuePayouts = async () => {
+    setFinanceMessage('Creating eligible settlement instructions...');
+    try { const result = await api<{ created: number }>('/api/finance/process-due', { method: 'POST' }); await loadFinance(); setFinanceMessage(result.created + ' payout instruction(s) created.'); }
+    catch (error) { setFinanceMessage(error instanceof Error ? error.message : 'Unable to process due payouts'); }
+  };
+  const executePayout = async (reference: string) => {
+    setFinanceMessage('Submitting payout to the payment provider...');
+    try { await api('/api/finance/payouts/' + reference + '/execute', { method: 'POST' }); await loadFinance(); setFinanceMessage('Payout submitted. Provider status will remain visible here.'); }
+    catch (error) { setFinanceMessage(error instanceof Error ? error.message : 'Unable to submit payout'); }
+  };
   if (!session) return <AuthGate onAuthenticated={setSession} />;
   const mode: string = 'admin';
   const icon = mode === 'vendor' ? <Store /> : mode === 'tickets' ? <TicketCheck /> : mode === 'support' ? <Headphones /> : <Utensils />;
@@ -68,7 +91,11 @@ function App() {
         <section><h2><Store /> Vendors</h2>{vendors.slice(0,6).map((v) => <div className="row" key={v.id}><div><b>{v.name}</b><span>{v.cuisine}</span></div><span className="pill">{v.status}</span></div>)}</section>
         <section><h2><Clock /> Shift notes</h2><div className="note"><CheckCircle2 /> Keep menus lean, dispatch fast, and close the loop with customers before refunds escalate.</div><div className="note"><Bike /> Flag courier delays after 12 minutes without pickup.</div></section>
         <section><h2><Bike /> Command map</h2><MapPreview title={maps?.admin?.commandCenter?.title || 'Marketplace coverage'} map={maps?.admin?.commandCenter?.map} href={maps?.admin?.commandCenter?.dispatchUrl} meta="Vendors, riders, customer demand, and support incidents" /></section>
+        <section className="financeWide"><h2><ShieldCheck /> Vendor verification</h2>{finance?.vendorSubmissions.map((entry) => <div className="financeRecord" key={entry.vendorId}><div><b>{entry.vendorName}</b><span>{entry.legalBusinessName} - {entry.registrationNumber}</span><span>{entry.ownerName} / {entry.ownerEmail}</span><small>KRA {entry.kraPinMasked} - ID {entry.directorNationalIdMasked} - {entry.settlementMethod} {entry.settlementAccountMasked}</small><small>{entry.commissionRateBps / 100}% commission - {entry.riskTier} risk</small></div><div className="financeActions"><span className="pill">{entry.verificationStatus}</span>{entry.verificationStatus !== 'verified' && <button className="primary" onClick={() => reviewVendor(entry.vendorId, 'verified')}>Verify</button>}<button onClick={() => reviewVendor(entry.vendorId, 'under_review')}>Review</button>{entry.verificationStatus === 'verified' && entry.riskTier !== 'trusted' && <button onClick={() => reviewVendor(entry.vendorId, 'verified', 'trusted')}>Mark trusted</button>}<button onClick={() => reviewVendor(entry.vendorId, 'suspended', 'restricted')}>Freeze</button></div></div>)}{!finance?.vendorSubmissions.length && <p className="muted">No compliance submissions yet.</p>}</section>
+        <section><h2><WalletCards /> Settlement lifecycle</h2>{finance?.settlementSummary.map((entry) => <div className="row" key={entry.state}><div><b>{entry.state.replaceAll('_', ' ')}</b><span>KES {Number(entry.exposure).toLocaleString('en-KE')} exposure</span></div><span className="pill">{entry.count}</span></div>)}</section>
+        <section><h2><Banknote /> Provider payouts</h2><div className="row"><span>Risk policy</span>{session.user.role === 'admin' && <button className="primary" onClick={processDuePayouts}>Create due payouts</button>}</div>{finance?.payouts.slice(0, 20).map((entry) => <div className="financeRecord compact" key={entry.reference}><div><b>{entry.vendor_name || entry.rider_name || entry.beneficiary_type}</b><span>KES {Number(entry.amount).toLocaleString('en-KE')} - {entry.status}</span><small>{new Date(entry.scheduled_for).toLocaleString()}</small>{entry.failure_reason && <small>{entry.failure_reason}</small>}</div>{session.user.role === 'admin' && ['scheduled','failed'].includes(entry.status) && <button className="primary" onClick={() => executePayout(entry.reference)}>Pay</button>}</div>)}</section>
       </div>
+      {financeMessage && <div className="financeNotice">{financeMessage}</div>}
     </section>
   </main>;
 }

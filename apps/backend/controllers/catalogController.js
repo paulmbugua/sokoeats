@@ -135,3 +135,25 @@ export async function getVendorMenu(req, res, next) {
     res.json({ vendor: vendorJson({ ...vendor, sections: [] }), sections });
   } catch (err) { next(err); }
 }
+
+export async function similarMenuItems(req, res, next) {
+  try {
+    const { rows: sourceRows } = await pool.query(
+      `SELECT mi.*, v.shop_type FROM sokoeats_menu_items mi JOIN sokoeats_vendors v ON v.id = mi.vendor_id WHERE mi.id = $1 AND mi.available = true`,
+      [req.params.id],
+    );
+    const source = sourceRows[0];
+    if (!source) return res.status(404).json({ message: 'Menu item not found' });
+    const { rows } = await pool.query(
+      `SELECT mi.*, v.slug AS vendor_slug
+         FROM sokoeats_menu_items mi
+         JOIN sokoeats_vendors v ON v.id = mi.vendor_id
+        WHERE mi.id <> $1 AND mi.available = true AND v.status = 'active'
+          AND (mi.vendor_id = $2 OR lower(mi.category) = lower($3) OR v.shop_type = $4)
+        ORDER BY (mi.vendor_id = $2) DESC, (lower(mi.category) = lower($3)) DESC, mi.popular DESC, v.rating DESC
+        LIMIT 12`,
+      [source.id, source.vendor_id, source.category, source.shop_type],
+    );
+    res.json({ item: menuItemJson(source), similar: rows.map(menuItemJson) });
+  } catch (err) { next(err); }
+}

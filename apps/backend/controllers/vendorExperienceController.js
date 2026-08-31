@@ -1,5 +1,6 @@
 import pool from '../config/db.js';
 import { getScreenPayload, saveScreenPayload } from '../models/screenPayloadModel.js';
+import { createImageUpload } from '../services/r2Images.js';
 
 function menuItemJson(row) {
   return {
@@ -18,9 +19,15 @@ function menuItemJson(row) {
   };
 }
 
+async function ownedVendor(userId) {
+  const { rows } = await pool.query('SELECT * FROM sokoeats_vendors WHERE owner_user_id = $1 LIMIT 1', [userId]);
+  if (!rows[0]) throw Object.assign(new Error('Complete vendor onboarding before managing a catalogue'), { status: 409 });
+  return rows[0];
+}
+
 async function loadVendorMenu(vendorSlug = 'nairobi-grill-house') {
   const { rows: vendors } = await pool.query('SELECT * FROM sokoeats_vendors WHERE slug = $1 OR id::text = $1 LIMIT 1', [vendorSlug]);
-  const vendor = vendors[0] || (await pool.query("SELECT * FROM sokoeats_vendors WHERE status = 'active' ORDER BY rating DESC LIMIT 1")).rows[0];
+  const vendor = vendors[0];
   if (!vendor) return null;
   const [sectionsResult, itemsResult] = await Promise.all([
     pool.query('SELECT * FROM sokoeats_menu_categories WHERE vendor_id = $1 ORDER BY sort_order, title', [vendor.id]),
@@ -44,24 +51,22 @@ export async function vendorPortal(_req, res, next) {
 
 export async function vendorMenu(req, res, next) {
   try {
-    const menu = await loadVendorMenu(req.query.vendorSlug || req.query.vendorId || 'nairobi-grill-house');
-    if (menu) return res.json({ menu });
-    res.json({ menu: await getScreenPayload('vendor_menu_management') });
+    const vendor = await ownedVendor(req.auth.sub);
+    const menu = await loadVendorMenu(vendor.slug);
+    if (!menu) return res.status(404).json({ message: 'Vendor catalogue not found' });
+    res.json({ menu });
   } catch (err) { next(err); }
 }
 
 export async function updateMenuAvailability(req, res, next) {
   try {
+    const vendor = await ownedVendor(req.auth.sub);
     const { rows } = await pool.query(
-      'UPDATE sokoeats_menu_items SET available = $1, updated_at = NOW() WHERE id::text = $2 RETURNING *',
-      [Boolean(req.body.available), req.params.id],
+      'UPDATE sokoeats_menu_items SET available = $1, updated_at = NOW() WHERE id::text = $2 AND vendor_id = $3 RETURNING *',
+      [Boolean(req.body.available), req.params.id, vendor.id],
     );
-    if (rows[0]) return res.json({ item: menuItemJson(rows[0]) });
-    const menu = await getScreenPayload('vendor_menu_management');
-    const item = menu.items.find((entry) => entry.id === req.params.id);
-    if (!item) return res.status(404).json({ message: 'Menu item not found' });
-    item.available = Boolean(req.body.available);
-    res.json({ menu: await saveScreenPayload('vendor_menu_management', menu) });
+    if (!rows[0]) return res.status(404).json({ message: 'Menu item not found in your catalogue' });
+    res.json({ item: menuItemJson(rows[0]) });
   } catch (err) { next(err); }
 }
 
@@ -215,10 +220,7 @@ export async function acceptMerchantTerms(req, res, next) {
 
 export async function createMerchantMenuItem(req, res, next) {
   try {
-    const vendorKey = req.body.vendorId || req.body.vendorSlug || 'nairobi-grill-house';
-    const { rows: vendors } = await pool.query('SELECT * FROM sokoeats_vendors WHERE id::text = $1 OR slug = $1 LIMIT 1', [vendorKey]);
-    if (!vendors[0]) return res.status(404).json({ message: 'Vendor not found' });
-    const vendor = vendors[0];
+    const vendor = await ownedVendor(req.auth.sub);
     const sectionTitle = req.body.sectionTitle || req.body.category || 'Items';
     const price = Number(String(req.body.price).replace(/[^0-9.]/g, ''));
     if (!Number.isFinite(price) || price <= 0) return res.status(422).json({ message: 'A valid product price is required' });
@@ -238,6 +240,32 @@ export async function createMerchantMenuItem(req, res, next) {
     );
     const menu = await loadVendorMenu(vendor.slug);
     res.status(201).json({ item: menuItemJson(rows[0]), menu });
+  } catch (err) { next(err); }
+}
+
+export async function createMerchantMenuCategory(req, res, next) {
+  try {
+    const vendor = await ownedVendor(req.auth.sub);
+    const { rows } = await pool.query(
+      `INSERT INTO sokoeats_menu_categories (vendor_id, title, description, sort_order)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (vendor_id, title) DO UPDATE SET description = EXCLUDED.description, sort_order = EXCLUDED.sort_order
+       RETURNING *`,
+      [vendor.id, req.body.title, req.body.description || null, req.body.sortOrder || 0],
+    );
+    res.status(201).json({ category: rows[0], menu: await loadVendorMenu(vendor.slug) });
+  } catch (err) { next(err); }
+}
+
+export async function createVendorImageUpload(req, res, next) {
+  try {
+    await ownedVendor(req.auth.sub);
+    const upload = await createImageUpload({ ownerUserId: req.auth.sub, filename: req.body.filename, contentType: req.body.contentType });
+    await pool.query(
+      'INSERT INTO sokoeats_media_assets (owner_user_id, object_key, public_url, content_type) VALUES ($1,$2,$3,$4)',
+      [req.auth.sub, upload.key, upload.publicUrl, req.body.contentType],
+    );
+    res.status(201).json({ upload });
   } catch (err) { next(err); }
 }
 

@@ -39,9 +39,9 @@ export async function initiateCheckoutPayment(req, res, next) {
 
     await pool.query(
       `INSERT INTO sokoeats_payment_intents
-        (reference, method, provider, amount, currency, status, phone, customer_email, provider_payload)
-       VALUES ($1,$2,$3,$4,$5,'requires_action',$6,$7,$8)`,
-      [reference, method, provider, req.body.amount, currency, phone, req.body.email || null, { initiatedAt: new Date().toISOString() }],
+        (reference, user_id, method, provider, amount, currency, status, phone, customer_email, provider_payload)
+       VALUES ($1,$2,$3,$4,$5,$6,'requires_action',$7,$8,$9)`,
+      [reference, req.auth.sub, method, provider, req.body.amount, currency, phone, req.body.email || req.auth.email || null, { initiatedAt: new Date().toISOString() }],
     );
 
     try {
@@ -90,7 +90,7 @@ export async function initiateCheckoutPayment(req, res, next) {
 }
 export async function confirmCheckoutPayment(req, res, next) {
   try {
-    const existing = await pool.query('SELECT * FROM sokoeats_payment_intents WHERE reference = $1', [req.params.reference]);
+    const existing = await pool.query('SELECT * FROM sokoeats_payment_intents WHERE reference = $1 AND user_id = $2', [req.params.reference, req.auth.sub]);
     if (!existing.rows.length) return res.status(404).json({ message: 'Payment reference not found' });
     paymentLog('confirm:start', { reference: req.params.reference, method: existing.rows[0].method, status: existing.rows[0].status, providerReference: existing.rows[0].provider_reference });
     if (existing.rows[0].status === 'paid') return res.json({ payment: paymentJson(existing.rows[0]) });

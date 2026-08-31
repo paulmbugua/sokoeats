@@ -1,5 +1,6 @@
 import pool from '../config/db.js';
 import { sendOrderUpdateSms } from '../services/smsService.js';
+import { initializeOrderFinance } from '../services/financeService.js';
 
 const code = () => `SE-${Date.now().toString(36).toUpperCase().slice(-6)}`;
 const orderJson = (row) => ({
@@ -17,6 +18,8 @@ const orderJson = (row) => ({
   paymentStatus: row.payment_status,
   paymentReference: row.payment_reference,
   deliveryAddress: row.delivery_address,
+  financeState: row.finance_state,
+  riderUserId: row.rider_user_id,
   createdAt: row.created_at,
 });
 
@@ -24,6 +27,7 @@ async function resolveVendor(client, { vendorId, vendorSlug }) {
   const query = vendorId ? ['SELECT * FROM sokoeats_vendors WHERE id = $1', [vendorId]] : ['SELECT * FROM sokoeats_vendors WHERE slug = $1', [vendorSlug]];
   const { rows } = await client.query(query[0], query[1]);
   if (!rows.length) throw Object.assign(new Error('Vendor not found'), { status: 404 });
+  if (rows[0].status !== 'active') throw Object.assign(new Error('This shop is not currently accepting orders'), { status: 409 });
   return rows[0];
 }
 
@@ -51,14 +55,13 @@ export async function createOrder(req, res, next) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { customerName, customerEmail, phone, deliveryAddress, notes, items, paymentMethod, paymentReference, discountCode } = req.body;
-    const userResult = await client.query(
-      `INSERT INTO sokoeats_users (name, email, phone, role)
-       VALUES ($1, COALESCE($2, $3 || '@guest.sokoeats.local'), $3, 'customer')
-       ON CONFLICT (email) DO UPDATE SET name = EXCLUDED.name, phone = EXCLUDED.phone
-       RETURNING id`,
-      [customerName, customerEmail || null, phone || null],
-    );
+    const { deliveryAddress, notes, items, paymentMethod, paymentReference, discountCode } = req.body;
+    const userResult = await client.query('SELECT * FROM sokoeats_users WHERE id = $1 AND role = $2 FOR UPDATE', [req.auth.sub, 'customer']);
+    const customer = userResult.rows[0];
+    if (!customer) throw Object.assign(new Error('A buyer account is required to place an order'), { status: 403 });
+    if (customer.status !== 'active') throw Object.assign(new Error('This buyer account is not active'), { status: 403 });
+    const phone = req.body.phone || customer.phone;
+    if (!phone) throw Object.assign(new Error('Add a mobile number to your buyer profile before checkout'), { status: 422 });
 
     const vendor = await resolveVendor(client, req.body);
     const menu = await resolveMenu(client, vendor.id, items);
@@ -81,6 +84,7 @@ export async function createOrder(req, res, next) {
     if (!payment.rows.length) throw Object.assign(new Error('Payment is required before placing an order'), { status: 402 });
     const paid = payment.rows[0];
     if (paid.status !== 'paid') throw Object.assign(new Error('Payment has not been completed yet'), { status: 402 });
+    if (paid.user_id && String(paid.user_id) !== String(customer.id)) throw Object.assign(new Error('Payment belongs to a different SokoEats account'), { status: 403 });
     if (paid.order_id) throw Object.assign(new Error('Payment reference has already been used for an order'), { status: 409 });
     if (paid.method !== paymentMethod) throw Object.assign(new Error('Payment method does not match the paid reference'), { status: 409 });
     if (Number(paid.amount) < total) throw Object.assign(new Error('Paid amount does not cover the order total'), { status: 402 });
@@ -90,7 +94,7 @@ export async function createOrder(req, res, next) {
         (code, customer_user_id, vendor_id, subtotal, delivery_fee, service_fee, discount_amount, total, delivery_address, notes, payment_method, payment_status, payment_reference, payment_provider_reference)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,'paid',$12,$13)
        RETURNING *`,
-      [code(), userResult.rows[0].id, vendor.id, subtotal, deliveryFee, serviceFee, discountAmount, total, deliveryAddress, notes || null, paymentMethod, paymentReference, paid.provider_reference || null],
+      [code(), customer.id, vendor.id, subtotal, deliveryFee, serviceFee, discountAmount, total, deliveryAddress, notes || null, paymentMethod, paymentReference, paid.provider_reference || null],
     );
 
     for (const line of lines) {
@@ -102,7 +106,8 @@ export async function createOrder(req, res, next) {
     }
 
     await client.query('UPDATE sokoeats_payment_intents SET order_id = $1, updated_at = NOW() WHERE reference = $2', [order.rows[0].id, paymentReference]);
-    await sendOrderUpdateSms(client, { orderId: order.rows[0].id, orderCode: order.rows[0].code, phone, status: 'placed', extra: `Total KES ${total.toLocaleString('en-KE')}. Track updates from SokoEats.` });
+    const finance = await initializeOrderFinance(client, { order: order.rows[0], payment: paid, vendor, createdBy: customer.id });
+    await sendOrderUpdateSms(client, { orderId: order.rows[0].id, orderCode: order.rows[0].code, phone, status: 'placed', extra: `Total KES ${total.toLocaleString('en-KE')}. Delivery OTP: ${finance.deliveryOtp}. Share it with the rider only after receiving your order.` });
     await client.query('COMMIT');
 
     const full = await pool.query(`SELECT o.*, COALESCE(u.name, 'Guest') AS customer_name, v.name AS vendor_name FROM sokoeats_orders o LEFT JOIN sokoeats_users u ON u.id = o.customer_user_id JOIN sokoeats_vendors v ON v.id = o.vendor_id WHERE o.id = $1`, [order.rows[0].id]);
@@ -114,6 +119,7 @@ export async function createOrder(req, res, next) {
 }
 
 export async function updateOrderStatus(req, res, next) {
+  if (['accepted', 'picked_up', 'delivered'].includes(req.body.status)) return res.status(409).json({ message: 'Use the protected settlement lifecycle endpoint for this status.' });
   const client = await pool.connect();
   try {
     await client.query('BEGIN');

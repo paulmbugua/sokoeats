@@ -14,6 +14,8 @@ import mapRoutes from './routes/mapRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import versionRoutes from './routes/versionRoutes.js';
+import financeRoutes from './routes/financeRoutes.js';
+import { startSettlementWorker } from './services/settlementWorker.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4005);
@@ -21,12 +23,13 @@ const origins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://local
 app.use(helmet());
 app.use(cors({ origin: (origin, cb) => cb(null, !origin || origins.includes(origin)), credentials: true }));
 app.use(morgan('dev'));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '2mb', verify: (req, _res, buffer) => { req.rawBody = Buffer.from(buffer); } }));
 app.get('/healthz', (_req, res) => res.json({ ok: true, app: 'sokoeats' }));
 app.use('/api', authRoutes);
 app.use('/api', catalogRoutes);
 app.use('/api', orderRoutes);
 app.use('/api', paymentRoutes);
+app.use('/api', financeRoutes);
 app.use('/api', ticketRoutes);
 app.use('/api', vendorRoutes);
 app.use('/api', riderRoutes);
@@ -39,4 +42,4 @@ app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(err.status || 500).json({ message: err.message || 'Internal Server Error' });
 });
-app.listen(port, '0.0.0.0', () => console.log(`Sokoeats API listening on :${port}`));
+app.listen(port, '0.0.0.0', () => { console.log(`Sokoeats API listening on :${port}`); startSettlementWorker(); });

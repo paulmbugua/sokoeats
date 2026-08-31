@@ -300,3 +300,257 @@ CREATE TABLE IF NOT EXISTS sokoeats_scan_payments (
 
 CREATE INDEX IF NOT EXISTS idx_sokoeats_scan_payments_vendor ON sokoeats_scan_payments(vendor_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_sokoeats_scan_payments_status ON sokoeats_scan_payments(status, created_at DESC);
+
+ALTER TABLE sokoeats_payment_intents ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL;
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS owner_user_id UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL;
+DROP INDEX IF EXISTS sokoeats_vendors_owner_user_unique;
+CREATE INDEX IF NOT EXISTS sokoeats_vendors_owner_user_idx ON sokoeats_vendors(owner_user_id) WHERE owner_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS sokoeats_payment_intents_user_idx ON sokoeats_payment_intents(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS sokoeats_auth_handoffs (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_payload JSONB NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  consumed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_media_assets (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_user_id UUID NOT NULL REFERENCES sokoeats_users(id) ON DELETE CASCADE,
+  object_key TEXT NOT NULL UNIQUE,
+  public_url TEXT NOT NULL,
+  content_type TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Marketplace finance, compliance, ledger, and settlement subsystem.
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS risk_tier TEXT NOT NULL DEFAULT 'new'
+  CHECK (risk_tier IN ('new','standard','trusted','restricted'));
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS commission_rate_bps INT NOT NULL DEFAULT 1500
+  CHECK (commission_rate_bps BETWEEN 0 AND 5000);
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'not_submitted'
+  CHECK (verification_status IN ('not_submitted','submitted','under_review','verified','rejected','suspended'));
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payout_status TEXT NOT NULL DEFAULT 'not_configured'
+  CHECK (payout_status IN ('not_configured','configuration_required','pending_verification','active','frozen','disabled'));
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS rider_user_id UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS finance_state TEXT NOT NULL DEFAULT 'UNINITIALIZED';
+
+CREATE TABLE IF NOT EXISTS sokoeats_vendor_compliance (
+  vendor_id UUID PRIMARY KEY REFERENCES sokoeats_vendors(id) ON DELETE CASCADE,
+  legal_business_name TEXT NOT NULL,
+  registration_number TEXT NOT NULL,
+  kra_pin_encrypted BYTEA NOT NULL,
+  kra_pin_last4 TEXT NOT NULL,
+  director_name TEXT NOT NULL,
+  director_national_id_encrypted BYTEA NOT NULL,
+  director_national_id_last4 TEXT NOT NULL,
+  settlement_method TEXT NOT NULL CHECK (settlement_method IN ('mpesa_wallet','mpesa_till','mpesa_paybill','bank')),
+  settlement_bank_code TEXT,
+  settlement_account_encrypted BYTEA NOT NULL,
+  settlement_account_last4 TEXT NOT NULL,
+  psp_provider TEXT NOT NULL DEFAULT 'paystack',
+  psp_subaccount_id TEXT,
+  psp_recipient_code TEXT,
+  commission_rate_bps INT NOT NULL DEFAULT 1500 CHECK (commission_rate_bps BETWEEN 0 AND 5000),
+  commission_agreement_version TEXT NOT NULL,
+  commission_agreed_at TIMESTAMPTZ NOT NULL,
+  commission_agreed_by UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL,
+  verification_status TEXT NOT NULL DEFAULT 'submitted' CHECK (verification_status IN ('submitted','under_review','verified','rejected','suspended')),
+  verification_note TEXT,
+  verified_by UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL,
+  verified_at TIMESTAMPTZ,
+  payout_status TEXT NOT NULL DEFAULT 'pending_verification' CHECK (payout_status IN ('configuration_required','pending_verification','active','frozen','disabled')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_payout_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  owner_type TEXT NOT NULL CHECK (owner_type IN ('vendor','rider')),
+  vendor_id UUID REFERENCES sokoeats_vendors(id) ON DELETE CASCADE,
+  rider_user_id UUID REFERENCES sokoeats_users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL DEFAULT 'paystack',
+  method TEXT NOT NULL CHECK (method IN ('mpesa_wallet','mpesa_till','mpesa_paybill','bank')),
+  bank_code TEXT,
+  account_number_encrypted BYTEA NOT NULL,
+  account_last4 TEXT NOT NULL,
+  recipient_code TEXT,
+  schedule TEXT NOT NULL DEFAULT 'daily' CHECK (schedule IN ('immediate','daily')),
+  status TEXT NOT NULL DEFAULT 'pending_verification' CHECK (status IN ('configuration_required','pending_verification','active','frozen','disabled')),
+  verified_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK ((owner_type = 'vendor' AND vendor_id IS NOT NULL AND rider_user_id IS NULL) OR
+         (owner_type = 'rider' AND rider_user_id IS NOT NULL AND vendor_id IS NULL))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS sokoeats_payout_profiles_vendor_unique ON sokoeats_payout_profiles(vendor_id) WHERE vendor_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS sokoeats_payout_profiles_rider_unique ON sokoeats_payout_profiles(rider_user_id) WHERE rider_user_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS sokoeats_ledger_accounts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT UNIQUE NOT NULL,
+  name TEXT NOT NULL,
+  account_type TEXT NOT NULL CHECK (account_type IN ('asset','liability','revenue','expense','equity')),
+  owner_type TEXT NOT NULL DEFAULT 'platform' CHECK (owner_type IN ('platform','vendor','rider','customer','provider','reserve')),
+  owner_id UUID,
+  currency TEXT NOT NULL DEFAULT 'KES',
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_ledger_journals (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reference TEXT UNIQUE NOT NULL,
+  event_type TEXT NOT NULL,
+  order_id UUID REFERENCES sokoeats_orders(id) ON DELETE RESTRICT,
+  payment_intent_id UUID REFERENCES sokoeats_payment_intents(id) ON DELETE RESTRICT,
+  description TEXT NOT NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  posted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_by UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_ledger_lines (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  journal_id UUID NOT NULL REFERENCES sokoeats_ledger_journals(id) ON DELETE RESTRICT,
+  line_no INT NOT NULL,
+  account_id UUID NOT NULL REFERENCES sokoeats_ledger_accounts(id) ON DELETE RESTRICT,
+  direction TEXT NOT NULL CHECK (direction IN ('debit','credit')),
+  amount INT NOT NULL CHECK (amount > 0),
+  description TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(journal_id, line_no)
+);
+
+CREATE OR REPLACE FUNCTION sokoeats_prevent_ledger_mutation() RETURNS trigger AS $$
+BEGIN
+  RAISE EXCEPTION 'Posted SokoEats ledger records are immutable; post a reversing journal instead';
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS sokoeats_ledger_journal_immutable ON sokoeats_ledger_journals;
+CREATE TRIGGER sokoeats_ledger_journal_immutable BEFORE UPDATE OR DELETE ON sokoeats_ledger_journals
+FOR EACH ROW EXECUTE FUNCTION sokoeats_prevent_ledger_mutation();
+DROP TRIGGER IF EXISTS sokoeats_ledger_line_immutable ON sokoeats_ledger_lines;
+CREATE TRIGGER sokoeats_ledger_line_immutable BEFORE UPDATE OR DELETE ON sokoeats_ledger_lines
+FOR EACH ROW EXECUTE FUNCTION sokoeats_prevent_ledger_mutation();
+
+CREATE OR REPLACE FUNCTION sokoeats_assert_journal_balanced() RETURNS trigger AS $$
+DECLARE debit_total BIGINT; credit_total BIGINT; target UUID;
+BEGIN
+  target := COALESCE(NEW.journal_id, OLD.journal_id);
+  SELECT COALESCE(SUM(amount) FILTER (WHERE direction = 'debit'),0),
+         COALESCE(SUM(amount) FILTER (WHERE direction = 'credit'),0)
+    INTO debit_total, credit_total FROM sokoeats_ledger_lines WHERE journal_id = target;
+  IF debit_total <> credit_total THEN
+    RAISE EXCEPTION 'Unbalanced SokoEats journal %, debits %, credits %', target, debit_total, credit_total;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS sokoeats_ledger_balance_guard ON sokoeats_ledger_lines;
+CREATE CONSTRAINT TRIGGER sokoeats_ledger_balance_guard
+AFTER INSERT ON sokoeats_ledger_lines DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION sokoeats_assert_journal_balanced();
+
+CREATE TABLE IF NOT EXISTS sokoeats_order_settlements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  order_id UUID UNIQUE NOT NULL REFERENCES sokoeats_orders(id) ON DELETE RESTRICT,
+  payment_intent_id UUID NOT NULL REFERENCES sokoeats_payment_intents(id) ON DELETE RESTRICT,
+  vendor_id UUID NOT NULL REFERENCES sokoeats_vendors(id) ON DELETE RESTRICT,
+  rider_user_id UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL,
+  state TEXT NOT NULL CHECK (state IN ('PAYMENT_CONFIRMED','VENDOR_ACCEPTED','RIDER_ASSIGNED','PICKED_UP','DELIVERY_OTP_CONFIRMED','PAYOUT_ELIGIBLE','SETTLED','CANCELLED','REFUNDED')),
+  vendor_gross INT NOT NULL,
+  vendor_commission INT NOT NULL,
+  vendor_net INT NOT NULL,
+  service_fee INT NOT NULL,
+  delivery_fee INT NOT NULL,
+  rider_entitlement INT NOT NULL,
+  psp_charge INT NOT NULL DEFAULT 0,
+  reserve_amount INT NOT NULL DEFAULT 0,
+  risk_tier TEXT NOT NULL CHECK (risk_tier IN ('new','standard','trusted','restricted')),
+  vendor_release_at TIMESTAMPTZ,
+  rider_release_at TIMESTAMPTZ,
+  delivery_otp_hash TEXT NOT NULL,
+  otp_verified_at TIMESTAMPTZ,
+  vendor_accepted_at TIMESTAMPTZ,
+  rider_assigned_at TIMESTAMPTZ,
+  picked_up_at TIMESTAMPTZ,
+  delivered_at TIMESTAMPTZ,
+  payout_eligible_at TIMESTAMPTZ,
+  settled_at TIMESTAMPTZ,
+  dispute_status TEXT NOT NULL DEFAULT 'none' CHECK (dispute_status IN ('none','open','resolved_customer','resolved_vendor','resolved_partial')),
+  frozen_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_settlement_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  settlement_id UUID NOT NULL REFERENCES sokoeats_order_settlements(id) ON DELETE RESTRICT,
+  from_state TEXT,
+  to_state TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  actor_user_id UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_payouts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reference TEXT UNIQUE NOT NULL,
+  settlement_id UUID NOT NULL REFERENCES sokoeats_order_settlements(id) ON DELETE RESTRICT,
+  beneficiary_type TEXT NOT NULL CHECK (beneficiary_type IN ('vendor','rider')),
+  vendor_id UUID REFERENCES sokoeats_vendors(id) ON DELETE RESTRICT,
+  rider_user_id UUID REFERENCES sokoeats_users(id) ON DELETE RESTRICT,
+  amount INT NOT NULL CHECK (amount > 0),
+  currency TEXT NOT NULL DEFAULT 'KES',
+  provider TEXT NOT NULL DEFAULT 'paystack',
+  recipient_code TEXT,
+  status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled','queued','otp','processing','paid','failed','frozen','cancelled')),
+  scheduled_for TIMESTAMPTZ NOT NULL,
+  provider_reference TEXT,
+  provider_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  failure_reason TEXT,
+  paid_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(settlement_id, beneficiary_type)
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_refunds (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reference TEXT UNIQUE NOT NULL,
+  order_id UUID NOT NULL REFERENCES sokoeats_orders(id) ON DELETE RESTRICT,
+  payment_intent_id UUID NOT NULL REFERENCES sokoeats_payment_intents(id) ON DELETE RESTRICT,
+  amount INT NOT NULL CHECK (amount > 0),
+  reason TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'requested' CHECK (status IN ('requested','submitted','processing','paid','failed','cancelled')),
+  provider_reference TEXT,
+  provider_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  requested_by UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL,
+  processed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS sokoeats_finance_disputes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  settlement_id UUID NOT NULL REFERENCES sokoeats_order_settlements(id) ON DELETE RESTRICT,
+  opened_by UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL,
+  reason TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','resolved_customer','resolved_vendor','resolved_partial')),
+  resolution_note TEXT,
+  resolved_by UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL,
+  resolved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS sokoeats_ledger_journals_order_idx ON sokoeats_ledger_journals(order_id, posted_at);
+CREATE INDEX IF NOT EXISTS sokoeats_ledger_lines_account_idx ON sokoeats_ledger_lines(account_id, created_at);
+CREATE INDEX IF NOT EXISTS sokoeats_settlements_state_release_idx ON sokoeats_order_settlements(state, vendor_release_at, rider_release_at);
+CREATE INDEX IF NOT EXISTS sokoeats_payouts_due_idx ON sokoeats_payouts(status, scheduled_for);
+CREATE INDEX IF NOT EXISTS sokoeats_refunds_order_idx ON sokoeats_refunds(order_id, created_at DESC);

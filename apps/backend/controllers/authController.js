@@ -245,6 +245,51 @@ async function verifyGoogleIdToken(idToken) {
   };
 }
 
+function vendorShopType(category) {
+  const value = String(category || '').toLowerCase();
+  if (value.includes('grocer')) return 'groceries';
+  if (value.includes('pharm') || value.includes('chemist')) return 'pharmacy';
+  if (value.includes('gas') || value.includes('lpg')) return 'gas';
+  if (value.includes('elect')) return 'electronics';
+  return 'restaurants';
+}
+
+function slugify(value) {
+  return String(value || 'sokoeats-shop').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 72);
+}
+
+async function ensureVendorForUser(userRow) {
+  if (!['vendor', 'merchant'].includes(userRow.role)) return;
+  const completion = profileCompletion(userRow);
+  if (!completion.profileComplete) return;
+  const profile = userRow.profile || {};
+  const businessName = profile.businessName || userRow.name;
+  const shopType = vendorShopType(profile.businessCategory);
+  const baseSlug = slugify(businessName);
+  const owned = await pool.query('SELECT id FROM sokoeats_vendors WHERE owner_user_id = $1 ORDER BY created_at LIMIT 1', [userRow.id]);
+  if (owned.rows[0]) {
+    await pool.query(
+      `UPDATE sokoeats_vendors SET name = $2, cuisine = $3, address = $4, shop_type = $5, tagline = $6, updated_at = NOW() WHERE id = $1`,
+      [owned.rows[0].id, businessName, profile.businessCategory || shopType, profile.storeAddress || userRow.default_address, shopType, profile.tagline || null],
+    );
+  } else {
+    await pool.query(
+      `INSERT INTO sokoeats_vendors (name, slug, cuisine, address, status, shop_type, tagline, owner_user_id) VALUES ($1, $2 || '-' || substr($3::text, 1, 8), $4, $5, 'review', $6, $7, $3)`,
+      [businessName, baseSlug, userRow.id, profile.businessCategory || shopType, profile.storeAddress || userRow.default_address, shopType, profile.tagline || null],
+    );
+  }
+}
+
+function allowedWebReturnUrl(raw) {
+  const fallback = process.env.WEB_APP_URL || 'http://localhost:5173';
+  let target;
+  try { target = new URL(raw || fallback); } catch { target = new URL(fallback); }
+  const allowed = new Set([fallback, ...(process.env.CORS_ORIGINS || '').split(',')].filter(Boolean).map((entry) => {
+    try { return new URL(entry).origin; } catch { return ''; }
+  }));
+  return allowed.has(target.origin) ? target.toString() : fallback;
+}
+
 export async function register(req, res, next) {
   try {
     const role = normalizeRole(req.body.role);
@@ -265,6 +310,7 @@ export async function register(req, res, next) {
        RETURNING *`,
       [name, email, req.body.phone || null, role, passwordHash, role === 'vendor' || role === 'merchant' ? 'review' : 'active', req.body.city || 'Nairobi', req.body.defaultAddress || req.body.address || null, req.body.marketingOptIn !== false, JSON.stringify(profile)],
     );
+    await ensureVendorForUser(rows[0]);
     res.status(201).json(await createSession(rows[0], req, 'password'));
   } catch (err) {
     if (err?.code === '23505') err.status = 409;
@@ -293,7 +339,7 @@ export async function login(req, res, next) {
 export async function googleAuth(req, res, next) {
   try {
     const role = normalizeRole(req.body.role);
-    const googleProfile = await verifyGoogleIdToken(req.body.idToken);
+    const googleProfile = await verifyFirebaseIdToken(req.body.idToken);
     const existing = await pool.query(`SELECT * FROM sokoeats_users WHERE email = $1 OR google_sub = $2 ORDER BY created_at ASC LIMIT 1`, [googleProfile.email, googleProfile.sub]);
     if (existing.rows[0] && !roleMatches(existing.rows[0].role, role)) {
       return res.status(409).json({ message: 'This Google account is already linked to a different SokoEats role' });
@@ -328,6 +374,7 @@ export async function googleAuth(req, res, next) {
       );
       userRow = rows[0];
     }
+    await ensureVendorForUser(userRow);
     res.json(await createSession(userRow, req, 'google'));
   } catch (err) {
     next(err);
@@ -339,6 +386,7 @@ export async function me(req, res, next) {
     const payload = await verifyBearer(req);
     const { rows } = await pool.query(`SELECT * FROM sokoeats_users WHERE id = $1`, [payload.sub]);
     if (!rows[0]) return res.status(401).json({ message: 'Account not found' });
+    await ensureVendorForUser(rows[0]);
     res.json({ user: publicUser(rows[0]) });
   } catch (err) {
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') return res.status(401).json({ message: 'Invalid or expired session' });
@@ -361,9 +409,69 @@ export async function updateProfile(req, res, next) {
        WHERE id = $1 RETURNING *`,
       [payload.sub, req.body.fullName || req.body.name || null, req.body.phone || null, req.body.city || null, req.body.defaultAddress || req.body.address || req.body.storeAddress || null, typeof req.body.marketingOptIn === 'boolean' ? req.body.marketingOptIn : null, JSON.stringify(profile)],
     );
+    await ensureVendorForUser(rows[0]);
     res.json({ user: publicUser(rows[0]) });
   } catch (err) {
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') return res.status(401).json({ message: 'Invalid or expired session' });
     next(err);
   }
+}
+
+export async function beginGoogleWebAuth(req, res, next) {
+  try {
+    const clientId = process.env.GOOGLE_CLIENT_ID_WEB;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    if (!clientId || !clientSecret) throw Object.assign(new Error('Google web OAuth is not configured'), { status: 503 });
+    const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || `${process.env.API_PUBLIC_URL || `${req.protocol}://${req.get('host')}`}/api/auth/google/web/callback`;
+    const returnTo = allowedWebReturnUrl(req.query.returnTo);
+    const state = jwt.sign({ purpose: 'google-web', role: 'customer', returnTo, nonce: crypto.randomUUID() }, getJwtSecret(), { expiresIn: '10m' });
+    const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account', access_type: 'offline' });
+    res.redirect(302, `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+  } catch (err) { next(err); }
+}
+
+export async function googleWebCallback(req, res) {
+  let returnTo = allowedWebReturnUrl();
+  try {
+    const state = jwt.verify(String(req.query.state || ''), getJwtSecret());
+    if (state.purpose !== 'google-web') throw new Error('Invalid OAuth state');
+    returnTo = allowedWebReturnUrl(state.returnTo);
+    if (req.query.error) throw new Error(String(req.query.error_description || req.query.error));
+    const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || `${process.env.API_PUBLIC_URL || `${req.protocol}://${req.get('host')}`}/api/auth/google/web/callback`;
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ code: String(req.query.code || ''), client_id: process.env.GOOGLE_CLIENT_ID_WEB, client_secret: process.env.GOOGLE_CLIENT_SECRET, redirect_uri: redirectUri, grant_type: 'authorization_code' }),
+    });
+    const tokens = await tokenResponse.json().catch(() => ({}));
+    if (!tokenResponse.ok || !tokens.id_token) throw new Error(tokens.error_description || 'Google OAuth token exchange failed');
+    const googleProfile = await verifyGoogleIdToken(tokens.id_token);
+    const existing = await pool.query('SELECT * FROM sokoeats_users WHERE email = $1 OR google_sub = $2 ORDER BY created_at ASC LIMIT 1', [googleProfile.email, googleProfile.sub]);
+    if (existing.rows[0] && !roleMatches(existing.rows[0].role, 'customer')) throw new Error('This Google account is registered for a different SokoEats role');
+    let userRow = existing.rows[0];
+    if (userRow) {
+      const updated = await pool.query(`UPDATE sokoeats_users SET name = COALESCE($2,name), auth_provider = 'google', google_sub = COALESCE(google_sub,$3), avatar_url = COALESCE($4,avatar_url), email_verified = true, last_login_at = NOW() WHERE id = $1 RETURNING *`, [userRow.id, googleProfile.name, googleProfile.sub, googleProfile.avatarUrl]);
+      userRow = updated.rows[0];
+    } else {
+      const created = await pool.query(`INSERT INTO sokoeats_users (name,email,role,status,auth_provider,google_sub,avatar_url,email_verified,terms_accepted_at,last_login_at,profile) VALUES ($1,$2,'customer','active','google',$3,$4,true,NOW(),NOW(),'{}'::jsonb) RETURNING *`, [googleProfile.name, googleProfile.email, googleProfile.sub, googleProfile.avatarUrl]);
+      userRow = created.rows[0];
+    }
+    const session = await createSession(userRow, req, 'google-web');
+    const handoff = await pool.query(`INSERT INTO sokoeats_auth_handoffs (session_payload, expires_at) VALUES ($1, NOW() + INTERVAL '5 minutes') RETURNING id`, [session]);
+    const target = new URL(returnTo);
+    target.searchParams.set('auth_code', handoff.rows[0].id);
+    res.redirect(302, target.toString());
+  } catch (err) {
+    const target = new URL(returnTo);
+    target.searchParams.set('auth_error', err.message || 'Google sign-in failed');
+    res.redirect(302, target.toString());
+  }
+}
+
+export async function exchangeGoogleWebHandoff(req, res, next) {
+  try {
+    const { rows } = await pool.query(`UPDATE sokoeats_auth_handoffs SET consumed_at = NOW() WHERE id = $1 AND consumed_at IS NULL AND expires_at > NOW() RETURNING session_payload`, [req.body.code]);
+    if (!rows[0]) return res.status(401).json({ message: 'Google sign-in link is invalid or expired' });
+    res.json(rows[0].session_payload);
+  } catch (err) { next(err); }
 }

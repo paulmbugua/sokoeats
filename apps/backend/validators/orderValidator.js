@@ -8,9 +8,7 @@ const orderItemSchema = Joi.object({
 }).or('menuItemId', 'menuItemName');
 
 export const createOrderSchema = Joi.object({
-  customerName: Joi.string().min(2).required(),
-  customerEmail: Joi.string().email({ tlds: { allow: false } }).allow('', null),
-  phone: Joi.string().min(9).required(),
+  phone: Joi.string().min(9).allow('', null),
   vendorId: Joi.string().uuid(),
   vendorSlug: Joi.string().min(2),
   deliveryAddress: Joi.string().min(5).required(),
