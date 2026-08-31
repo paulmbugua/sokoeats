@@ -2769,6 +2769,10 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   const [commissionAccepted, setCommissionAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
+  const [deleteVisible, setDeleteVisible] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deleteReason, setDeleteReason] = useState('');
   const authPayload = () => ({
     role,
     fullName: fullName.trim(),
@@ -2949,6 +2953,27 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     }
   };
 
+  const deleteAccount = async () => {
+    if (deleteConfirmation !== 'DELETE') {
+      setMessage('Type DELETE exactly to confirm account deletion.');
+      return;
+    }
+    setBusy(true);
+    setMessage('');
+    try {
+      await sokoeatsApi('/api/auth/account', {
+        method: 'DELETE',
+        body: JSON.stringify({ confirmation: deleteConfirmation, password: deletePassword || null, reason: deleteReason || null }),
+      });
+      setDeleteVisible(false);
+      await onSignOut();
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Your account could not be deleted.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (authSession) {
     const user = authSession.user;
     const signedInRole = user.role;
@@ -3025,9 +3050,28 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
             <Text style={styles.placeOrderText}>{isRider ? 'Open rider workspace' : 'Continue shopping'}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.primaryButton} onPress={onSignOut}><Text style={styles.primaryButtonText}>Sign out</Text></TouchableOpacity>
+          <View style={[styles.signedInCard, { borderColor: colors.error, marginTop: 18 }]}>
+            <View style={styles.sectionHeadingRow}><AppIcon name="receipt" size={20} color={colors.error} /><Text style={[styles.vendorName, { color: colors.error }]}>Delete account</Text></View>
+            <Text style={styles.smsBody}>Permanently remove your personal profile and disable access. Required order and financial records remain anonymised.</Text>
+            <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.error }]} onPress={() => setDeleteVisible(true)}><Text style={styles.primaryButtonText}>Delete my account</Text></TouchableOpacity>
+          </View>
         </ScrollView>
         <BottomNav active="Account" />
         <SourceLedger />
+        <Modal visible={deleteVisible} transparent animationType="slide" onRequestClose={() => !busy && setDeleteVisible(false)}>
+          <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#07130e99' }}>
+            <View style={{ backgroundColor: '#17211d', paddingHorizontal: 22, paddingTop: 24, paddingBottom: 38, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
+              <View style={styles.sectionHeadingRow}><AppIcon name="receipt" size={24} color="#ffb4ab" /><Text style={[styles.checkoutTitle, { color: '#ffffff', marginBottom: 0 }]}>Delete SokoEats account?</Text></View>
+              <Text style={[styles.smsBody, { color: '#d7e4de', marginVertical: 12 }]}>This cannot be undone. Type DELETE below to confirm.</Text>
+              <View style={styles.formFieldCard}><TextInput style={styles.formFieldInput} value={deleteReason} onChangeText={setDeleteReason} placeholder="Reason (optional)" placeholderTextColor={colors.outline} /></View>
+              <View style={styles.formFieldCard}><TextInput style={styles.formFieldInput} value={deleteConfirmation} onChangeText={(value) => setDeleteConfirmation(value.toUpperCase())} autoCapitalize="characters" placeholder="Type DELETE" placeholderTextColor={colors.outline} /></View>
+              <View style={styles.formFieldCard}><TextInput style={styles.formFieldInput} value={deletePassword} onChangeText={setDeletePassword} secureTextEntry placeholder="Password (email accounts only)" placeholderTextColor={colors.outline} /></View>
+              {!!message && <Text style={styles.authMessage}>{message}</Text>}
+              <TouchableOpacity style={[styles.placeOrderButton, { backgroundColor: colors.error }, (busy || deleteConfirmation !== 'DELETE') && styles.disabledButton]} disabled={busy || deleteConfirmation !== 'DELETE'} onPress={deleteAccount}><Text style={styles.placeOrderText}>{busy ? 'Deleting...' : 'Permanently delete account'}</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.primaryButton} disabled={busy} onPress={() => setDeleteVisible(false)}><Text style={styles.primaryButtonText}>Keep my account</Text></TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   }

@@ -326,6 +326,7 @@ export async function login(req, res, next) {
     const { rows } = await pool.query(`SELECT * FROM sokoeats_users WHERE email = $1`, [email]);
     const user = rows[0];
     if (!user || !user.password_hash) return res.status(401).json({ message: 'Invalid email or password' });
+    if (user.deleted_at || user.status === 'disabled') return res.status(403).json({ message: 'This SokoEats account is no longer active' });
     if (role && !roleMatches(user.role, role)) return res.status(403).json({ message: 'This account is registered for a different SokoEats role' });
     const ok = await bcrypt.compare(req.body.password, user.password_hash);
     if (!ok) return res.status(401).json({ message: 'Invalid email or password' });
@@ -341,6 +342,7 @@ export async function googleAuth(req, res, next) {
     const role = normalizeRole(req.body.role);
     const googleProfile = await verifyFirebaseIdToken(req.body.idToken);
     const existing = await pool.query(`SELECT * FROM sokoeats_users WHERE email = $1 OR google_sub = $2 ORDER BY created_at ASC LIMIT 1`, [googleProfile.email, googleProfile.sub]);
+    if (existing.rows[0]?.deleted_at || existing.rows[0]?.status === 'disabled') return res.status(403).json({ message: 'This SokoEats account is no longer active' });
     if (existing.rows[0] && !roleMatches(existing.rows[0].role, role)) {
       return res.status(409).json({ message: 'This Google account is already linked to a different SokoEats role' });
     }
@@ -385,7 +387,7 @@ export async function me(req, res, next) {
   try {
     const payload = await verifyBearer(req);
     const { rows } = await pool.query(`SELECT * FROM sokoeats_users WHERE id = $1`, [payload.sub]);
-    if (!rows[0]) return res.status(401).json({ message: 'Account not found' });
+    if (!rows[0] || rows[0].deleted_at || rows[0].status === 'disabled') return res.status(401).json({ message: 'Account is no longer active' });
     await ensureVendorForUser(rows[0]);
     res.json({ user: publicUser(rows[0]) });
   } catch (err) {
@@ -415,6 +417,48 @@ export async function updateProfile(req, res, next) {
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') return res.status(401).json({ message: 'Invalid or expired session' });
     next(err);
   }
+}
+
+export async function deleteAccount(req, res, next) {
+  const client = await pool.connect();
+  let firebaseUid = null;
+  try {
+    const payload = await verifyBearer(req);
+    await client.query('BEGIN');
+    const result = await client.query('SELECT * FROM sokoeats_users WHERE id=$1 FOR UPDATE', [payload.sub]);
+    const user = result.rows[0];
+    if (!user || user.deleted_at) throw Object.assign(new Error('Account is already deleted'), { status: 404 });
+    if (['admin','support'].includes(user.role)) throw Object.assign(new Error('Staff accounts must be disabled by another platform administrator'), { status: 403 });
+    if (user.password_hash) {
+      const valid = req.body.password && await bcrypt.compare(req.body.password, user.password_hash);
+      if (!valid) throw Object.assign(new Error('Enter your current password to delete this account'), { status: 401 });
+    }
+    const active = await client.query(`SELECT COUNT(*)::int AS count FROM sokoeats_orders o
+      LEFT JOIN sokoeats_vendors v ON v.id=o.vendor_id
+      WHERE (o.customer_user_id=$1 OR o.rider_user_id=$1 OR v.owner_user_id=$1)
+        AND o.status NOT IN ('delivered','cancelled')`, [user.id]);
+    if (active.rows[0].count > 0) throw Object.assign(new Error('Complete or cancel active orders before deleting your account'), { status: 409 });
+    firebaseUid = user.auth_provider === 'google' ? user.google_sub : null;
+    const deletedEmail = `deleted+${user.id}@accounts.sokoeats.invalid`;
+    await client.query(`UPDATE sokoeats_users SET
+      name='Deleted SokoEats user', email=$2, phone=NULL, password_hash=NULL, google_sub=NULL,
+      avatar_url=NULL, city=NULL, default_address=NULL, email_verified=false, phone_verified=false,
+      marketing_opt_in=false, profile='{}'::jsonb, status='disabled', deletion_requested_at=NOW(),
+      deleted_at=NOW(), deletion_reason=$3
+      WHERE id=$1`, [user.id, deletedEmail, req.body.reason || null]);
+    await client.query('UPDATE sokoeats_auth_sessions SET revoked_at=NOW() WHERE user_id=$1 AND revoked_at IS NULL', [user.id]);
+    await client.query("UPDATE sokoeats_vendors SET status='paused' WHERE owner_user_id=$1 AND status <> 'draft'", [user.id]);
+    await client.query('COMMIT');
+    if (firebaseUid) {
+      getFirebaseAuth().then((auth) => auth.deleteUser(firebaseUid)).catch((error) => console.warn('[SokoEats][Auth] Firebase identity cleanup deferred', { message: error.message }));
+    }
+    console.info('[SokoEats][Auth] account-deleted', { userId: user.id, role: user.role });
+    res.json({ deleted: true, message: 'Your SokoEats account and personal profile have been deleted.' });
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
+    if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') return res.status(401).json({ message: 'Invalid or expired session' });
+    next(err);
+  } finally { client.release(); }
 }
 
 export async function beginGoogleWebAuth(req, res, next) {

@@ -3,10 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "packageManager": "yarn@4.9.1",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
+  "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "turbo run dev",
     "build:all": "yarn workspaces run build",
@@ -14,13 +11,10 @@
     "start:backend": "yarn workspace @sokoeats/backend start",
     "dev:web": "yarn workspace @sokoeats/web dev",
     "dev:admin": "yarn workspace @sokoeats/admin dev",
-    "dev:admin-tickets": "yarn workspace @sokoeats/admin-tickets dev",
-    "dev:admin-vendor": "yarn workspace @sokoeats/admin-vendor dev",
-    "dev:admin-support": "yarn workspace @sokoeats/admin-support dev",
     "dev:mobile": "yarn workspace @sokoeats/mobile dev",
     "android": "yarn workspace @sokoeats/mobile android",
     "ios": "yarn workspace @sokoeats/mobile ios",
-    "build": "turbo run build --filter=@sokoeats/backend... --filter=@sokoeats/web... --filter=@sokoeats/admin... --filter=@sokoeats/admin-tickets... --filter=@sokoeats/admin-vendor... --filter=@sokoeats/admin-support...",
+    "build": "turbo run build --filter=@sokoeats/backend... --filter=@sokoeats/web... --filter=@sokoeats/admin...",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "db:setup": "yarn workspace @sokoeats/backend db:setup"

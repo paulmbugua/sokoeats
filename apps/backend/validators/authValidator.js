@@ -58,6 +58,12 @@ export const googleAuthSchema = Joi.object({
   marketingOptIn: Joi.boolean().default(true),
 }).unknown(false);
 
+export const deleteAccountSchema = Joi.object({
+  confirmation: Joi.string().valid('DELETE').required(),
+  password: Joi.string().min(8).max(128).allow('', null),
+  reason: Joi.string().trim().max(500).allow('', null),
+});
+
 export const updateProfileSchema = Joi.object({
   fullName: Joi.string().min(2).max(120),
   name: Joi.string().min(2).max(120),
