@@ -340,6 +340,9 @@ export async function login(req, res, next) {
 export async function googleAuth(req, res, next) {
   try {
     const role = normalizeRole(req.body.role);
+    if (!['customer', 'rider'].includes(role)) {
+      return res.status(403).json({ message: 'Google sign-in is available for buyers and riders. Store partners must submit a business application.' });
+    }
     const googleProfile = await verifyFirebaseIdToken(req.body.idToken);
     const existing = await pool.query(`SELECT * FROM sokoeats_users WHERE email = $1 OR google_sub = $2 ORDER BY created_at ASC LIMIT 1`, [googleProfile.email, googleProfile.sub]);
     if (existing.rows[0]?.deleted_at || existing.rows[0]?.status === 'disabled') return res.status(403).json({ message: 'This SokoEats account is no longer active' });
@@ -468,7 +471,9 @@ export async function beginGoogleWebAuth(req, res, next) {
     if (!clientId || !clientSecret) throw Object.assign(new Error('Google web OAuth is not configured'), { status: 503 });
     const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || `${process.env.API_PUBLIC_URL || `${req.protocol}://${req.get('host')}`}/api/auth/google/web/callback`;
     const returnTo = allowedWebReturnUrl(req.query.returnTo);
-    const state = jwt.sign({ purpose: 'google-web', role: 'customer', returnTo, nonce: crypto.randomUUID() }, getJwtSecret(), { expiresIn: '10m' });
+    const role = normalizeRole(req.query.role || 'customer');
+    if (!['customer', 'rider'].includes(role)) throw Object.assign(new Error('Google sign-in is available for buyers and riders only'), { status: 403 });
+    const state = jwt.sign({ purpose: 'google-web', role, returnTo, nonce: crypto.randomUUID() }, getJwtSecret(), { expiresIn: '10m' });
     const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account', access_type: 'offline' });
     res.redirect(302, `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
   } catch (err) { next(err); }
@@ -491,13 +496,15 @@ export async function googleWebCallback(req, res) {
     if (!tokenResponse.ok || !tokens.id_token) throw new Error(tokens.error_description || 'Google OAuth token exchange failed');
     const googleProfile = await verifyGoogleIdToken(tokens.id_token);
     const existing = await pool.query('SELECT * FROM sokoeats_users WHERE email = $1 OR google_sub = $2 ORDER BY created_at ASC LIMIT 1', [googleProfile.email, googleProfile.sub]);
-    if (existing.rows[0] && !roleMatches(existing.rows[0].role, 'customer')) throw new Error('This Google account is registered for a different SokoEats role');
+    const role = normalizeRole(state.role || 'customer');
+    if (!['customer', 'rider'].includes(role)) throw new Error('Unsupported Google account role');
+    if (existing.rows[0] && !roleMatches(existing.rows[0].role, role)) throw new Error('This Google account is registered for a different SokoEats role');
     let userRow = existing.rows[0];
     if (userRow) {
       const updated = await pool.query(`UPDATE sokoeats_users SET name = COALESCE($2,name), auth_provider = 'google', google_sub = COALESCE(google_sub,$3), avatar_url = COALESCE($4,avatar_url), email_verified = true, last_login_at = NOW() WHERE id = $1 RETURNING *`, [userRow.id, googleProfile.name, googleProfile.sub, googleProfile.avatarUrl]);
       userRow = updated.rows[0];
     } else {
-      const created = await pool.query(`INSERT INTO sokoeats_users (name,email,role,status,auth_provider,google_sub,avatar_url,email_verified,terms_accepted_at,last_login_at,profile) VALUES ($1,$2,'customer','active','google',$3,$4,true,NOW(),NOW(),'{}'::jsonb) RETURNING *`, [googleProfile.name, googleProfile.email, googleProfile.sub, googleProfile.avatarUrl]);
+      const created = await pool.query(`INSERT INTO sokoeats_users (name,email,role,status,auth_provider,google_sub,avatar_url,email_verified,terms_accepted_at,last_login_at,profile) VALUES ($1,$2,$3,'active','google',$4,$5,true,NOW(),NOW(),'{}'::jsonb) RETURNING *`, [googleProfile.name, googleProfile.email, role, googleProfile.sub, googleProfile.avatarUrl]);
       userRow = created.rows[0];
     }
     const session = await createSession(userRow, req, 'google-web');

@@ -2,8 +2,10 @@ import { Router } from 'express';
 import { acceptDeliveryRequest, activeDelivery, confirmPickup, confirmScanPayment, confirmScanPaymentStatus, incidentConfirmation, liveChatSupport, markArrived, quizResultsFeedback, referralRewards, requestRiderPayout, resolvedTicketDetails, riderEarnings, riderHelpCenter, riderHome, riderLeaderboard, riderOnboarding, riderOrderDetails, riderPayoutConfirmation, riderProfileRatings, riderReferralSuite, riderSupportTrainingSuite, riderTrainingDashboard, riderTrainingLesson, riderTrainingQuiz, safetyIncidentReport, sendReferralInvitations, sendRiderChatMessage, submitSafetyIncident, submitTrainingQuiz, supportTicketHistory, topUpWallet, transactionHistory, updateRiderOnboardingStep, walletPaymentSuite, withdrawWallet } from '../controllers/riderController.js';
 import { validate } from '../validators/validate.js';
 import { incidentReportSchema, quizSubmissionSchema, referralInvitationsSchema, riderChatMessageSchema, riderOnboardingStepSchema, scanPaymentSchema, walletTopUpSchema, walletWithdrawSchema } from '../validators/interactionValidator.js';
+import { requireAuth, requireRole } from '../middleware/auth.js';
 
 const router = Router();
+router.use('/rider', requireAuth, requireRole('rider', 'courier'));
 router.get('/rider/home', riderHome);
 router.get('/wallet/payment-suite', walletPaymentSuite);
 router.post('/wallet/top-ups', validate(walletTopUpSchema), topUpWallet);

@@ -69,8 +69,8 @@ const MOBILE_APP_VERSION = '1.0.0';
 const authRoleOptions: { role: UserRole; label: string; subtitle: string; icon: IconName }[] = [
   { role: 'customer', label: 'Buyer', subtitle: 'Order meals, groceries, medicine, gas, and essentials', icon: 'bag' },
   { role: 'rider', label: 'Rider', subtitle: 'Accept deliveries, earnings, training, and safety tools', icon: 'bike' },
-  { role: 'vendor', label: 'Vendor', subtitle: 'Apply for a store, upload products, then manage menus after review', icon: 'grid' },
-  { role: 'merchant', label: 'Merchant Admin', subtitle: 'Create a business owner account, complete store details, then await approval', icon: 'grid' },
+  { role: 'vendor', label: 'Vendor application', subtitle: 'Submit a shop for verification and account activation', icon: 'grid' },
+  { role: 'merchant', label: 'Merchant application', subtitle: 'Register a business and nominate its store administrator', icon: 'grid' },
 ];
 const BottomNavNavigationContext = createContext<((screen: Screen) => void) | null>(null);
 
@@ -2091,8 +2091,8 @@ function SokoEatsApp() {
   const [screen, setScreen] = useState<Screen>('splash');
   const [activeChip, setActiveChip] = useState(chips[0]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('mpesa');
-  const [riderHome, setRiderHome] = useState<RiderHomePayload>(fallbackRiderHome);
-  const [activeDelivery, setActiveDelivery] = useState<ActiveDeliveryPayload>(fallbackActiveDelivery);
+  const [riderHome, setRiderHome] = useState<RiderHomePayload | null>(null);
+  const [activeDelivery, setActiveDelivery] = useState<ActiveDeliveryPayload | null>(null);
   const [riderBatch, setRiderBatch] = useState<Record<string, GenericPayload>>(fallbackRiderBatch);
   const [maps, setMaps] = useState<MapsManifest>(fallbackMaps);
   const [selectedShopCategory, setSelectedShopCategory] = useState<ShopCategoryKey>('restaurants');
@@ -2255,9 +2255,51 @@ function SokoEatsApp() {
     openScreen('paymentSuccessful');
   };
 
-  const routeForRole = (role: UserRole) => {
-    if (role === 'rider') openScreen('riderHome');
-    else if (role === 'support' || role === 'admin') openScreen('supportTicketHistory');
+  const openRiderWorkspace = async (session = authSession) => {
+    if (!session || session.user.role !== 'rider') throw new Error('Sign in with an activated rider account to continue.');
+    if (session.user.profileComplete === false) {
+      openScreen('accountAccess');
+      return;
+    }
+    const authorization = { Authorization: `Bearer ${session.token}` };
+    const [home, delivery, onboarding, earnings, payout, leaderboard, profile, support, referrals, liveMaps] = await Promise.all([
+      sokoeatsApi<{ riderHome: RiderHomePayload }>('/api/rider/home', { headers: authorization }),
+      sokoeatsApi<{ delivery: ActiveDeliveryPayload }>('/api/rider/active-delivery', { headers: authorization }),
+      sokoeatsApi<{ onboarding: Record<string, GenericPayload> }>('/api/rider/onboarding', { headers: authorization }),
+      sokoeatsApi<{ earnings: GenericPayload }>('/api/rider/earnings', { headers: authorization }),
+      sokoeatsApi<{ payout: GenericPayload }>('/api/rider/payout-confirmation', { headers: authorization }),
+      sokoeatsApi<{ leaderboard: GenericPayload }>('/api/rider/leaderboard', { headers: authorization }),
+      sokoeatsApi<{ profile: GenericPayload }>('/api/rider/profile-ratings', { headers: authorization }),
+      sokoeatsApi<{ suite: Record<string, GenericPayload> }>('/api/rider/support-training-suite', { headers: authorization }),
+      sokoeatsApi<{ referrals: Record<string, GenericPayload> }>('/api/rider/referrals-suite', { headers: authorization }),
+      sokoeatsApi<{ maps: MapsManifest }>('/api/maps/manifest'),
+    ]);
+    if (!home.riderHome?.request?.id || !/^https:\/\//i.test(home.riderHome.heatmapUrl || '')) {
+      throw new Error('The live rider request or surge map is unavailable. Try again when dispatch data is online.');
+    }
+    const mapLoaded = await Image.prefetch(home.riderHome.heatmapUrl);
+    if (!mapLoaded) throw new Error('The live surge map could not be loaded. Check your connection and retry.');
+    if (!liveMaps.maps?.rider?.deliveryRequest?.map) throw new Error('Live rider navigation is unavailable.');
+    setRiderHome(home.riderHome);
+    setActiveDelivery(delivery.delivery);
+    setMaps(liveMaps.maps);
+    setRiderBatch((current) => ({
+      ...current,
+      ...onboarding.onboarding,
+      ...support.suite,
+      ...referrals.referrals,
+      rider_earnings_dashboard: earnings.earnings,
+      m_pesa_payout_confirmation: payout.payout,
+      rider_leaderboard: leaderboard.leaderboard,
+      rider_profile_ratings: profile.profile,
+    }));
+    openScreen('riderHome');
+  };
+
+  const routeForRole = async (session: AuthSession) => {
+    if (session.user.role === 'rider') await openRiderWorkspace(session);
+    else if (session.user.role === 'vendor' || session.user.role === 'merchant') openScreen('accountAccess');
+    else if (session.user.role === 'support' || session.user.role === 'admin') openScreen('supportTicketHistory');
     else openScreen('home');
   };
 
@@ -2271,7 +2313,7 @@ function SokoEatsApp() {
     const destination = pendingAfterAuth.current;
     pendingAfterAuth.current = null;
     if (destination && session.user.role === 'customer') openScreen(destination);
-    else routeForRole(session.user.role);
+    else await routeForRole(session);
   };
 
   const openCheckout = () => {
@@ -2342,7 +2384,7 @@ function SokoEatsApp() {
         {screen === 'shopDetail' && selectedShop && <ShopDetailScreen shop={selectedShop} sections={shopMenuSections} similarItems={similarItems} loading={shopMenuLoading} error={shopMenuError} onBack={() => openScreen('categories')} onAddItem={addShopItemToBasket} onCheckout={openCheckout} />}
         {screen === 'orders' && <OrdersScreen shops={availableShops} basket={basketItems} checkoutShop={checkoutShop} onBack={() => openScreen('home')} onCheckout={openCheckout} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} />}
         {screen === 'favourites' && <FavouritesScreen shops={availableShops} onBack={() => openScreen('home')} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} />}
-        {screen === 'accountAccess' && <AccountAccessScreen authSession={authSession} onAuthenticated={handleAuthenticated} onSignOut={handleSignOut} onBack={() => openScreen('home')} onRider={() => openScreen('riderHome')} />}
+        {screen === 'accountAccess' && <AccountAccessScreen authSession={authSession} onAuthenticated={handleAuthenticated} onSignOut={handleSignOut} onBack={() => openScreen('home')} onRider={() => openRiderWorkspace()} />}
         {screen === 'walletHome' && <WalletHomeScreen data={riderBatch.sokoeats_wallet} onBack={() => openScreen('home')} onTopUp={() => openScreen('walletTopUp')} onWithdraw={() => openScreen('walletWithdraw')} onScan={() => openScreen('scanQr')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'walletTopUp' && <WalletTopUpScreen data={riderBatch.top_up_wallet} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ topUp: GenericPayload; history: GenericPayload }>('/api/wallet/top-ups', { method: 'POST', body: JSON.stringify({ amount, method: 'M-Pesa Express' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, top_up_wallet: next.topUp, full_transaction_history: next.history })); openScreen('walletHome'); }} />}
         {screen === 'walletWithdraw' && <WalletWithdrawScreen data={riderBatch.withdraw_to_m_pesa} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ withdrawal: GenericPayload }>('/api/wallet/withdrawals', { method: 'POST', body: JSON.stringify({ amount, destination: 'M-Pesa Account' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, withdraw_to_m_pesa: next.withdrawal })); openScreen('walletHome'); }} />}
@@ -2350,8 +2392,8 @@ function SokoEatsApp() {
         {screen === 'confirmPayment' && <ConfirmPaymentScreen data={riderBatch.confirm_payment} draft={scanPaymentDraft} onBack={() => openScreen('scanQr')} onSuccess={completeScanPayment} />}
         {screen === 'paymentSuccessful' && <PaymentSuccessfulScreen data={riderBatch.payment_successful} onBack={() => openScreen('walletHome')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'transactionHistory' && <TransactionHistoryScreen data={riderBatch.full_transaction_history} onBack={() => openScreen('walletHome')} />}
-        {screen === 'riderHome' && <RiderHomeScreen data={riderHome} onBack={() => openScreen('home')} onOnboarding={() => openScreen('riderOnboardingWelcome')} onEarnings={() => openScreen('riderEarnings')} onLeaderboard={() => openScreen('riderLeaderboard')} onProfile={() => openScreen('riderProfile')} onHelp={() => openScreen('riderHelpCenter')} onIncident={() => openScreen('riderIncidentReport')} onTraining={() => openScreen('riderTraining')} onOrderDetail={() => openScreen('riderOrderDetail')} onReferral={() => openScreen('referralHome')} onTickets={() => openScreen('supportTicketHistory')} onAccept={async () => { try { const next = await sokoeatsApi<{ riderHome: RiderHomePayload; delivery: ActiveDeliveryPayload }>(`/api/rider/requests/${riderHome.request.id}/accept`, { method: 'POST' }); setRiderHome(next.riderHome); setActiveDelivery(next.delivery); } catch {} openScreen('activeDelivery'); }} />}
-        {screen === 'activeDelivery' && <ActiveDeliveryScreen data={activeDelivery} onBack={() => openScreen('riderHome')} onArrived={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/arrived`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} onPickup={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/pickup`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} />}
+        {screen === 'riderHome' && riderHome && <RiderHomeScreen data={riderHome} onBack={() => openScreen('home')} onOnboarding={() => openScreen('riderOnboardingWelcome')} onEarnings={() => openScreen('riderEarnings')} onLeaderboard={() => openScreen('riderLeaderboard')} onProfile={() => openScreen('riderProfile')} onHelp={() => openScreen('riderHelpCenter')} onIncident={() => openScreen('riderIncidentReport')} onTraining={() => openScreen('riderTraining')} onOrderDetail={() => openScreen('riderOrderDetail')} onReferral={() => openScreen('referralHome')} onTickets={() => openScreen('supportTicketHistory')} onAccept={async () => { try { const next = await sokoeatsApi<{ riderHome: RiderHomePayload; delivery: ActiveDeliveryPayload }>(`/api/rider/requests/${riderHome.request.id}/accept`, { method: 'POST' }); setRiderHome(next.riderHome); setActiveDelivery(next.delivery); openScreen('activeDelivery'); } catch (error) { Alert.alert('Unable to accept delivery', error instanceof Error ? error.message : 'Dispatch could not confirm this request.'); } }} />}
+        {screen === 'activeDelivery' && activeDelivery && <ActiveDeliveryScreen data={activeDelivery} onBack={() => openScreen('riderHome')} onArrived={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/arrived`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} onPickup={async () => { const next = await sokoeatsApi<{ delivery: ActiveDeliveryPayload }>(`/api/rider/deliveries/${activeDelivery.order.code}/pickup`, { method: 'POST' }).catch(() => null); if (next) setActiveDelivery(next.delivery); }} />}
         {screen === 'riderOnboardingWelcome' && <RiderWelcomeScreen data={riderBatch.welcome_to_sokoeats_rider} onBack={() => openScreen('riderHome')} onNext={() => openScreen('riderPersonal')} />}
         {screen === 'riderPersonal' && <RiderFormScreen data={riderBatch.personal_information} onBack={() => openScreen('riderOnboardingWelcome')} onNext={() => openScreen('riderVehicle')} />}
         {screen === 'riderVehicle' && <RiderFormScreen data={riderBatch.vehicle_verification} onBack={() => openScreen('riderPersonal')} onNext={() => openScreen('riderDocuments')} />}
@@ -2743,7 +2785,7 @@ function FavouritesScreen({ shops, onBack, onReorder, onRate, ratings, onShopOpe
   );
 }
 
-function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, onRider }: { authSession: AuthSession | null; onAuthenticated: (session: AuthSession) => Promise<void>; onSignOut: () => Promise<void>; onBack: () => void; onRider: () => void }) {
+function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, onRider }: { authSession: AuthSession | null; onAuthenticated: (session: AuthSession) => Promise<void>; onSignOut: () => Promise<void>; onBack: () => void; onRider: () => Promise<void> }) {
   const maps = useContext(MapsContext) || fallbackMaps;
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [role, setRole] = useState<UserRole>('customer');
@@ -2773,6 +2815,8 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteReason, setDeleteReason] = useState('');
+  const googleEnabled = role === 'customer' || role === 'rider';
+  const partnerApplication = role === 'vendor' || role === 'merchant';
   const authPayload = () => ({
     role,
     fullName: fullName.trim(),
@@ -2887,6 +2931,10 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   }, [authSession?.user?.id]);
 
   const continueWithGoogle = async () => {
+    if (!googleEnabled) {
+      setMessage('Vendors and merchants must submit a business application for verification.');
+      return;
+    }
     if (!GOOGLE_WEB_CLIENT_ID || !FIREBASE_API_KEY) {
       Alert.alert('Google sign-in not configured', 'The Firebase web client ID and API key are required.');
       return;
@@ -2904,6 +2952,29 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     } catch (err) {
       console.warn('[SokoEats][Auth] google:native-error', { message: err instanceof Error ? err.message : String(err) });
       setMessage(err instanceof Error ? err.message : 'Google sign-in failed. Confirm Firebase SHA-1 and package configuration.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const requestRiderMode = async () => {
+    if (!authSession) {
+      setRole('rider');
+      setMode('login');
+      setMessage('Sign in with your rider account before opening live dispatch.');
+      return;
+    }
+    if (authSession.user.role !== 'rider') {
+      setMessage('This session is not a rider account. Sign out, then sign in as a rider.');
+      return;
+    }
+    setBusy(true);
+    setMessage('Loading live requests, navigation, and surge data...');
+    try {
+      await onRider();
+      setMessage('');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'The live rider workspace is unavailable.');
     } finally {
       setBusy(false);
     }
@@ -2978,6 +3049,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     const user = authSession.user;
     const signedInRole = user.role;
     const isRider = signedInRole === 'rider';
+    const isPartner = signedInRole === 'vendor' || signedInRole === 'merchant';
     const needsCompletion = user.profileComplete === false;
     if (needsCompletion) {
       return (
@@ -2987,7 +3059,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
             <View style={styles.profileHero}>
               {user.avatarUrl ? <Image source={{ uri: user.avatarUrl }} style={styles.profileAvatar} /> : <AppIcon name="person" size={54} color={colors.primary} />}
               <Text style={styles.checkoutTitle}>{profileCompletionTitle(signedInRole)}</Text>
-              <Text style={styles.checkoutSubtitle}>Google sign-in is complete. Add the details SokoEats needs for your account.</Text>
+              <Text style={styles.checkoutSubtitle}>Sign-in is complete. Add the details SokoEats needs for your account.</Text>
             </View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Mobile number</Text><TextInput style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>City</Text><TextInput style={styles.formFieldInput} value={city} onChangeText={setCity} placeholder="Nairobi" placeholderTextColor={colors.outline} /></View>
@@ -3041,14 +3113,15 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
           </View>
           <View style={styles.signedInCard}>
             <View style={styles.sectionHeadingRow}><Text style={styles.vendorName}>SokoEats account</Text><Text style={styles.discountText}>{user.status || 'active'}</Text></View>
-            <Text style={styles.smsBody}>{isRider ? 'Rider tools, delivery requests, earnings, training, and support are unlocked on this device.' : 'Ordering, wallet, saved addresses, ratings, reorders, referrals, and payments are unlocked on this device.'}</Text>
+            <Text style={styles.smsBody}>{isRider ? 'Rider tools open with live delivery requests, navigation, surge, earnings, training, and support data.' : isPartner ? (user.status === 'active' ? 'Your business is active. Use SokoEats Partner on the web to manage the store and catalogue.' : 'Your business application is being verified. Store and catalogue tools unlock after activation.') : 'Ordering, wallet, saved addresses, ratings, reorders, referrals, and payments are unlocked on this device.'}</Text>
             <Text style={styles.secureText}>Session expires {new Date(authSession.expiresAt).toLocaleDateString()}</Text>
           </View>
-          <MapPanel title="Default delivery address" subtitle={user.defaultAddress || defaultAddress} map={maps.customer.savedAddresses?.[0]?.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Open pin" />
-          <TouchableOpacity style={styles.placeOrderButton} onPress={isRider ? onRider : onBack}>
+          {!isPartner && <MapPanel title={isRider ? 'Current delivery zone' : 'Default delivery address'} subtitle={user.defaultAddress || user.city || defaultAddress} map={isRider ? maps.rider.deliveryRequest.map : maps.customer.savedAddresses?.[0]?.map} actionUrl={isRider ? maps.rider.deliveryRequest.acceptUrl : maps.customer.nearbyVendors.actionUrl} actionLabel="Open pin" />}
+          {!isPartner && <TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={isRider ? requestRiderMode : onBack}>
             <AppIcon name={isRider ? 'bike' : 'home'} size={18} color={colors.onPrimary} style={styles.inlineIcon} />
-            <Text style={styles.placeOrderText}>{isRider ? 'Open rider workspace' : 'Continue shopping'}</Text>
-          </TouchableOpacity>
+            <Text style={styles.placeOrderText}>{isRider ? (busy ? 'Loading live dispatch...' : 'Open rider workspace') : 'Continue shopping'}</Text>
+          </TouchableOpacity>}
+          {isPartner && <View style={styles.signedInCard}><View style={styles.sectionHeadingRow}><AppIcon name="check" size={20} color={user.status === 'active' ? colors.secondary : colors.primary} /><Text style={styles.vendorName}>{user.status === 'active' ? 'Store activated' : 'Verification in progress'}</Text></View><Text style={styles.smsBody}>Partner Operations will use your registered email or phone if supporting documents are required.</Text></View>}
           <TouchableOpacity style={styles.primaryButton} onPress={onSignOut}><Text style={styles.primaryButtonText}>Sign out</Text></TouchableOpacity>
           <View style={[styles.signedInCard, { borderColor: colors.error, marginTop: 18 }]}>
             <View style={styles.sectionHeadingRow}><AppIcon name="receipt" size={20} color={colors.error} /><Text style={[styles.vendorName, { color: colors.error }]}>Delete account</Text></View>
@@ -3083,9 +3156,9 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
         <View style={styles.profileHero}>
           <AppIcon name="person" size={54} color={colors.primary} />
           <Text style={styles.checkoutTitle}>{mode === 'login' ? 'Welcome back to SokoEats' : 'Create your SokoEats account'}</Text>
-          <Text style={styles.checkoutSubtitle}>One secure account for buyers, riders, vendors, and merchant admins.</Text>
+          <Text style={styles.checkoutSubtitle}>Buyer and rider access, plus verified applications for store partners.</Text>
         </View>
-        <View style={styles.smsCard}><Text style={styles.vendorName}>Account enrollment</Text><Text style={styles.smsBody}>Buyers and riders can create accounts in the mobile app. Vendors and merchant admins can use Google or password, submit business details, then SokoEats reviews the store before it goes live. Platform admin and support accounts are invitation-only and are created from the web dashboards with a private code.</Text></View>
+        <View style={styles.smsCard}><Text style={styles.vendorName}>Choose your SokoEats access</Text><Text style={styles.smsBody}>Buyers and riders can sign in with Google or email. Vendors and merchants submit verified business and settlement details; SokoEats activates the store after review.</Text></View>
         <View style={styles.authModeSwitch}>
           <TouchableOpacity style={mode === 'login' ? styles.tabPillActive : styles.tabPill} onPress={() => setMode('login')}><Text style={mode === 'login' ? styles.authPillActiveText : styles.authPillText}>Login</Text></TouchableOpacity>
           <TouchableOpacity style={mode === 'register' ? styles.tabPillActive : styles.tabPill} onPress={() => setMode('register')}><Text style={mode === 'register' ? styles.authPillActiveText : styles.authPillText}>Create account</Text></TouchableOpacity>
@@ -3099,6 +3172,16 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
             </TouchableOpacity>
           ))}
         </View>
+        {googleEnabled && (
+          <>
+            <TouchableOpacity style={[styles.googleAuthButton, busy && styles.disabledButton]} disabled={busy} onPress={continueWithGoogle}>
+              <Text style={styles.googleMark}>G</Text>
+              <Text style={styles.googleAuthText}>Continue with Google</Text>
+            </TouchableOpacity>
+            <Text style={styles.secureText}>or continue with email</Text>
+          </>
+        )}
+        {partnerApplication && mode === 'register' && <View style={styles.signedInCard}><Text style={styles.vendorName}>Business verification required</Text><Text style={styles.smsBody}>Complete every legal, store, and settlement field below. Catalogue publishing unlocks only after SokoEats approves the application.</Text></View>}
         {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>{role === 'vendor' || role === 'merchant' ? 'Owner or admin name' : 'Full name'}</Text><TextInput style={styles.formFieldInput} value={fullName} onChangeText={setFullName} placeholder="Your full name" placeholderTextColor={colors.outline} /></View>}
         <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Email address</Text><TextInput style={styles.formFieldInput} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="paul@sokoeats.co.ke" placeholderTextColor={colors.outline} /></View>
         <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Password</Text><TextInput style={styles.formFieldInput} value={password} onChangeText={setPassword} secureTextEntry placeholder={mode === 'register' ? 'At least 8 characters' : 'Your password'} placeholderTextColor={colors.outline} /></View>
@@ -3131,15 +3214,11 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
         )}
         <MapPanel title="Default delivery address" subtitle={maps.customer.savedAddresses?.[0]?.address || defaultAddress} map={maps.customer.savedAddresses?.[0]?.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Edit pin" />
         {!!message && <Text style={styles.authMessage}>{message}</Text>}
-        <TouchableOpacity style={[styles.googleAuthButton, busy && styles.disabledButton]} disabled={busy} onPress={continueWithGoogle}>
-          <Text style={styles.googleMark}>G</Text>
-          <Text style={styles.googleAuthText}>Continue with Google</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={submitPasswordAuth}>
           <AppIcon name={mode === 'login' ? 'person' : 'check'} size={18} color={colors.onPrimary} style={styles.inlineIcon} />
-          <Text style={styles.placeOrderText}>{busy ? 'Please wait...' : mode === 'login' ? 'Login' : 'Create SokoEats Account'}</Text>
+          <Text style={styles.placeOrderText}>{busy ? 'Please wait...' : mode === 'login' ? 'Login' : partnerApplication ? 'Submit application' : 'Create SokoEats account'}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.smsCard} onPress={onRider}><Text style={styles.vendorName}>Already delivering with SokoEats?</Text><Text style={styles.smsBody}>Open partner tools, onboarding, earnings, and support dashboards.</Text><Text style={styles.changeText}>Continue to rider mode</Text></TouchableOpacity>
+        <TouchableOpacity style={styles.smsCard} disabled={busy} onPress={requestRiderMode}><Text style={styles.vendorName}>Already delivering with SokoEats?</Text><Text style={styles.smsBody}>Rider mode opens only after authentication and loads live dispatch, navigation, surge, earnings, and support data.</Text><Text style={styles.changeText}>{busy ? 'Loading rider mode...' : 'Continue to rider mode'}</Text></TouchableOpacity>
       </ScrollView>
       <BottomNav active="Account" />
       <SourceLedger />

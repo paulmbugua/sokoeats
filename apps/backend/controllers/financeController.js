@@ -92,6 +92,13 @@ export async function reviewVendorCompliance(req, res, next) {
     if (!rows[0]) throw Object.assign(new Error('Vendor compliance submission not found'), { status: 404 });
     if (status === 'verified' && !rows[0].psp_recipient_code) throw Object.assign(new Error('A Paystack recipient code is required before payout activation'), { status: 409 });
     await client.query(`UPDATE sokoeats_vendors SET verification_status=$2,payout_status=$3,risk_tier=COALESCE($4,risk_tier),status=CASE WHEN $2='verified' THEN 'active' ELSE status END,updated_at=NOW() WHERE id=$1`, [req.params.vendorId, status, payoutStatus, req.body.riskTier || null]);
+    await client.query(
+      `UPDATE sokoeats_users u
+       SET status=CASE WHEN $2='verified' THEN 'active' WHEN $2 IN ('rejected','suspended') THEN 'disabled' ELSE 'review' END
+       FROM sokoeats_vendors v
+       WHERE v.id=$1 AND u.id=v.owner_user_id`,
+      [req.params.vendorId, status],
+    );
     await client.query(`UPDATE sokoeats_payout_profiles SET status=$2,verified_at=CASE WHEN $2='active' THEN NOW() ELSE verified_at END,updated_at=NOW() WHERE vendor_id=$1`, [req.params.vendorId, payoutStatus]);
     await client.query('COMMIT');
     res.json({ compliance: publicCompliance(rows[0]) });

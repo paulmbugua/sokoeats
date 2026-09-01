@@ -1,5 +1,6 @@
 import '../config/env.js';
 import jwt from 'jsonwebtoken';
+import pool from '../config/db.js';
 
 function jwtSecret() {
   const secret = process.env.JWT_SECRET || process.env.AUTH_JWT_SECRET;
@@ -29,4 +30,25 @@ export function requireRole(...roles) {
     if (!roles.includes(req.auth.role)) return next(Object.assign(new Error('This account cannot perform that action'), { status: 403 }));
     next();
   };
+}
+
+export async function requireVerifiedVendor(req, _res, next) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT status, verification_status
+       FROM sokoeats_vendors
+       WHERE owner_user_id = $1
+       ORDER BY created_at ASC
+       LIMIT 1`,
+      [req.auth?.sub],
+    );
+    const vendor = rows[0];
+    if (!vendor || vendor.status !== 'active' || vendor.verification_status !== 'verified') {
+      throw Object.assign(new Error('Your store application must be verified before publishing catalogue changes'), { status: 403 });
+    }
+    req.vendor = vendor;
+    next();
+  } catch (error) {
+    next(error);
+  }
 }

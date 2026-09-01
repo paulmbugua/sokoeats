@@ -1,0 +1,25 @@
+.dialog select {
+  width: 100%;
+  margin: 6px 0;
+  padding: 12px;
+  color: #fff;
+  background: #26332d;
+  border: 1px solid #506158;
+  border-radius: 6px;
+}
+
+.accountDialog { width: min(100%, 680px); }
+.roleChoice { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin: 16px 0; }
+.roleChoice button { padding: 10px 6px; color: #dce7e1; font-weight: 800; background: #26332d; border: 1px solid #506158; border-radius: 6px; }
+.roleChoice button.active { color: #ffc562; background: #44351f; border-color: #f0a240; }
+.formPair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.applicationNotice { display: flex; align-items: center; gap: 11px; padding: 12px; margin: 12px 0; color: #dce7e1; background: #26372f; border-left: 3px solid #f28b13; }
+.applicationNotice svg { flex: none; color: #ffc562; }
+.applicationNotice span { display: grid; gap: 2px; font-size: 13px; }
+.agreement { grid-template-columns: 22px 1fr !important; align-items: center; margin: 10px 0; color: #dce7e1; }
+.agreement input { width: 18px; height: 18px; margin: 0; }
+
+@media (max-width: 560px) {
+  .roleChoice { grid-template-columns: 1fr 1fr; }
+  .formPair { grid-template-columns: 1fr; gap: 0; }
+}

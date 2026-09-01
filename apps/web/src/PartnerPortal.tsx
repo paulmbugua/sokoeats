@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { ImagePlus, LogOut, PackagePlus, Plus, Store, Utensils } from 'lucide-react';
+import { BadgeCheck, ImagePlus, LogOut, PackagePlus, Plus, Store, Utensils } from 'lucide-react';
 import { api } from '@sokoeats/shared/api';
 import type { MenuItem } from '@sokoeats/shared/types';
 import './PartnerPortal.css';
 
-type Session = { user: { name: string; email: string; role: string } };
+type Session = { user: { name: string; email: string; role: string; status?: string } };
 type PartnerMenu = { vendor: { name: string; address?: string }; sections: Array<{ id: string; title: string; description?: string; items: MenuItem[] }>; items: MenuItem[] };
 type Upload = { uploadUrl: string; publicUrl: string; headers?: Record<string, string> };
 const money = (value: number) => `KES ${Number(value || 0).toLocaleString('en-KE')}`;
@@ -52,6 +52,13 @@ export function PartnerPortal({ session, onSignOut }: { session: Session; onSign
     try { await api(`/api/vendor/menu/${entry.id}/availability`, { method: 'PATCH', body: JSON.stringify({ available: entry.available === false }) }); await load(); }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Availability could not be changed.'); }
   };
+
+  if (session.user.status !== 'active') {
+    return <main className="partnerPortal">
+      <header className="partnerHeader"><div className="brand"><span className="brandMark"><Utensils/></span>SokoEats Partner</div><div><span>{session.user.name}</span><button onClick={onSignOut}><LogOut/> Sign out</button></div></header>
+      <section className="partnerPending"><BadgeCheck/><span>Application received</span><h1>Your store is under review</h1><p>SokoEats is verifying the submitted business, director, and settlement details. Catalogue publishing will unlock automatically after approval.</p><div><b>Account</b><span>{session.user.email}</span><b>Status</b><span>Pending verification</span></div><a href="mailto:partners@sokoeats.co.ke">Contact partner operations</a></section>
+    </main>;
+  }
 
   return <main className="partnerPortal">
     <header className="partnerHeader"><div className="brand"><span className="brandMark"><Utensils/></span>SokoEats Partner</div><div><span>{session.user.name}</span><button onClick={onSignOut}><LogOut/> Sign out</button></div></header>

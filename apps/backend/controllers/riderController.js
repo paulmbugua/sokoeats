@@ -88,9 +88,19 @@ async function buildScanReceipt(intent, scanPayment) {
 }
 
 
-export async function riderHome(_req, res, next) {
+export async function riderHome(req, res, next) {
   try {
-    res.json({ riderHome: await getScreenPayload('rider_home') });
+    const home = await getScreenPayload('rider_home');
+    const { rows } = await pool.query(`SELECT name, city, status, profile FROM sokoeats_users WHERE id=$1 AND role IN ('rider','courier') LIMIT 1`, [req.auth.sub]);
+    if (!rows[0]) return res.status(404).json({ message: 'Rider profile not found' });
+    home.rider = {
+      ...home.rider,
+      name: rows[0].name,
+      zone: rows[0].city || rows[0].profile?.city || home.rider.zone,
+      status: rows[0].status === 'active' ? 'ONLINE' : 'VERIFICATION REQUIRED',
+      online: rows[0].status === 'active',
+    };
+    res.json({ riderHome: home });
   } catch (err) { next(err); }
 }
 
