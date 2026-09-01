@@ -3039,7 +3039,25 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     setBusy(true);
     setMessage('');
     try {
-      const { role: _role, email: _email, password: _password, ...profilePayload } = payload;
+      const profilePayload: Record<string, unknown> = {
+        phone: payload.phone,
+        city: payload.city,
+        preferredLanguage: payload.preferredLanguage,
+        marketingOptIn: payload.marketingOptIn,
+      };
+      if (currentRole === 'customer') profilePayload.defaultAddress = payload.defaultAddress;
+      if (currentRole === 'rider') {
+        profilePayload.vehicleType = payload.vehicleType;
+        profilePayload.registrationNumber = payload.registrationNumber;
+        profilePayload.nationalId = payload.nationalId || undefined;
+        profilePayload.payoutPhone = payload.payoutPhone;
+      }
+      if (currentRole === 'vendor' || currentRole === 'merchant') {
+        profilePayload.businessName = payload.businessName;
+        profilePayload.businessCategory = payload.businessCategory;
+        profilePayload.storeAddress = payload.storeAddress;
+        profilePayload.payoutPhone = payload.payoutPhone;
+      }
       const result = await sokoeatsApi<{ user: AuthUser }>('/api/auth/profile', {
         method: 'PATCH',
         body: JSON.stringify(profilePayload),
@@ -3125,11 +3143,13 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
             )}
             {!!user.missingProfileFields?.length && <Text style={styles.secureText}>Required: {user.missingProfileFields.join(', ')}</Text>}
             {!!message && <Text style={styles.authMessage}>{message}</Text>}
-            <TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={submitProfileCompletion}>
-              <AppIcon name="check" size={18} color={colors.onPrimary} style={styles.inlineIcon} />
-              <Text style={styles.placeOrderText}>{busy ? 'Saving...' : 'Save and continue'}</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryButton} onPress={onSignOut}><Text style={styles.primaryButtonText}>Sign out</Text></TouchableOpacity>
+            <View style={styles.profileActions}>
+              <TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={submitProfileCompletion}>
+                <AppIcon name="check" size={18} color={colors.onPrimary} style={styles.inlineIcon} />
+                <Text style={styles.placeOrderText}>{busy ? 'Saving...' : 'Save and continue'}</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.primaryButton} onPress={onSignOut}><Text style={styles.primaryButtonText}>Sign out</Text></TouchableOpacity>
+            </View>
           </ScrollView>
           <BottomNav active="Account" />
           <SourceLedger />
@@ -4699,6 +4719,10 @@ const styles = StyleSheet.create({
     borderRadius: 4,
     backgroundColor: colors.outlineVariant,
     marginHorizontal: 4,
+  },
+  profileActions: {
+    gap: 14,
+    marginTop: 4,
   },
   primaryButton: {
     width: '100%',
