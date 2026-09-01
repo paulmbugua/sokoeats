@@ -1,3 +1,0 @@
-APP_ENV=development
-VITE_API_URL=http://localhost:4005
-VITE_GOOGLE_WEB_CLIENT_ID=your-google-web-client-id.apps.googleusercontent.com

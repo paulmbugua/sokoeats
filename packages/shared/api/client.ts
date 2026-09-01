@@ -1,9 +1,14 @@
+declare const process: { env: Record<string, string | undefined> } | undefined;
+
 function readViteEnv(name: string) {
   return typeof import.meta !== 'undefined' ? String((import.meta as any).env?.[name] || '') : '';
 }
 
 function defaultApiBase() {
-  const configured = readViteEnv('VITE_API_URL') || readViteEnv('VITE_BACKEND_URL') || readViteEnv('EXPO_PUBLIC_BACKEND_URL') || readViteEnv('EXPO_PUBLIC_LAN_BACKEND_URL');
+  const nextConfigured = typeof process !== 'undefined'
+    ? process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || ''
+    : '';
+  const configured = nextConfigured || readViteEnv('VITE_API_URL') || readViteEnv('VITE_BACKEND_URL') || readViteEnv('EXPO_PUBLIC_BACKEND_URL') || readViteEnv('EXPO_PUBLIC_LAN_BACKEND_URL');
   if (configured) return configured.replace(/\/$/, '');
   if (typeof window !== 'undefined' && window.location.hostname) return 'http://' + window.location.hostname + ':4000';
   return 'http://localhost:4000';

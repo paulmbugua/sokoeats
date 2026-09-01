@@ -1,8 +1,9 @@
+'use client';
+
 import React, { useEffect, useState } from 'react';
 import { BadgeCheck, ImagePlus, LogOut, PackagePlus, Plus, Store, Utensils } from 'lucide-react';
 import { api } from '@sokoeats/shared/api';
 import type { MenuItem } from '@sokoeats/shared/types';
-import './PartnerPortal.css';
 
 type Session = { user: { name: string; email: string; role: string; status?: string } };
 type PartnerMenu = { vendor: { name: string; address?: string }; sections: Array<{ id: string; title: string; description?: string; items: MenuItem[] }>; items: MenuItem[] };

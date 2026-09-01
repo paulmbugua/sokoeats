@@ -1,5 +1,6 @@
+'use client';
+
 import React, { useEffect, useMemo, useState } from 'react';
-import ReactDOM from 'react-dom/client';
 import {
   ArrowLeft,
   Check,
@@ -33,8 +34,6 @@ import {
 } from '@sokoeats/shared/api';
 import type { MenuItem, Vendor } from '@sokoeats/shared/types';
 import { PartnerPortal } from './PartnerPortal';
-import './styles.css';
-import './account.css';
 
 type Session = ReturnType<typeof readAuthSession>;
 type Line = { item: MenuItem; quantity: number };
@@ -69,7 +68,7 @@ type AuthRole = 'customer' | 'rider' | 'vendor' | 'merchant';
 const CART_KEY = 'sokoeats.web.basket.v2';
 const PAYMENT_KEY = 'sokoeats.web.payment.v2';
 const APP_URL =
-  import.meta.env.VITE_ANDROID_APP_URL ||
+  process.env.NEXT_PUBLIC_ANDROID_APP_URL ||
   'https://play.google.com/store/apps/details?id=com.paulmbugua2.sokoeats';
 const HERO_IMAGE =
   'https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=1800&q=88';
@@ -84,17 +83,17 @@ function readBasket(): { vendorId: string; lines: Line[] } {
   }
 }
 
-function App() {
-  const saved = useMemo(readBasket, []);
+export default function SokoEatsApp() {
+  const [hydrated, setHydrated] = useState(false);
   const [page, setPage] = useState<Page>('landing');
   const [mobileNav, setMobileNav] = useState(false);
   const [vendors, setVendors] = useState<LiveVendor[]>([]);
-  const [selected, setSelected] = useState(saved.vendorId);
+  const [selected, setSelected] = useState('');
   const [category, setCategory] = useState('All');
   const [menu, setMenu] = useState<MenuItem[]>([]);
-  const [cart, setCart] = useState<Line[]>(saved.lines || []);
+  const [cart, setCart] = useState<Line[]>([]);
   const [query, setQuery] = useState('');
-  const [session, setSession] = useState<Session>(() => readAuthSession());
+  const [session, setSession] = useState<Session>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
   const [authRole, setAuthRole] = useState<AuthRole>('customer');
@@ -102,13 +101,7 @@ function App() {
   const [authError, setAuthError] = useState('');
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'mpesa' | 'card'>('mpesa');
-  const [pendingPayment, setPendingPayment] = useState<Payment | null>(() => {
-    try {
-      return JSON.parse(localStorage.getItem(PAYMENT_KEY) || 'null');
-    } catch {
-      return null;
-    }
-  });
+  const [pendingPayment, setPendingPayment] = useState<Payment | null>(null);
   const [quote, setQuote] = useState<PricingQuote | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [status, setStatus] = useState('');
@@ -154,6 +147,19 @@ function App() {
   };
 
   useEffect(() => {
+    const saved = readBasket();
+    setSelected(saved.vendorId);
+    setCart(saved.lines || []);
+    setSession(readAuthSession());
+    try {
+      setPendingPayment(JSON.parse(localStorage.getItem(PAYMENT_KEY) || 'null'));
+    } catch {
+      setPendingPayment(null);
+    }
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
     api<{ vendors: LiveVendor[] }>('/api/vendors')
       .then(({ vendors: next }) => {
         setVendors(next);
@@ -172,12 +178,14 @@ function App() {
   }, [selected]);
 
   useEffect(() => {
+    if (!hydrated) return;
     localStorage.setItem(CART_KEY, JSON.stringify({ vendorId: selected, lines: cart }));
-  }, [selected, cart]);
+  }, [hydrated, selected, cart]);
   useEffect(() => {
+    if (!hydrated) return;
     if (pendingPayment) localStorage.setItem(PAYMENT_KEY, JSON.stringify(pendingPayment));
     else localStorage.removeItem(PAYMENT_KEY);
-  }, [pendingPayment]);
+  }, [hydrated, pendingPayment]);
 
   useEffect(() => {
     if (!session?.user) return;
@@ -1511,9 +1519,3 @@ function App() {
     </main>
   );
 }
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
