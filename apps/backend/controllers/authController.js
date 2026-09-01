@@ -290,6 +290,17 @@ function allowedWebReturnUrl(raw) {
   return allowed.has(target.origin) ? target.toString() : fallback;
 }
 
+function googleWebRedirectUri(req) {
+  if (process.env.GOOGLE_OAUTH_REDIRECT_URI) return process.env.GOOGLE_OAUTH_REDIRECT_URI;
+  const publicBase = process.env.API_PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
+  const url = new URL(publicBase);
+  if (url.hostname === '127.0.0.1') url.hostname = 'localhost';
+  url.pathname = '/api/auth/google/callback';
+  url.search = '';
+  url.hash = '';
+  return url.toString();
+}
+
 export async function register(req, res, next) {
   try {
     const role = normalizeRole(req.body.role);
@@ -469,10 +480,11 @@ export async function beginGoogleWebAuth(req, res, next) {
     const clientId = process.env.GOOGLE_CLIENT_ID_WEB;
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
     if (!clientId || !clientSecret) throw Object.assign(new Error('Google web OAuth is not configured'), { status: 503 });
-    const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || `${process.env.API_PUBLIC_URL || `${req.protocol}://${req.get('host')}`}/api/auth/google/web/callback`;
+    const redirectUri = googleWebRedirectUri(req);
     const returnTo = allowedWebReturnUrl(req.query.returnTo);
     const role = normalizeRole(req.query.role || 'customer');
     if (!['customer', 'rider'].includes(role)) throw Object.assign(new Error('Google sign-in is available for buyers and riders only'), { status: 403 });
+    console.info('[SokoEats][Auth] google-web:start', { redirectUri, returnTo, role });
     const state = jwt.sign({ purpose: 'google-web', role, returnTo, nonce: crypto.randomUUID() }, getJwtSecret(), { expiresIn: '10m' });
     const params = new URLSearchParams({ client_id: clientId, redirect_uri: redirectUri, response_type: 'code', scope: 'openid email profile', state, prompt: 'select_account', access_type: 'offline' });
     res.redirect(302, `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
@@ -486,7 +498,7 @@ export async function googleWebCallback(req, res) {
     if (state.purpose !== 'google-web') throw new Error('Invalid OAuth state');
     returnTo = allowedWebReturnUrl(state.returnTo);
     if (req.query.error) throw new Error(String(req.query.error_description || req.query.error));
-    const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI || `${process.env.API_PUBLIC_URL || `${req.protocol}://${req.get('host')}`}/api/auth/google/web/callback`;
+    const redirectUri = googleWebRedirectUri(req);
     const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

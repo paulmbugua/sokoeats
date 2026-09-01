@@ -9,6 +9,7 @@ router.post('/auth/login', validate(loginSchema), login);
 router.post('/auth/google', validate(googleAuthSchema), googleAuth);
 router.get('/auth/google/web/start', beginGoogleWebAuth);
 router.get('/auth/google/web/callback', googleWebCallback);
+router.get('/auth/google/callback', googleWebCallback);
 router.post('/auth/google/web/exchange', exchangeGoogleWebHandoff);
 router.get('/auth/me', me);
 router.patch('/auth/profile', validate(updateProfileSchema), updateProfile);
