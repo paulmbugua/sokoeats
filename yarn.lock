@@ -3102,6 +3102,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@sokoeats/admin-operations@workspace:apps/admin-operations":
+  version: 0.0.0-use.local
+  resolution: "@sokoeats/admin-operations@workspace:apps/admin-operations"
+  dependencies:
+    "@sokoeats/shared": "workspace:*"
+    "@types/react": "npm:19.0.8"
+    "@types/react-dom": "npm:19.0.3"
+    "@vitejs/plugin-react": "npm:4.3.1"
+    lucide-react: "npm:^0.541.0"
+    react: "npm:^19.1.0"
+    react-dom: "npm:^19.1.0"
+    typescript: "npm:^5.9.3"
+    vite: "npm:4.5.9"
+  languageName: unknown
+  linkType: soft
+
 "@sokoeats/admin@workspace:apps/admin":
   version: 0.0.0-use.local
   resolution: "@sokoeats/admin@workspace:apps/admin"

@@ -6,6 +6,7 @@ import {
   Image,
   ImageBackground,
   Linking,
+  LayoutChangeEvent,
   Modal,
   Platform,
   Pressable,
@@ -69,8 +70,7 @@ const MOBILE_APP_VERSION = '1.0.0';
 const authRoleOptions: { role: UserRole; label: string; subtitle: string; icon: IconName }[] = [
   { role: 'customer', label: 'Buyer', subtitle: 'Order meals, groceries, medicine, gas, and essentials', icon: 'bag' },
   { role: 'rider', label: 'Rider', subtitle: 'Accept deliveries, earnings, training, and safety tools', icon: 'bike' },
-  { role: 'vendor', label: 'Vendor application', subtitle: 'Submit a shop for verification and account activation', icon: 'grid' },
-  { role: 'merchant', label: 'Merchant application', subtitle: 'Register a business and nominate its store administrator', icon: 'grid' },
+  { role: 'vendor', label: 'Store Partner', subtitle: 'Apply as a vendor or merchant and manage your catalogue', icon: 'grid' },
 ];
 const BottomNavNavigationContext = createContext<((screen: Screen) => void) | null>(null);
 
@@ -2815,6 +2815,19 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteReason, setDeleteReason] = useState('');
+  const formScrollRef = useRef<ScrollView>(null);
+  const formFieldRefs = useRef<Record<string, TextInput | null>>({});
+  const formFieldY = useRef<Record<string, number>>({});
+  const trackField = (key: string) => (event: LayoutChangeEvent) => {
+    formFieldY.current[key] = event.nativeEvent.layout.y;
+  };
+  const focusField = (key: string, label: string) => {
+    setMessage(`${label} is required.`);
+    formScrollRef.current?.scrollTo({ y: Math.max(0, (formFieldY.current[key] || 0) - 24), animated: true });
+    setTimeout(() => formFieldRefs.current[key]?.focus(), 320);
+    return false;
+  };
+  const inputRef = (key: string) => (node: TextInput | null) => { formFieldRefs.current[key] = node; };
   const googleEnabled = role === 'customer' || role === 'rider';
   const partnerApplication = role === 'vendor' || role === 'merchant';
   const authPayload = () => ({
@@ -2870,14 +2883,27 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
 
   const submitPasswordAuth = async () => {
     const payload = authPayload();
-    if (!payload.email || !payload.password || (mode === 'register' && !payload.fullName && !payload.businessName)) {
-      Alert.alert('Complete your account details', mode === 'register' ? 'Add your name, email, and an 8 character password.' : 'Enter your email and password to continue.');
-      return;
-    }
+    if (mode === 'register' && !payload.fullName) return void focusField('fullName', partnerApplication ? 'Owner or administrator name' : 'Full name');
+    if (!payload.email) return void focusField('email', 'Email address');
+    if (!payload.password) return void focusField('password', 'Password');
     if (mode === 'register' && payload.password.length < 8) {
-      Alert.alert('Password too short', 'Use at least 8 characters for your SokoEats account.');
-      return;
+      return void focusField('password', 'A password of at least 8 characters');
     }
+    if (mode === 'register' && !payload.phone) return void focusField('phone', 'Mobile number');
+    if (mode === 'register' && !payload.city) return void focusField('city', 'City');
+    if (mode === 'register' && role === 'customer' && !payload.defaultAddress) return void focusField('defaultAddress', 'Delivery address');
+    if (mode === 'register' && role === 'rider' && !payload.vehicleType) return void focusField('vehicleType', 'Vehicle type');
+    if (mode === 'register' && role === 'rider' && !payload.registrationNumber) return void focusField('registrationNumber', 'Registration number');
+    if (mode === 'register' && role === 'rider' && !payload.payoutPhone) return void focusField('payoutPhone', 'Payout M-Pesa number');
+    if (mode === 'register' && partnerApplication && !payload.businessName) return void focusField('businessName', 'Business name');
+    if (mode === 'register' && partnerApplication && !payload.businessCategory) return void focusField('businessCategory', 'Business category');
+    if (mode === 'register' && partnerApplication && !payload.storeAddress) return void focusField('storeAddress', 'Store address');
+    if (mode === 'register' && partnerApplication && !payload.payoutPhone) return void focusField('payoutPhone', 'Settlement account');
+    if (mode === 'register' && partnerApplication && !payload.businessRegistrationNumber) return void focusField('businessRegistrationNumber', 'Business registration number');
+    if (mode === 'register' && partnerApplication && !payload.kraPin) return void focusField('kraPin', 'KRA PIN');
+    if (mode === 'register' && partnerApplication && !payload.directorName) return void focusField('directorName', 'Director or proprietor name');
+    if (mode === 'register' && partnerApplication && !payload.directorNationalId) return void focusField('directorNationalId', 'Director national ID');
+    if (mode === 'register' && partnerApplication && !payload.commissionAccepted) return void focusField('commissionAgreement', 'Marketplace commission agreement');
     setBusy(true);
     setMessage('');
     try {
@@ -2950,8 +2976,19 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
       console.info('[SokoEats][Auth] google:native-token', { hasIdToken: true });
       await submitGoogleAuth(response.data.idToken);
     } catch (err) {
-      console.warn('[SokoEats][Auth] google:native-error', { message: err instanceof Error ? err.message : String(err) });
-      setMessage(err instanceof Error ? err.message : 'Google sign-in failed. Confirm Firebase SHA-1 and package configuration.');
+      const nativeError = err as { code?: string; message?: string };
+      const errorMessage = nativeError?.message || String(err);
+      const configurationMismatch = errorMessage.includes('DEVELOPER_ERROR') || nativeError?.code === '10';
+      console.warn('[SokoEats][Auth] google:native-error', {
+        code: nativeError?.code || null,
+        message: errorMessage,
+        packageName: 'com.paulmbugua2.sokoeats',
+        firebaseProjectId: FIREBASE_PROJECT_ID || null,
+        configurationMismatch,
+      });
+      setMessage(configurationMismatch
+        ? 'This Android build certificate is not registered for SokoEats Google sign-in. Update the Firebase SHA certificate, then try again.'
+        : errorMessage || 'Google sign-in failed. Confirm Firebase SHA-1 and package configuration.');
     } finally {
       setBusy(false);
     }
@@ -2984,24 +3021,21 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     if (!authSession) return;
     const payload = authPayload();
     const currentRole = authSession.user.role;
-    const missing: string[] = [];
-    if (!payload.phone) missing.push('mobile number');
-    if (!payload.city) missing.push('city');
-    if (currentRole === 'customer' && !payload.defaultAddress) missing.push('delivery address');
-    if (currentRole === 'rider' && !payload.vehicleType) missing.push('vehicle type');
-    if (currentRole === 'rider' && !payload.registrationNumber) missing.push('registration number');
-    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.businessName) missing.push('business name');
-    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.storeAddress) missing.push('store address');
-    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.businessRegistrationNumber) missing.push('business registration');
-    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.kraPin) missing.push('KRA PIN');
-    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.directorName) missing.push('director name');
-    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.directorNationalId) missing.push('director national ID');
-    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.payoutPhone) missing.push(settlementMethod === 'mpesa_wallet' ? 'settlement M-Pesa number' : settlementMethod === 'mpesa_till' ? 'till number' : 'paybill number');
-    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.commissionAccepted) missing.push('commission agreement');
-    if (missing.length) {
-      Alert.alert('Complete your profile', 'Add ' + missing.join(', ') + ' to continue.');
-      return;
-    }
+    if (!payload.phone) return void focusField('phone', 'Mobile number');
+    if (!payload.city) return void focusField('city', 'City');
+    if (currentRole === 'customer' && !payload.defaultAddress) return void focusField('defaultAddress', 'Delivery address');
+    if (currentRole === 'rider' && !payload.vehicleType) return void focusField('vehicleType', 'Vehicle type');
+    if (currentRole === 'rider' && !payload.registrationNumber) return void focusField('registrationNumber', 'Registration number');
+    if (currentRole === 'rider' && !payload.payoutPhone) return void focusField('payoutPhone', 'Payout M-Pesa number');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.businessName) return void focusField('businessName', 'Business name');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.businessCategory) return void focusField('businessCategory', 'Business category');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.storeAddress) return void focusField('storeAddress', 'Store address');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.payoutPhone) return void focusField('payoutPhone', 'Settlement account');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.businessRegistrationNumber) return void focusField('businessRegistrationNumber', 'Business registration number');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.kraPin) return void focusField('kraPin', 'KRA PIN');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.directorName) return void focusField('directorName', 'Director or proprietor name');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.directorNationalId) return void focusField('directorNationalId', 'Director national ID');
+    if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.commissionAccepted) return void focusField('commissionAgreement', 'Marketplace commission agreement');
     setBusy(true);
     setMessage('');
     try {
@@ -3055,38 +3089,38 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
       return (
         <View style={styles.shell}>
           <CustomerScreenHeader title="Complete profile" onBack={onBack} />
-          <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+          <ScrollView ref={formScrollRef} contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <View style={styles.profileHero}>
               {user.avatarUrl ? <Image source={{ uri: user.avatarUrl }} style={styles.profileAvatar} /> : <AppIcon name="person" size={54} color={colors.primary} />}
               <Text style={styles.checkoutTitle}>{profileCompletionTitle(signedInRole)}</Text>
               <Text style={styles.checkoutSubtitle}>Sign-in is complete. Add the details SokoEats needs for your account.</Text>
             </View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Mobile number</Text><TextInput style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>City</Text><TextInput style={styles.formFieldInput} value={city} onChangeText={setCity} placeholder="Nairobi" placeholderTextColor={colors.outline} /></View>
-            {signedInRole === 'customer' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Delivery address</Text><TextInput style={styles.formFieldInput} value={defaultAddress} onChangeText={setDefaultAddress} placeholder="Apartment, estate, street" placeholderTextColor={colors.outline} /></View>}
+            <View onLayout={trackField('phone')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Mobile number</Text><TextInput ref={inputRef('phone')} style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('city')} style={styles.formFieldCard}><Text style={styles.upperLabel}>City</Text><TextInput ref={inputRef('city')} style={styles.formFieldInput} value={city} onChangeText={setCity} placeholder="Nairobi" placeholderTextColor={colors.outline} /></View>
+            {signedInRole === 'customer' && <View onLayout={trackField('defaultAddress')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Delivery address</Text><TextInput ref={inputRef('defaultAddress')} style={styles.formFieldInput} value={defaultAddress} onChangeText={setDefaultAddress} placeholder="Apartment, estate, street" placeholderTextColor={colors.outline} /></View>}
             {signedInRole === 'rider' && (
               <>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('vehicleType')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput ref={inputRef('vehicleType')} style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('registrationNumber')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput ref={inputRef('registrationNumber')} style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('payoutPhone')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput ref={inputRef('payoutPhone')} style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>National ID optional</Text><TextInput style={styles.formFieldInput} value={nationalId} onChangeText={setNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
               </>
             )}
             {(signedInRole === 'vendor' || signedInRole === 'merchant') && (
               <>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business name</Text><TextInput style={styles.formFieldInput} value={businessName} onChangeText={setBusinessName} placeholder="Nairobi Grill House" placeholderTextColor={colors.outline} /></View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business category</Text><TextInput style={styles.formFieldInput} value={businessCategory} onChangeText={setBusinessCategory} placeholder="Restaurant" placeholderTextColor={colors.outline} /></View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Store address</Text><TextInput style={styles.formFieldInput} value={storeAddress} onChangeText={setStoreAddress} placeholder="Westlands, Nairobi" placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('businessName')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Business name</Text><TextInput ref={inputRef('businessName')} style={styles.formFieldInput} value={businessName} onChangeText={setBusinessName} placeholder="Nairobi Grill House" placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('businessCategory')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Business category</Text><TextInput ref={inputRef('businessCategory')} style={styles.formFieldInput} value={businessCategory} onChangeText={setBusinessCategory} placeholder="Restaurant" placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('storeAddress')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Store address</Text><TextInput ref={inputRef('storeAddress')} style={styles.formFieldInput} value={storeAddress} onChangeText={setStoreAddress} placeholder="Westlands, Nairobi" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.authModeSwitch}>
                   {([['mpesa_wallet','M-Pesa'],['mpesa_till','Till'],['mpesa_paybill','Paybill']] as const).map(([value,label]) => <TouchableOpacity key={value} style={settlementMethod === value ? styles.tabPillActive : styles.tabPill} onPress={() => setSettlementMethod(value)}><Text style={settlementMethod === value ? styles.authPillActiveText : styles.authPillText}>{label}</Text></TouchableOpacity>)}
                 </View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>{settlementMethod === 'mpesa_wallet' ? 'Settlement M-Pesa number' : settlementMethod === 'mpesa_till' ? 'M-Pesa till number' : 'M-Pesa paybill number'}</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="number-pad" placeholder={settlementMethod === 'mpesa_wallet' ? '+254 712 345 678' : settlementMethod === 'mpesa_till' ? '123456' : '400200'} placeholderTextColor={colors.outline} /></View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business registration number</Text><TextInput style={styles.formFieldInput} value={businessRegistrationNumber} onChangeText={setBusinessRegistrationNumber} autoCapitalize="characters" placeholder="BN-123456" placeholderTextColor={colors.outline} /></View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>KRA PIN</Text><TextInput style={styles.formFieldInput} value={kraPin} onChangeText={setKraPin} autoCapitalize="characters" placeholder="A123456789B" placeholderTextColor={colors.outline} /></View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director or proprietor name</Text><TextInput style={styles.formFieldInput} value={directorName} onChangeText={setDirectorName} placeholder="Legal representative" placeholderTextColor={colors.outline} /></View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director national ID</Text><TextInput style={styles.formFieldInput} value={directorNationalId} onChangeText={setDirectorNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('payoutPhone')} style={styles.formFieldCard}><Text style={styles.upperLabel}>{settlementMethod === 'mpesa_wallet' ? 'Settlement M-Pesa number' : settlementMethod === 'mpesa_till' ? 'M-Pesa till number' : 'M-Pesa paybill number'}</Text><TextInput ref={inputRef('payoutPhone')} style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="number-pad" placeholder={settlementMethod === 'mpesa_wallet' ? '+254 712 345 678' : settlementMethod === 'mpesa_till' ? '123456' : ''} placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('businessRegistrationNumber')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Business registration number</Text><TextInput ref={inputRef('businessRegistrationNumber')} style={styles.formFieldInput} value={businessRegistrationNumber} onChangeText={setBusinessRegistrationNumber} autoCapitalize="characters" placeholder="BN-123456" placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('kraPin')} style={styles.formFieldCard}><Text style={styles.upperLabel}>KRA PIN</Text><TextInput ref={inputRef('kraPin')} style={styles.formFieldInput} value={kraPin} onChangeText={setKraPin} autoCapitalize="characters" placeholder="A123456789B" placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('directorName')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Director or proprietor name</Text><TextInput ref={inputRef('directorName')} style={styles.formFieldInput} value={directorName} onChangeText={setDirectorName} placeholder="Legal representative" placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('directorNationalId')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Director national ID</Text><TextInput ref={inputRef('directorNationalId')} style={styles.formFieldInput} value={directorNationalId} onChangeText={setDirectorNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
                 <View style={styles.formFieldCard}><Text style={styles.upperLabel}>PSP subaccount ID optional</Text><TextInput style={styles.formFieldInput} value={pspSubaccountId} onChangeText={setPspSubaccountId} autoCapitalize="none" placeholder="Created automatically when blank" placeholderTextColor={colors.outline} /></View>
-                <TouchableOpacity style={styles.signedInCard} onPress={() => setCommissionAccepted((value) => !value)}><View style={styles.sectionHeadingRow}><AppIcon name={commissionAccepted ? 'check' : 'receipt'} size={20} color={colors.primary} /><Text style={styles.vendorName}>Marketplace commission agreement</Text></View><Text style={styles.smsBody}>I accept the SokoEats marketplace-v1 agreement and the 10% launch commission on product sales.</Text><Text style={styles.discountText}>{commissionAccepted ? 'Accepted' : 'Tap to accept'}</Text></TouchableOpacity>
+                <TouchableOpacity onLayout={trackField('commissionAgreement')} style={styles.signedInCard} onPress={() => setCommissionAccepted((value) => !value)}><View style={styles.sectionHeadingRow}><AppIcon name={commissionAccepted ? 'check' : 'receipt'} size={20} color={colors.primary} /><Text style={styles.vendorName}>Marketplace commission agreement</Text></View><Text style={styles.smsBody}>I accept the SokoEats marketplace-v1 agreement and the 10% launch commission on product sales.</Text><Text style={styles.discountText}>{commissionAccepted ? 'Accepted' : 'Tap to accept'}</Text></TouchableOpacity>
               </>
             )}
             {!!user.missingProfileFields?.length && <Text style={styles.secureText}>Required: {user.missingProfileFields.join(', ')}</Text>}
@@ -3152,7 +3186,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title="Account" onBack={onBack} />
-      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+      <ScrollView ref={formScrollRef} contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
         <View style={styles.profileHero}>
           <AppIcon name="person" size={54} color={colors.primary} />
           <Text style={styles.checkoutTitle}>{mode === 'login' ? 'Welcome back to SokoEats' : 'Create your SokoEats account'}</Text>
@@ -3164,14 +3198,20 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
           <TouchableOpacity style={mode === 'register' ? styles.tabPillActive : styles.tabPill} onPress={() => setMode('register')}><Text style={mode === 'register' ? styles.authPillActiveText : styles.authPillText}>Create account</Text></TouchableOpacity>
         </View>
         <View style={styles.authRoleGrid}>
-          {authRoleOptions.map((option) => (
-            <TouchableOpacity key={option.role} style={[styles.authRoleCard, role === option.role && styles.authRoleCardActive]} onPress={() => setRole(option.role)}>
-              <AppIcon name={option.icon} size={20} color={role === option.role ? colors.onPrimaryContainer : colors.onSurfaceVariant} />
+          {authRoleOptions.map((option) => {
+            const selectedRole = option.role === 'vendor' ? partnerApplication : role === option.role;
+            return (
+            <TouchableOpacity key={option.role} style={[styles.authRoleCard, selectedRole && styles.authRoleCardActive]} onPress={() => setRole(option.role)}>
+              <AppIcon name={option.icon} size={20} color={selectedRole ? colors.onPrimaryContainer : colors.onSurfaceVariant} />
               <Text style={styles.vendorName}>{option.label}</Text>
               <Text style={styles.authRoleSubtitle}>{option.subtitle}</Text>
             </TouchableOpacity>
-          ))}
+          )})}
         </View>
+        {partnerApplication && <View style={styles.authModeSwitch}>
+          <TouchableOpacity style={role === 'vendor' ? styles.tabPillActive : styles.tabPill} onPress={() => setRole('vendor')}><Text style={role === 'vendor' ? styles.authPillActiveText : styles.authPillText}>Vendor</Text></TouchableOpacity>
+          <TouchableOpacity style={role === 'merchant' ? styles.tabPillActive : styles.tabPill} onPress={() => setRole('merchant')}><Text style={role === 'merchant' ? styles.authPillActiveText : styles.authPillText}>Merchant</Text></TouchableOpacity>
+        </View>}
         {googleEnabled && (
           <>
             <TouchableOpacity style={[styles.googleAuthButton, busy && styles.disabledButton]} disabled={busy} onPress={continueWithGoogle}>
@@ -3182,34 +3222,34 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
           </>
         )}
         {partnerApplication && mode === 'register' && <View style={styles.signedInCard}><Text style={styles.vendorName}>Business verification required</Text><Text style={styles.smsBody}>Complete every legal, store, and settlement field below. Catalogue publishing unlocks only after SokoEats approves the application.</Text></View>}
-        {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>{role === 'vendor' || role === 'merchant' ? 'Owner or admin name' : 'Full name'}</Text><TextInput style={styles.formFieldInput} value={fullName} onChangeText={setFullName} placeholder="Your full name" placeholderTextColor={colors.outline} /></View>}
-        <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Email address</Text><TextInput style={styles.formFieldInput} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="paul@sokoeats.co.ke" placeholderTextColor={colors.outline} /></View>
-        <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Password</Text><TextInput style={styles.formFieldInput} value={password} onChangeText={setPassword} secureTextEntry placeholder={mode === 'register' ? 'At least 8 characters' : 'Your password'} placeholderTextColor={colors.outline} /></View>
-        {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Mobile number</Text><TextInput style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>}
-        {mode === 'register' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>City</Text><TextInput style={styles.formFieldInput} value={city} onChangeText={setCity} placeholder="Nairobi" placeholderTextColor={colors.outline} /></View>}
-        {mode === 'register' && role === 'customer' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Default delivery address</Text><TextInput style={styles.formFieldInput} value={defaultAddress} onChangeText={setDefaultAddress} placeholder="Apartment, estate, street" placeholderTextColor={colors.outline} /></View>}
+        {mode === 'register' && <View onLayout={trackField('fullName')} style={styles.formFieldCard}><Text style={styles.upperLabel}>{role === 'vendor' || role === 'merchant' ? 'Owner or admin name' : 'Full name'}</Text><TextInput ref={inputRef('fullName')} style={styles.formFieldInput} value={fullName} onChangeText={setFullName} placeholder="Your full name" placeholderTextColor={colors.outline} /></View>}
+        <View onLayout={trackField('email')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Email address</Text><TextInput ref={inputRef('email')} style={styles.formFieldInput} value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="paul@sokoeats.co.ke" placeholderTextColor={colors.outline} /></View>
+        <View onLayout={trackField('password')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Password</Text><TextInput ref={inputRef('password')} style={styles.formFieldInput} value={password} onChangeText={setPassword} secureTextEntry placeholder={mode === 'register' ? 'At least 8 characters' : 'Your password'} placeholderTextColor={colors.outline} /></View>
+        {mode === 'register' && <View onLayout={trackField('phone')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Mobile number</Text><TextInput ref={inputRef('phone')} style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>}
+        {mode === 'register' && <View onLayout={trackField('city')} style={styles.formFieldCard}><Text style={styles.upperLabel}>City</Text><TextInput ref={inputRef('city')} style={styles.formFieldInput} value={city} onChangeText={setCity} placeholder="Nairobi" placeholderTextColor={colors.outline} /></View>}
+        {mode === 'register' && role === 'customer' && <View onLayout={trackField('defaultAddress')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Default delivery address</Text><TextInput ref={inputRef('defaultAddress')} style={styles.formFieldInput} value={defaultAddress} onChangeText={setDefaultAddress} placeholder="Apartment, estate, street" placeholderTextColor={colors.outline} /></View>}
         {mode === 'register' && role === 'rider' && (
           <>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('vehicleType')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput ref={inputRef('vehicleType')} style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('registrationNumber')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput ref={inputRef('registrationNumber')} style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('payoutPhone')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput ref={inputRef('payoutPhone')} style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
           </>
         )}
         {mode === 'register' && (role === 'vendor' || role === 'merchant') && (
           <>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business name</Text><TextInput style={styles.formFieldInput} value={businessName} onChangeText={setBusinessName} placeholder="Nairobi Grill House" placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business category</Text><TextInput style={styles.formFieldInput} value={businessCategory} onChangeText={setBusinessCategory} placeholder="Restaurant" placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Store address</Text><TextInput style={styles.formFieldInput} value={storeAddress} onChangeText={setStoreAddress} placeholder="Westlands, Nairobi" placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('businessName')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Business name</Text><TextInput ref={inputRef('businessName')} style={styles.formFieldInput} value={businessName} onChangeText={setBusinessName} placeholder="Nairobi Grill House" placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('businessCategory')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Business category</Text><TextInput ref={inputRef('businessCategory')} style={styles.formFieldInput} value={businessCategory} onChangeText={setBusinessCategory} placeholder="Restaurant" placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('storeAddress')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Store address</Text><TextInput ref={inputRef('storeAddress')} style={styles.formFieldInput} value={storeAddress} onChangeText={setStoreAddress} placeholder="Westlands, Nairobi" placeholderTextColor={colors.outline} /></View>
             <View style={styles.authModeSwitch}>
                   {([['mpesa_wallet','M-Pesa'],['mpesa_till','Till'],['mpesa_paybill','Paybill']] as const).map(([value,label]) => <TouchableOpacity key={value} style={settlementMethod === value ? styles.tabPillActive : styles.tabPill} onPress={() => setSettlementMethod(value)}><Text style={settlementMethod === value ? styles.authPillActiveText : styles.authPillText}>{label}</Text></TouchableOpacity>)}
                 </View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>{settlementMethod === 'mpesa_wallet' ? 'Settlement M-Pesa number' : settlementMethod === 'mpesa_till' ? 'M-Pesa till number' : 'M-Pesa paybill number'}</Text><TextInput style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="number-pad" placeholder={settlementMethod === 'mpesa_wallet' ? '+254 712 345 678' : settlementMethod === 'mpesa_till' ? '123456' : '400200'} placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Business registration number</Text><TextInput style={styles.formFieldInput} value={businessRegistrationNumber} onChangeText={setBusinessRegistrationNumber} autoCapitalize="characters" placeholder="BN-123456" placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>KRA PIN</Text><TextInput style={styles.formFieldInput} value={kraPin} onChangeText={setKraPin} autoCapitalize="characters" placeholder="A123456789B" placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director or proprietor name</Text><TextInput style={styles.formFieldInput} value={directorName} onChangeText={setDirectorName} placeholder="Legal representative" placeholderTextColor={colors.outline} /></View>
-            <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Director national ID</Text><TextInput style={styles.formFieldInput} value={directorNationalId} onChangeText={setDirectorNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('payoutPhone')} style={styles.formFieldCard}><Text style={styles.upperLabel}>{settlementMethod === 'mpesa_wallet' ? 'Settlement M-Pesa number' : settlementMethod === 'mpesa_till' ? 'M-Pesa till number' : 'M-Pesa paybill number'}</Text><TextInput ref={inputRef('payoutPhone')} style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="number-pad" placeholder={settlementMethod === 'mpesa_wallet' ? '+254 712 345 678' : settlementMethod === 'mpesa_till' ? '123456' : ''} placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('businessRegistrationNumber')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Business registration number</Text><TextInput ref={inputRef('businessRegistrationNumber')} style={styles.formFieldInput} value={businessRegistrationNumber} onChangeText={setBusinessRegistrationNumber} autoCapitalize="characters" placeholder="BN-123456" placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('kraPin')} style={styles.formFieldCard}><Text style={styles.upperLabel}>KRA PIN</Text><TextInput ref={inputRef('kraPin')} style={styles.formFieldInput} value={kraPin} onChangeText={setKraPin} autoCapitalize="characters" placeholder="A123456789B" placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('directorName')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Director or proprietor name</Text><TextInput ref={inputRef('directorName')} style={styles.formFieldInput} value={directorName} onChangeText={setDirectorName} placeholder="Legal representative" placeholderTextColor={colors.outline} /></View>
+            <View onLayout={trackField('directorNationalId')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Director national ID</Text><TextInput ref={inputRef('directorNationalId')} style={styles.formFieldInput} value={directorNationalId} onChangeText={setDirectorNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
             <View style={styles.formFieldCard}><Text style={styles.upperLabel}>PSP subaccount ID optional</Text><TextInput style={styles.formFieldInput} value={pspSubaccountId} onChangeText={setPspSubaccountId} autoCapitalize="none" placeholder="Created automatically when blank" placeholderTextColor={colors.outline} /></View>
-            <TouchableOpacity style={styles.signedInCard} onPress={() => setCommissionAccepted((value) => !value)}><View style={styles.sectionHeadingRow}><AppIcon name={commissionAccepted ? 'check' : 'receipt'} size={20} color={colors.primary} /><Text style={styles.vendorName}>Marketplace commission agreement</Text></View><Text style={styles.smsBody}>I accept the SokoEats marketplace-v1 agreement and the 10% launch commission on product sales.</Text><Text style={styles.discountText}>{commissionAccepted ? 'Accepted' : 'Tap to accept'}</Text></TouchableOpacity>
+            <TouchableOpacity onLayout={trackField('commissionAgreement')} style={styles.signedInCard} onPress={() => setCommissionAccepted((value) => !value)}><View style={styles.sectionHeadingRow}><AppIcon name={commissionAccepted ? 'check' : 'receipt'} size={20} color={colors.primary} /><Text style={styles.vendorName}>Marketplace commission agreement</Text></View><Text style={styles.smsBody}>I accept the SokoEats marketplace-v1 agreement and the 10% launch commission on product sales.</Text><Text style={styles.discountText}>{commissionAccepted ? 'Accepted' : 'Tap to accept'}</Text></TouchableOpacity>
           </>
         )}
         <MapPanel title="Default delivery address" subtitle={maps.customer.savedAddresses?.[0]?.address || defaultAddress} map={maps.customer.savedAddresses?.[0]?.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Edit pin" />

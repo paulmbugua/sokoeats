@@ -21,34 +21,28 @@ type MapsManifest = Record<string, any>;
 const money = (value: number) => `KES ${Number(value || 0).toLocaleString('en-KE')}`;
 
 function AuthGate({ onAuthenticated }: { onAuthenticated: (session: StoredAuthSession) => void }) {
-  const [role, setRole] = useState<StaffRole>('admin');
-  const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [inviteCode, setInviteCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const submit = async () => {
     setBusy(true); setMessage('');
     try {
-      const body = mode === 'login' ? { role, email, password } : { role, email, password, inviteCode, city: 'Nairobi', department: role === 'admin' ? 'Marketplace Operations' : 'Customer Operations' };
-      const session = await api<StoredAuthSession>(mode === 'login' ? '/api/auth/login' : '/api/auth/register', { method: 'POST', body: JSON.stringify(body) });
+      const session = await api<StoredAuthSession>('/api/auth/login', { method: 'POST', body: JSON.stringify({ role: 'admin', email, password }) });
+      if (session.user.role !== 'admin') throw new Error('This dashboard is restricted to platform administrators.');
       saveAuthSession(session); onAuthenticated(session);
     } catch (error) { setMessage(error instanceof Error ? error.message : 'Staff sign-in failed'); }
     finally { setBusy(false); }
   };
   return <main className="authPage">
-    <section className="authBrand"><div className="brandMark"><ShieldCheck /></div><p>SokoEats staff</p><h1>One secure workspace for marketplace operations.</h1><span>Accounts are invitation-only. Access is limited by staff role and recorded against every operational action.</span></section>
+    <section className="authBrand"><div className="brandMark"><ShieldCheck /></div><p>SokoEats platform</p><h1>Marketplace control, risk, finance and compliance.</h1><span>Platform administrator accounts are provisioned by the backend and audited. Public account creation is disabled.</span></section>
     <section className="authForm">
-      <p className="eyebrow">Restricted access</p><h2>{mode === 'login' ? 'Staff sign in' : 'Accept your invitation'}</h2>
-      <div className="segmented"><button className={role === 'admin' ? 'selected' : ''} onClick={() => setRole('admin')}>Operations admin</button><button className={role === 'support' ? 'selected' : ''} onClick={() => setRole('support')}>Support specialist</button></div>
+      <p className="eyebrow">Restricted access</p><h2>Platform admin sign in</h2>
       <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" placeholder="name@sokoeats.co.ke" /></label>
       <label>Password<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="At least 8 characters" /></label>
-      {mode === 'register' && <label>Private invitation code<input value={inviteCode} onChange={(event) => setInviteCode(event.target.value)} placeholder="Provided by a platform administrator" /></label>}
       {message && <p className="formError">{message}</p>}
-      <button className="primaryAction" disabled={busy} onClick={submit}>{busy ? 'Checking access...' : mode === 'login' ? 'Sign in securely' : 'Create staff account'}<ChevronRight size={18}/></button>
-      <button className="textAction" onClick={() => setMode(mode === 'login' ? 'register' : 'login')}>{mode === 'login' ? 'Have an invitation? Create staff account' : 'Already enrolled? Sign in'}</button>
-      <small>No Google sign-in is enabled for staff dashboards.</small>
+      <button className="primaryAction" disabled={busy} onClick={submit}>{busy ? 'Checking access...' : 'Sign in securely'}<ChevronRight size={18}/></button>
+      <small>No Google sign-in or public registration is enabled for platform administrators.</small>
     </section>
   </main>;
 }
@@ -93,7 +87,6 @@ function App() {
     if (results[5].status === 'fulfilled') setMaps(results[5].value.maps);
   };
   useEffect(() => { void load(); }, [session?.user.id]);
-  useEffect(() => { if (role === 'support' && view === 'settlements') setView('overview'); }, [role, view]);
 
   const filteredOrders = useMemo(() => orders.filter((item) => `${item.code} ${item.customerName} ${item.vendorName}`.toLowerCase().includes(query.toLowerCase())), [orders, query]);
   const filteredTickets = useMemo(() => tickets.filter((item) => `${item.code} ${item.subject} ${item.priority}`.toLowerCase().includes(query.toLowerCase())), [tickets, query]);
@@ -104,6 +97,7 @@ function App() {
   const executePayout = async (reference: string) => { setNotice('Submitting payout...'); try { await api(`/api/finance/payouts/${reference}/execute`, { method: 'POST' }); await load(); setNotice('Payout submitted to the provider.'); } catch (e) { setNotice(e instanceof Error ? e.message : 'Payout failed'); } };
 
   if (!session) return <AuthGate onAuthenticated={setSession}/>;
+  if (session.user.role !== 'admin') return <main className="authPage"><section className="authForm"><p className="eyebrow">Access denied</p><h2>Platform admin account required</h2><p>This account belongs in its assigned SokoEats workspace.</p><button className="primaryAction" onClick={() => { clearAuthSession(); setSession(null); }}>Return to sign in</button></section></main>;
   const availableNav = navItems.filter((item) => !item.adminOnly || role === 'admin');
   const title = availableNav.find((item) => item.id === view)?.label || 'Control center';
   const signOut = () => { clearAuthSession(); setSession(null); };

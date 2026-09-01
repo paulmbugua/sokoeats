@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "packageManager": "yarn@4.9.1",
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "turbo run dev",
     "build:all": "yarn workspaces run build",
@@ -11,10 +14,11 @@
     "start:backend": "yarn workspace @sokoeats/backend start",
     "dev:web": "yarn workspace @sokoeats/web dev",
     "dev:admin": "yarn workspace @sokoeats/admin dev",
+    "dev:admin-operations": "yarn workspace @sokoeats/admin-operations dev",
     "dev:mobile": "yarn workspace @sokoeats/mobile dev",
     "android": "yarn workspace @sokoeats/mobile android",
     "ios": "yarn workspace @sokoeats/mobile ios",
-    "build": "turbo run build --filter=@sokoeats/backend... --filter=@sokoeats/web... --filter=@sokoeats/admin...",
+    "build": "turbo run build --filter=@sokoeats/backend... --filter=@sokoeats/web... --filter=@sokoeats/admin... --filter=@sokoeats/admin-operations...",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "db:setup": "yarn workspace @sokoeats/backend db:setup"

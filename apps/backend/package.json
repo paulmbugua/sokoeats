@@ -8,6 +8,7 @@
     "start": "node server.js",
     "dev": "nodemon server.js",
     "db:setup": "node scripts/setupDatabase.js",
+    "admin:provision": "node scripts/provisionAdmin.js",
     "build": "node --check server.js",
     "lint": "node --check server.js"
   },

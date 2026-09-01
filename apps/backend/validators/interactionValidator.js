@@ -115,7 +115,7 @@ export const merchantMenuItemSchema = Joi.object({
   name: Joi.string().min(2).max(140).required(),
   description: Joi.string().max(500).allow('', null),
   price: Joi.alternatives().try(Joi.number().min(1), Joi.string().min(1)).required(),
-  category: Joi.string().min(2).max(80).required(),
+  category: Joi.string().min(2).max(80).allow('', null),
   unitLabel: Joi.string().max(40).allow('', null),
   imageUrl: Joi.string().uri().allow('', null),
   popular: Joi.boolean().default(false),

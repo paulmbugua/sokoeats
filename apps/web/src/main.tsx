@@ -139,6 +139,19 @@ function App() {
     pspSubaccountId: '',
     commissionAccepted: false,
   });
+  const focusAuthField = (key: string, message: string) => {
+    setAuthBusy(false);
+    setAuthError(message);
+    requestAnimationFrame(() => {
+      const container = document.querySelector<HTMLElement>(`[data-auth-field="${key}"]`);
+      container?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const control = container?.matches('input, textarea, select')
+        ? container
+        : container?.querySelector<HTMLElement>('input, textarea, select, button');
+      window.setTimeout(() => control?.focus(), 260);
+    });
+    return false;
+  };
 
   useEffect(() => {
     api<{ vendors: LiveVendor[] }>('/api/vendors')
@@ -291,22 +304,25 @@ function App() {
     setAuthError('');
     try {
       const isPartner = authRole === 'vendor' || authRole === 'merchant';
-      if (
-        authMode === 'register' &&
-        isPartner &&
-        (!form.businessName ||
-          !form.storeAddress ||
-          !form.businessRegistrationNumber ||
-          !form.kraPin ||
-          !form.directorName ||
-          !form.directorNationalId ||
-          !form.settlementAccount ||
-          !form.commissionAccepted)
-      ) {
-        throw new Error(
-          'Complete all required business, director, settlement, and commission fields.'
-        );
-      }
+      if (authMode === 'register' && !form.fullName.trim()) return void focusAuthField('fullName', 'Full name is required.');
+      if (!form.email.trim()) return void focusAuthField('email', 'Email address is required.');
+      if (!form.password) return void focusAuthField('password', 'Password is required.');
+      if (authMode === 'register' && form.password.length < 8) return void focusAuthField('password', 'Use a password of at least 8 characters.');
+      if (authMode === 'register' && !form.phone.trim()) return void focusAuthField('phone', 'Mobile number is required.');
+      if (authMode === 'register' && !form.city.trim()) return void focusAuthField('city', 'City is required.');
+      if (authMode === 'register' && authRole === 'customer' && !form.defaultAddress.trim()) return void focusAuthField('defaultAddress', 'Delivery address is required.');
+      if (authMode === 'register' && authRole === 'rider' && !form.vehicleType.trim()) return void focusAuthField('vehicleType', 'Vehicle type is required.');
+      if (authMode === 'register' && authRole === 'rider' && !form.registrationNumber.trim()) return void focusAuthField('registrationNumber', 'Registration number is required.');
+      if (authMode === 'register' && authRole === 'rider' && !form.payoutPhone.trim()) return void focusAuthField('payoutPhone', 'Payout M-Pesa number is required.');
+      if (authMode === 'register' && isPartner && !form.businessName.trim()) return void focusAuthField('businessName', 'Legal business name is required.');
+      if (authMode === 'register' && isPartner && !form.businessCategory.trim()) return void focusAuthField('businessCategory', 'Business category is required.');
+      if (authMode === 'register' && isPartner && !form.storeAddress.trim()) return void focusAuthField('storeAddress', 'Store address is required.');
+      if (authMode === 'register' && isPartner && !form.businessRegistrationNumber.trim()) return void focusAuthField('businessRegistrationNumber', 'Business registration number is required.');
+      if (authMode === 'register' && isPartner && !form.kraPin.trim()) return void focusAuthField('kraPin', 'KRA PIN is required.');
+      if (authMode === 'register' && isPartner && !form.directorName.trim()) return void focusAuthField('directorName', 'Director or proprietor name is required.');
+      if (authMode === 'register' && isPartner && !form.directorNationalId.trim()) return void focusAuthField('directorNationalId', 'Director national ID is required.');
+      if (authMode === 'register' && isPartner && !form.settlementAccount.trim()) return void focusAuthField('settlementAccount', 'Settlement account is required.');
+      if (authMode === 'register' && isPartner && !form.commissionAccepted) return void focusAuthField('commissionAgreement', 'Accept the marketplace commission agreement to continue.');
       const body =
         authMode === 'login'
           ? { role: authRole, email: form.email, password: form.password }
@@ -1094,13 +1110,12 @@ function App() {
                 [
                   ['customer', 'Buyer'],
                   ['rider', 'Rider'],
-                  ['vendor', 'Vendor'],
-                  ['merchant', 'Merchant'],
+                  ['vendor', 'Store Partner'],
                 ] as Array<[AuthRole, string]>
               ).map(([value, label]) => (
                 <button
                   key={value}
-                  className={authRole === value ? 'active' : ''}
+                  className={value === 'vendor' ? (authRole === 'vendor' || authRole === 'merchant' ? 'active' : '') : authRole === value ? 'active' : ''}
                   onClick={() => {
                     setAuthRole(value);
                     setAuthError('');
@@ -1110,6 +1125,12 @@ function App() {
                 </button>
               ))}
             </div>
+            {(authRole === 'vendor' || authRole === 'merchant') && (
+              <div className="roleChoice partnerType" aria-label="Store partner type">
+                <button className={authRole === 'vendor' ? 'active' : ''} onClick={() => setAuthRole('vendor')}>Vendor</button>
+                <button className={authRole === 'merchant' ? 'active' : ''} onClick={() => setAuthRole('merchant')}>Merchant</button>
+              </div>
+            )}
             {(authRole === 'customer' || authRole === 'rider') && (
               <>
                 <button className="google" onClick={continueGoogle}>
@@ -1129,6 +1150,7 @@ function App() {
             )}
             {authMode === 'register' && (
               <input
+                data-auth-field="fullName"
                 placeholder={
                   authRole === 'vendor' || authRole === 'merchant'
                     ? 'Owner or administrator full name'
@@ -1139,12 +1161,14 @@ function App() {
               />
             )}
             <input
+              data-auth-field="email"
               type="email"
               placeholder="Email address"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
             <input
+              data-auth-field="password"
               type="password"
               placeholder={authMode === 'register' ? 'Password, at least 8 characters' : 'Password'}
               value={form.password}
@@ -1154,11 +1178,13 @@ function App() {
               <>
                 <div className="formPair">
                   <input
+                    data-auth-field="phone"
                     placeholder="Mobile number"
                     value={form.phone}
                     onChange={(e) => setForm({ ...form, phone: e.target.value })}
                   />
                   <input
+                    data-auth-field="city"
                     placeholder="City"
                     value={form.city}
                     onChange={(e) => setForm({ ...form, city: e.target.value })}
@@ -1166,6 +1192,7 @@ function App() {
                 </div>
                 {authRole === 'customer' && (
                   <textarea
+                    data-auth-field="defaultAddress"
                     placeholder="Default delivery address"
                     value={form.defaultAddress}
                     onChange={(e) => setForm({ ...form, defaultAddress: e.target.value })}
@@ -1175,17 +1202,20 @@ function App() {
                   <>
                     <div className="formPair">
                       <input
+                        data-auth-field="vehicleType"
                         placeholder="Vehicle type"
                         value={form.vehicleType}
                         onChange={(e) => setForm({ ...form, vehicleType: e.target.value })}
                       />
                       <input
+                        data-auth-field="registrationNumber"
                         placeholder="Registration number"
                         value={form.registrationNumber}
                         onChange={(e) => setForm({ ...form, registrationNumber: e.target.value })}
                       />
                     </div>
                     <input
+                      data-auth-field="payoutPhone"
                       placeholder="Rider payout M-Pesa number"
                       value={form.payoutPhone}
                       onChange={(e) => setForm({ ...form, payoutPhone: e.target.value })}
@@ -1195,17 +1225,20 @@ function App() {
                 {(authRole === 'vendor' || authRole === 'merchant') && (
                   <>
                     <input
+                      data-auth-field="businessName"
                       placeholder="Legal business name"
                       value={form.businessName}
                       onChange={(e) => setForm({ ...form, businessName: e.target.value })}
                     />
                     <div className="formPair">
                       <input
+                        data-auth-field="businessCategory"
                         placeholder="Business category"
                         value={form.businessCategory}
                         onChange={(e) => setForm({ ...form, businessCategory: e.target.value })}
                       />
                       <input
+                        data-auth-field="businessRegistrationNumber"
                         placeholder="Registration number"
                         value={form.businessRegistrationNumber}
                         onChange={(e) =>
@@ -1214,23 +1247,27 @@ function App() {
                       />
                     </div>
                     <textarea
+                      data-auth-field="storeAddress"
                       placeholder="Store address"
                       value={form.storeAddress}
                       onChange={(e) => setForm({ ...form, storeAddress: e.target.value })}
                     />
                     <div className="formPair">
                       <input
+                        data-auth-field="kraPin"
                         placeholder="KRA PIN"
                         value={form.kraPin}
                         onChange={(e) => setForm({ ...form, kraPin: e.target.value.toUpperCase() })}
                       />
                       <input
+                        data-auth-field="directorName"
                         placeholder="Director or proprietor name"
                         value={form.directorName}
                         onChange={(e) => setForm({ ...form, directorName: e.target.value })}
                       />
                     </div>
                     <input
+                      data-auth-field="directorNationalId"
                       placeholder="Director national ID"
                       value={form.directorNationalId}
                       onChange={(e) => setForm({ ...form, directorNationalId: e.target.value })}
@@ -1247,6 +1284,7 @@ function App() {
                       </select>
                     </label>
                     <input
+                      data-auth-field="settlementAccount"
                       placeholder="Settlement account number"
                       value={form.settlementAccount}
                       onChange={(e) => setForm({ ...form, settlementAccount: e.target.value })}
@@ -1256,7 +1294,7 @@ function App() {
                       value={form.pspSubaccountId}
                       onChange={(e) => setForm({ ...form, pspSubaccountId: e.target.value })}
                     />
-                    <label className="agreement">
+                    <label className="agreement" data-auth-field="commissionAgreement">
                       <input
                         type="checkbox"
                         checked={form.commissionAccepted}

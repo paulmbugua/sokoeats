@@ -218,10 +218,32 @@ export async function acceptMerchantTerms(req, res, next) {
   } catch (err) { next(err); }
 }
 
+const menuCategoryRules = [
+  ['Drinks', ['drink', 'juice', 'soda', 'water', 'tea', 'coffee', 'milk', 'smoothie']],
+  ['Meals', ['meal', 'chicken', 'beef', 'nyama', 'pilau', 'rice', 'burger', 'pizza', 'ugali', 'fish']],
+  ['Medicine', ['tablet', 'capsule', 'pain', 'medicine', 'syrup', 'pharmacy', 'vitamin']],
+  ['Fresh Produce', ['fruit', 'vegetable', 'tomato', 'onion', 'potato', 'banana', 'avocado']],
+  ['Gas Refills', ['gas', 'lpg', 'cylinder', 'refill']],
+  ['Electronics', ['phone', 'charger', 'cable', 'earphone', 'television', 'laptop', 'battery']],
+  ['Household', ['soap', 'detergent', 'tissue', 'cleaner', 'household']],
+];
+
+function inferMenuCategory(vendor, item) {
+  const search = `${item.name || ''} ${item.description || ''} ${item.unitLabel || ''}`.toLowerCase();
+  const matched = menuCategoryRules.find(([, keywords]) => keywords.some((keyword) => search.includes(keyword)));
+  if (matched) return matched[0];
+  if (vendor.shop_type === 'pharmacy') return 'Medicine';
+  if (vendor.shop_type === 'gas') return 'Gas Refills';
+  if (vendor.shop_type === 'electronics') return 'Electronics';
+  if (vendor.shop_type === 'groceries') return 'Groceries';
+  return 'Meals';
+}
+
 export async function createMerchantMenuItem(req, res, next) {
   try {
     const vendor = await ownedVendor(req.auth.sub);
-    const sectionTitle = req.body.sectionTitle || req.body.category || 'Items';
+    const suppliedCategory = String(req.body.sectionTitle || req.body.category || '').trim();
+    const sectionTitle = suppliedCategory || inferMenuCategory(vendor, req.body);
     const price = Number(String(req.body.price).replace(/[^0-9.]/g, ''));
     if (!Number.isFinite(price) || price <= 0) return res.status(422).json({ message: 'A valid product price is required' });
     const { rows: sections } = await pool.query(
@@ -239,7 +261,7 @@ export async function createMerchantMenuItem(req, res, next) {
       [vendor.id, section.id, req.body.name, req.body.description || '', Math.round(price), section.title, req.body.popular === true, req.body.available !== false, req.body.imageUrl || null, req.body.unitLabel || null, req.body.sortOrder || 0],
     );
     const menu = await loadVendorMenu(vendor.slug);
-    res.status(201).json({ item: menuItemJson(rows[0]), menu });
+    res.status(201).json({ item: menuItemJson(rows[0]), menu, categorization: { category: sectionTitle, source: suppliedCategory ? 'partner' : 'sokoeats-auto' } });
   } catch (err) { next(err); }
 }
 
