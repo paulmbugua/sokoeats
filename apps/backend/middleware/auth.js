@@ -1,3 +1,4 @@
+import '../config/env.js';
 import jwt from 'jsonwebtoken';
 
 function jwtSecret() {
