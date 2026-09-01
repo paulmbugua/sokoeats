@@ -187,6 +187,9 @@ ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid','paid','refunded','failed'));
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_reference TEXT;
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_provider_reference TEXT;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS recipient_name TEXT;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS recipient_phone TEXT;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS delivery_for_self BOOLEAN NOT NULL DEFAULT TRUE;
 
 CREATE TABLE IF NOT EXISTS sokoeats_payment_intents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

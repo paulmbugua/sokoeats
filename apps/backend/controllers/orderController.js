@@ -13,12 +13,16 @@ const orderJson = (row) => ({
   subtotal: Number(row.subtotal),
   deliveryFee: Number(row.delivery_fee),
   serviceFee: Number(row.service_fee),
+  waivedServiceFee: Number(row.waived_service_fee || 0),
   discountAmount: Number(row.discount_amount || 0),
   total: Number(row.total),
   paymentMethod: row.payment_method,
   paymentStatus: row.payment_status,
   paymentReference: row.payment_reference,
   deliveryAddress: row.delivery_address,
+  recipientName: row.recipient_name,
+  recipientPhone: row.recipient_phone,
+  deliveryForSelf: row.delivery_for_self,
   financeState: row.finance_state,
   riderUserId: row.rider_user_id,
   createdAt: row.created_at,
@@ -56,7 +60,7 @@ export async function createOrder(req, res, next) {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { deliveryAddress, notes, items, paymentMethod, paymentReference, discountCode } = req.body;
+    const { deliveryAddress, notes, items, paymentMethod, paymentReference, recipientName, recipientPhone, deliveryForSelf } = req.body;
     const userResult = await client.query('SELECT * FROM sokoeats_users WHERE id = $1 AND role = $2 FOR UPDATE', [req.auth.sub, 'customer']);
     const customer = userResult.rows[0];
     if (!customer) throw Object.assign(new Error('A buyer account is required to place an order'), { status: 403 });
@@ -83,6 +87,7 @@ export async function createOrder(req, res, next) {
     subtotal = Number(quote.subtotal);
     const deliveryFee = Number(quote.delivery_fee);
     const serviceFee = Number(quote.service_fee);
+    const waivedServiceFee = Number(quote.waived_service_fee || 0);
     const discountAmount = Number(quote.discount_amount);
     const total = Number(quote.total);
 
@@ -98,10 +103,10 @@ export async function createOrder(req, res, next) {
 
     const order = await client.query(
       `INSERT INTO sokoeats_orders
-        (code, customer_user_id, vendor_id, pricing_quote_id, subtotal, delivery_fee, service_fee, surge_fee, discount_amount, total, delivery_address, notes, payment_method, payment_status, payment_reference, payment_provider_reference,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude,route_polyline,estimated_distance_km,estimated_duration_min,surge_multiplier,rider_surge_bonus,vendor_surge_bonus,platform_surge_revenue)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'paid',$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+        (code, customer_user_id, vendor_id, pricing_quote_id, subtotal, delivery_fee, service_fee, waived_service_fee, surge_fee, discount_amount, total, delivery_address, recipient_name, recipient_phone, delivery_for_self, notes, payment_method, payment_status, payment_reference, payment_provider_reference,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude,route_polyline,estimated_distance_km,estimated_duration_min,surge_multiplier,rider_surge_bonus,vendor_surge_bonus,platform_surge_revenue)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'paid',$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
        RETURNING *`,
-      [code(),customer.id,vendor.id,quote.id,subtotal,deliveryFee,serviceFee,quote.surge_fee,discountAmount,total,deliveryAddress,notes||null,paymentMethod,paymentReference,paid.provider_reference||null,vendor.latitude,vendor.longitude,quote.dropoff_latitude,quote.dropoff_longitude,quote.route_polyline,quote.distance_km,quote.duration_min,quote.surge_multiplier,quote.rider_surge_bonus,quote.vendor_surge_bonus,quote.platform_surge_revenue],
+      [code(),customer.id,vendor.id,quote.id,subtotal,deliveryFee,serviceFee,waivedServiceFee,quote.surge_fee,discountAmount,total,deliveryAddress,recipientName || customer.name,recipientPhone || phone,deliveryForSelf !== false,notes||null,paymentMethod,paymentReference,paid.provider_reference||null,vendor.latitude,vendor.longitude,quote.dropoff_latitude,quote.dropoff_longitude,quote.route_polyline,quote.distance_km,quote.duration_min,quote.surge_multiplier,quote.rider_surge_bonus,quote.vendor_surge_bonus,quote.platform_surge_revenue],
     );
 
     for (const line of lines) {
@@ -115,7 +120,7 @@ export async function createOrder(req, res, next) {
     await client.query('UPDATE sokoeats_payment_intents SET order_id = $1, updated_at = NOW() WHERE reference = $2', [order.rows[0].id, paymentReference]);
     await client.query('UPDATE sokoeats_pricing_quotes SET consumed_at=NOW() WHERE id=$1', [quote.id]);
     const finance = await initializeOrderFinance(client, { order: order.rows[0], payment: paid, vendor, createdBy: customer.id });
-    await sendOrderUpdateSms(client, { orderId: order.rows[0].id, orderCode: order.rows[0].code, phone, status: 'placed', extra: `Total KES ${total.toLocaleString('en-KE')}. Delivery OTP: ${finance.deliveryOtp}. Share it with the rider only after receiving your order.` });
+    await sendOrderUpdateSms(client, { orderId: order.rows[0].id, orderCode: order.rows[0].code, phone: recipientPhone || phone, status: 'placed', extra: `Total KES ${total.toLocaleString('en-KE')}. Delivery OTP: ${finance.deliveryOtp}. Share it with the rider only after receiving your order.` });
     await client.query('COMMIT');
 
     const full = await pool.query(`SELECT o.*, COALESCE(u.name, 'Guest') AS customer_name, v.name AS vendor_name FROM sokoeats_orders o LEFT JOIN sokoeats_users u ON u.id = o.customer_user_id JOIN sokoeats_vendors v ON v.id = o.vendor_id WHERE o.id = $1`, [order.rows[0].id]);

@@ -10,6 +10,7 @@ import {
   Modal,
   Platform,
   Pressable,
+  RefreshControl,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -25,6 +26,7 @@ import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'ex
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import nextArrowIcon from '../assets/next-arrow.png';
 import { AppIcon, type IconName } from './AppIcon';
+import { DeliveryLocationSheet, type DeliveryLocation } from './DeliveryLocationSheet';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -35,7 +37,7 @@ type AuthUser = { id: string; name: string; email: string; phone?: string | null
 type AuthSession = { token: string; expiresAt: string; user: AuthUser };
 type CheckoutPayment = { reference: string; method: PaymentMethod; amount: number; status: string; actionUrl?: string; promptMessage?: string; providerMessage?: string | null; providerReference?: string; simulation?: boolean };
 type CheckoutOrderResult = { order: { code: string; total: number; paymentStatus: string } };
-type PricingQuote = { id: string; subtotal: number; deliveryFee: number; serviceFee: number; surgeFee: number; discountAmount: number; total: number; distanceKm: number; durationMin: number; surgeMultiplier: number; expiresAt: string; route: { encodedPolyline?: string | null; destination: { lat: number; lng: number }; navigationUrl: string } };
+type PricingQuote = { id: string; subtotal: number; deliveryFee: number; serviceFee: number; waivedServiceFee: number; firstOrderOffer: boolean; surgeFee: number; discountAmount: number; total: number; distanceKm: number; durationMin: number; surgeMultiplier: number; expiresAt: string; route: { encodedPolyline?: string | null; destination: { lat: number; lng: number }; navigationUrl: string } };
 type NativeVersionUpdate = { platform: 'android' | 'ios'; currentVersion: string; latestVersion: string; minimumVersion?: string; available: boolean; required: boolean; storeUrl?: string; title?: string; message?: string };
 type NativeVersionResponse = { update?: NativeVersionUpdate };
 type UpdateSheetKind = 'native' | 'ota';
@@ -64,8 +66,10 @@ type ShopMenuItem = { id: string; name: string; description?: string | null; pri
 type ShopMenuSection = { id?: string; title: string; description?: string | null; items: ShopMenuItem[] };
 type ShopMenuResponse = { vendor?: Partial<ShopListing> & { slug?: string }; sections: ShopMenuSection[] };
 type OrderItem = { menuItemId?: string; quantity: string; name: string; note: string; price: number; imageUrl?: string | null };
+type FavouriteItem = { key: string; shop: ShopListing; item: ShopMenuItem };
 const AUTH_STORAGE_KEY = 'sokoeats.auth';
 const BASKET_STORAGE_KEY = 'sokoeats.basket.v1';
+const FAVOURITES_STORAGE_KEY = 'sokoeats.favourite-items.v1';
 const MOBILE_APP_VERSION = '1.0.0';
 const authRoleOptions: { role: UserRole; label: string; subtitle: string; icon: IconName }[] = [
   { role: 'customer', label: 'Buyer', subtitle: 'Order meals, groceries, medicine, gas, and essentials', icon: 'bag' },
@@ -2105,6 +2109,8 @@ function SokoEatsApp() {
   const [similarItems, setSimilarItems] = useState<ShopMenuItem[]>([]);
   const [basketItems, setBasketItems] = useState<OrderItem[]>(defaultOrderItems);
   const [checkoutShop, setCheckoutShop] = useState<ShopListing | null>(null);
+  const [favouriteItems, setFavouriteItems] = useState<FavouriteItem[]>([]);
+  const [refreshing, setRefreshing] = useState(false);
   const [scanPaymentDraft, setScanPaymentDraft] = useState<ScanPaymentDraft | null>(null);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
   const fade = useRef(new Animated.Value(0)).current;
@@ -2121,13 +2127,17 @@ function SokoEatsApp() {
   }, [fade]);
 
   useEffect(() => {
-    Promise.all([AsyncStorage.getItem(AUTH_STORAGE_KEY), AsyncStorage.getItem(BASKET_STORAGE_KEY)])
-      .then(([authRaw, basketRaw]) => {
+    Promise.all([AsyncStorage.getItem(AUTH_STORAGE_KEY), AsyncStorage.getItem(BASKET_STORAGE_KEY), AsyncStorage.getItem(FAVOURITES_STORAGE_KEY)])
+      .then(([authRaw, basketRaw, favouritesRaw]) => {
         if (authRaw) setAuthSession(JSON.parse(authRaw));
         if (basketRaw) {
           const saved = JSON.parse(basketRaw);
           if (Array.isArray(saved.items)) setBasketItems(saved.items);
           if (saved.shop) setCheckoutShop(saved.shop);
+        }
+        if (favouritesRaw) {
+          const savedFavourites = JSON.parse(favouritesRaw);
+          if (Array.isArray(savedFavourites)) setFavouriteItems(savedFavourites);
         }
       })
       .catch(() => {})
@@ -2140,10 +2150,21 @@ function SokoEatsApp() {
   }, [basketItems, checkoutShop]);
 
   useEffect(() => {
-    sokoeatsApi<{ wallet: Record<string, GenericPayload> }>('/api/wallet/payment-suite').then((r) => setRiderBatch((prev) => ({ ...prev, ...r.wallet }))).catch(() => {});
-    sokoeatsApi<{ maps: MapsManifest }>('/api/maps/manifest').then((r) => setMaps(r.maps)).catch(() => {});
-    sokoeatsApi<{ vendors: Array<Record<string, any>> }>('/api/vendors').then(({ vendors }) => {
-      setAvailableShops(vendors.map((vendor) => ({
+    if (!basketHydrated.current) return;
+    AsyncStorage.setItem(FAVOURITES_STORAGE_KEY, JSON.stringify(favouriteItems)).catch(() => {});
+  }, [favouriteItems]);
+
+  const refreshMarketplace = async () => {
+    setRefreshing(true);
+    try {
+      const [walletResult, mapsResult, vendorResult] = await Promise.all([
+        sokoeatsApi<{ wallet: Record<string, GenericPayload> }>('/api/wallet/payment-suite').catch(() => null),
+        sokoeatsApi<{ maps: MapsManifest }>('/api/maps/manifest').catch(() => null),
+        sokoeatsApi<{ vendors: Array<Record<string, any>> }>('/api/vendors'),
+      ]);
+      if (walletResult) setRiderBatch((prev) => ({ ...prev, ...walletResult.wallet }));
+      if (mapsResult) setMaps(mapsResult.maps);
+      setAvailableShops(vendorResult.vendors.map((vendor) => ({
         id: vendor.slug || vendor.id,
         category: vendor.category as ShopCategoryKey,
         name: vendor.name,
@@ -2158,8 +2179,23 @@ function SokoEatsApp() {
         popularItems: vendor.sections?.map((section: any) => section.title).slice(0, 3) || [],
         reorderLabel: 'Order again from ' + vendor.name,
       })));
-    }).catch(() => setAvailableShops([]));
+    } catch {
+      // Keep the last successful marketplace snapshot visible while offline.
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshMarketplace();
   }, []);
+
+  const toggleFavouriteItem = (shop: ShopListing, item: ShopMenuItem) => {
+    const key = `${shop.id}:${item.id}`;
+    setFavouriteItems((current) => current.some((entry) => entry.key === key)
+      ? current.filter((entry) => entry.key !== key)
+      : [...current, { key, shop, item }]);
+  };
 
   const transitionToScreen = (next: Screen) => {
     fade.setValue(0);
@@ -2356,7 +2392,7 @@ function SokoEatsApp() {
   const subtotal = useMemo(() => basketItems.reduce((sum, item) => sum + item.price, 0), [basketItems]);
   const deliveryFee = 150;
   const serviceFee = Math.round(subtotal * 0.04);
-  const discount = 250;
+  const discount = 0;
   const total = subtotal + deliveryFee + serviceFee - discount;
 
   const topSystemInset = Math.max(insets.top, StatusBar.currentHeight ?? 0, 10);
@@ -2377,14 +2413,16 @@ function SokoEatsApp() {
             onCheckout={openCheckout}
             onWallet={() => openScreen('walletHome')}
             onScan={() => openScreen('scanQr')}
-          onCategoryOpen={openShopCategory}
+            onCategoryOpen={openShopCategory}
+            refreshing={refreshing}
+            onRefresh={refreshMarketplace}
           />
         )}
-        {screen === 'categories' && <CategoriesScreen shops={availableShops} category={selectedShopCategory} ratings={shopRatings} onBack={() => openScreen('home')} onCategoryChange={setSelectedShopCategory} onRate={rateShop} onReorder={reorderShop} onShopOpen={openShopDetail} />}
-        {screen === 'shopDetail' && selectedShop && <ShopDetailScreen shop={selectedShop} sections={shopMenuSections} similarItems={similarItems} loading={shopMenuLoading} error={shopMenuError} onBack={() => openScreen('categories')} onAddItem={addShopItemToBasket} onCheckout={openCheckout} />}
-        {screen === 'orders' && <OrdersScreen shops={availableShops} basket={basketItems} checkoutShop={checkoutShop} onBack={() => openScreen('home')} onCheckout={openCheckout} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} />}
-        {screen === 'favourites' && <FavouritesScreen shops={availableShops} onBack={() => openScreen('home')} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} />}
-        {screen === 'accountAccess' && <AccountAccessScreen authSession={authSession} onAuthenticated={handleAuthenticated} onSignOut={handleSignOut} onBack={() => openScreen('home')} onRider={() => openRiderWorkspace()} />}
+        {screen === 'categories' && <CategoriesScreen shops={availableShops} category={selectedShopCategory} ratings={shopRatings} onBack={() => openScreen('home')} onCategoryChange={setSelectedShopCategory} onRate={rateShop} onReorder={reorderShop} onShopOpen={openShopDetail} refreshing={refreshing} onRefresh={refreshMarketplace} />}
+        {screen === 'shopDetail' && selectedShop && <ShopDetailScreen shop={selectedShop} sections={shopMenuSections} similarItems={similarItems} loading={shopMenuLoading} error={shopMenuError} onBack={() => openScreen('categories')} onAddItem={addShopItemToBasket} onCheckout={openCheckout} favourites={favouriteItems} onToggleFavourite={toggleFavouriteItem} refreshing={shopMenuLoading} onRefresh={() => openShopDetail(selectedShop)} />}
+        {screen === 'orders' && <OrdersScreen shops={availableShops} basket={basketItems} checkoutShop={checkoutShop} onBack={() => openScreen('home')} onCheckout={openCheckout} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} refreshing={refreshing} onRefresh={refreshMarketplace} />}
+        {screen === 'favourites' && <FavouritesScreen favourites={favouriteItems} onBack={() => openScreen('home')} onAddItem={addShopItemToBasket} onToggleFavourite={toggleFavouriteItem} onShopOpen={openShopDetail} refreshing={refreshing} onRefresh={refreshMarketplace} />}
+        {screen === 'accountAccess' && <AccountAccessScreen authSession={authSession} onAuthenticated={handleAuthenticated} onSignOut={handleSignOut} onBack={() => openScreen('home')} onRider={() => openRiderWorkspace()} refreshing={refreshing} onRefresh={refreshMarketplace} />}
         {screen === 'walletHome' && <WalletHomeScreen data={riderBatch.sokoeats_wallet} onBack={() => openScreen('home')} onTopUp={() => openScreen('walletTopUp')} onWithdraw={() => openScreen('walletWithdraw')} onScan={() => openScreen('scanQr')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'walletTopUp' && <WalletTopUpScreen data={riderBatch.top_up_wallet} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ topUp: GenericPayload; history: GenericPayload }>('/api/wallet/top-ups', { method: 'POST', body: JSON.stringify({ amount, method: 'M-Pesa Express' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, top_up_wallet: next.topUp, full_transaction_history: next.history })); openScreen('walletHome'); }} />}
         {screen === 'walletWithdraw' && <WalletWithdrawScreen data={riderBatch.withdraw_to_m_pesa} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ withdrawal: GenericPayload }>('/api/wallet/withdrawals', { method: 'POST', body: JSON.stringify({ amount, destination: 'M-Pesa Account' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, withdraw_to_m_pesa: next.withdrawal })); openScreen('walletHome'); }} />}
@@ -2551,6 +2589,8 @@ function HomeScreen({
   onWallet,
   onScan,
   onCategoryOpen,
+  refreshing,
+  onRefresh,
 }: {
   user: AuthUser | null;
   activeChip: string;
@@ -2559,6 +2599,8 @@ function HomeScreen({
   onWallet: () => void;
   onScan: () => void;
   onCategoryOpen: (category: ShopCategoryKey) => void;
+  refreshing: boolean;
+  onRefresh: () => Promise<void>;
 }) {
   const maps = useContext(MapsContext) || fallbackMaps;
   return (
@@ -2579,7 +2621,7 @@ function HomeScreen({
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}>
         <View style={styles.searchCard}>
           <AppIcon name="search" size={19} color={colors.outline} style={styles.searchIcon} />
           <TextInput
@@ -2686,6 +2728,8 @@ function CategoriesScreen({
   onRate,
   onReorder,
   onShopOpen,
+  refreshing,
+  onRefresh,
 }: {
   shops: ShopListing[];
   category: ShopCategoryKey;
@@ -2695,6 +2739,8 @@ function CategoriesScreen({
   onRate: (shopId: string, rating: number) => void;
   onReorder: (shop: ShopListing) => void;
   onShopOpen: (shop: ShopListing) => void;
+  refreshing: boolean;
+  onRefresh: () => Promise<void>;
 }) {
   const activeCopy = categoryCopy[category];
   const visibleShops = shops.filter((shop) => shop.category === category);
@@ -2702,7 +2748,7 @@ function CategoriesScreen({
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title="Categories" onBack={onBack} />
-      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}>
         <Text style={styles.checkoutTitle}>Shop by need</Text>
         <Text style={styles.checkoutSubtitle}>Fast food, groceries, pharmacy runs, gas, and electronics in one SokoEats basket.</Text>
         <View style={styles.categoryGrid}>
@@ -2733,12 +2779,12 @@ function CategoriesScreen({
   );
 }
 
-function OrdersScreen({ shops, basket, checkoutShop, onBack, onCheckout, onReorder, onRate, ratings, onShopOpen }: { shops: ShopListing[]; basket: OrderItem[]; checkoutShop: ShopListing | null; onBack: () => void; onCheckout: () => void; onReorder: (shop?: ShopListing) => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number>; onShopOpen: (shop: ShopListing) => void }) {
+function OrdersScreen({ shops, basket, checkoutShop, onBack, onCheckout, onReorder, onRate, ratings, onShopOpen, refreshing, onRefresh }: { shops: ShopListing[]; basket: OrderItem[]; checkoutShop: ShopListing | null; onBack: () => void; onCheckout: () => void; onReorder: (shop?: ShopListing) => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number>; onShopOpen: (shop: ShopListing) => void; refreshing: boolean; onRefresh: () => Promise<void> }) {
   const previousShop = shops[0];
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title="Orders" onBack={onBack} />
-      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}>
         <Text style={styles.checkoutTitle}>Your orders</Text>
         <Text style={styles.checkoutSubtitle}>Review your current basket and order again from active shops.</Text>
         {!!basket.length && checkoutShop && (
@@ -2752,7 +2798,7 @@ function OrdersScreen({ shops, basket, checkoutShop, onBack, onCheckout, onReord
         )}
         {!basket.length && <Text style={styles.smsBody}>Your basket is empty. Browse a shop to start an order.</Text>}
         {previousShop && (
-          <View style={styles.deliveryRequestCard}>
+          <View style={styles.orderHistoryCard}>
             <TouchableOpacity onPress={() => onShopOpen(previousShop)}><Text style={styles.vendorName}>{previousShop.name}</Text></TouchableOpacity>
             <Text style={styles.smsBody}>Live catalogue available for reorder.</Text>
             <RatingControl value={ratings[previousShop.id] || Math.round(previousShop.rating)} onRate={(value) => onRate(previousShop.id, value)} />
@@ -2769,15 +2815,37 @@ function OrdersScreen({ shops, basket, checkoutShop, onBack, onCheckout, onReord
   );
 }
 
-function FavouritesScreen({ shops, onBack, onReorder, onRate, ratings, onShopOpen }: { shops: ShopListing[]; onBack: () => void; onReorder: (shop: ShopListing) => void; onRate: (shopId: string, rating: number) => void; ratings: Record<string, number>; onShopOpen: (shop: ShopListing) => void }) {
+function FavouritesScreen({ favourites, onBack, onAddItem, onToggleFavourite, onShopOpen, refreshing, onRefresh }: { favourites: FavouriteItem[]; onBack: () => void; onAddItem: (shop: ShopListing, item: ShopMenuItem, quantity: number) => void; onToggleFavourite: (shop: ShopListing, item: ShopMenuItem) => void; onShopOpen: (shop: ShopListing) => void; refreshing: boolean; onRefresh: () => Promise<void> }) {
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title="Favourites" onBack={onBack} />
-      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
-        <Text style={styles.checkoutTitle}>Available shops</Text>
-        <Text style={styles.checkoutSubtitle}>Save and revisit active SokoEats vendors.</Text>
-        {shops.map((shop) => <ShopCard key={shop.id} shop={shop} rating={ratings[shop.id] || Math.round(shop.rating)} onRate={(value) => onRate(shop.id, value)} onReorder={() => { void onReorder(shop); }} onOpen={() => onShopOpen(shop)} />)}
-        {!shops.length && <Text style={styles.smsBody}>No shops are available right now.</Text>}
+      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}>
+        <Text style={styles.checkoutTitle}>Saved items</Text>
+        <Text style={styles.checkoutSubtitle}>Your favourite products stay here for quick ordering.</Text>
+        {favourites.map(({ key, shop, item }) => (
+          <View key={key} style={styles.favouriteItemCard}>
+            <TouchableOpacity onPress={() => onShopOpen(shop)} activeOpacity={0.86}>
+              <Image source={{ uri: menuItemImage(item) }} style={styles.favouriteItemImage} />
+            </TouchableOpacity>
+            <View style={styles.favouriteItemInfo}>
+              <TouchableOpacity onPress={() => onShopOpen(shop)}>
+                <Text style={styles.vendorName}>{item.name}</Text>
+                <Text style={styles.restaurantMeta}>{shop.name} - {item.category}</Text>
+              </TouchableOpacity>
+              <Text style={styles.shopMenuItemPrice}>{money(item.price)}</Text>
+              <View style={styles.favouriteActions}>
+                <TouchableOpacity style={styles.removeFavouriteButton} onPress={() => onToggleFavourite(shop, item)} accessibilityLabel={`Remove ${item.name} from favourites`}>
+                  <AppIcon name="heart" size={18} color={colors.error} />
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.favouriteAddButton} onPress={() => onAddItem(shop, item, 1)}>
+                  <AppIcon name="bag" size={16} color={colors.onPrimaryContainer} />
+                  <Text style={styles.reorderText}>Add to basket</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        ))}
+        {!favourites.length && <View style={styles.emptyState}><AppIcon name="heart" size={34} color={colors.outline} /><Text style={styles.vendorName}>Nothing saved yet</Text><Text style={styles.smsBody}>Tap the heart beside any product to save it here.</Text></View>}
       </ScrollView>
       <BottomNav active="Favourites" />
       <SourceLedger />
@@ -2785,7 +2853,7 @@ function FavouritesScreen({ shops, onBack, onReorder, onRate, ratings, onShopOpe
   );
 }
 
-function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, onRider }: { authSession: AuthSession | null; onAuthenticated: (session: AuthSession) => Promise<void>; onSignOut: () => Promise<void>; onBack: () => void; onRider: () => Promise<void> }) {
+function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, onRider, refreshing, onRefresh }: { authSession: AuthSession | null; onAuthenticated: (session: AuthSession) => Promise<void>; onSignOut: () => Promise<void>; onBack: () => void; onRider: () => Promise<void>; refreshing: boolean; onRefresh: () => Promise<void> }) {
   const maps = useContext(MapsContext) || fallbackMaps;
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [role, setRole] = useState<UserRole>('customer');
@@ -3107,7 +3175,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
       return (
         <View style={styles.shell}>
           <CustomerScreenHeader title="Complete profile" onBack={onBack} />
-          <ScrollView ref={formScrollRef} contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+          <ScrollView ref={formScrollRef} contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}>
             <View style={styles.profileHero}>
               {user.avatarUrl ? <Image source={{ uri: user.avatarUrl }} style={styles.profileAvatar} /> : <AppIcon name="person" size={54} color={colors.primary} />}
               <Text style={styles.checkoutTitle}>{profileCompletionTitle(signedInRole)}</Text>
@@ -3159,7 +3227,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     return (
       <View style={styles.shell}>
         <CustomerScreenHeader title="Account" onBack={onBack} />
-        <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}>
           <View style={styles.profileHero}>
             {user.avatarUrl ? <Image source={{ uri: user.avatarUrl }} style={styles.profileAvatar} /> : <AppIcon name="person" size={54} color={colors.primary} />}
             <Text style={styles.checkoutTitle}>Hi, {user.name}</Text>
@@ -3171,12 +3239,14 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
             <Text style={styles.secureText}>Session expires {new Date(authSession.expiresAt).toLocaleDateString()}</Text>
           </View>
           {!isPartner && <MapPanel title={isRider ? 'Current delivery zone' : 'Default delivery address'} subtitle={user.defaultAddress || user.city || defaultAddress} map={isRider ? maps.rider.deliveryRequest.map : maps.customer.savedAddresses?.[0]?.map} actionUrl={isRider ? maps.rider.deliveryRequest.acceptUrl : maps.customer.nearbyVendors.actionUrl} actionLabel="Open pin" />}
-          {!isPartner && <TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={isRider ? requestRiderMode : onBack}>
-            <AppIcon name={isRider ? 'bike' : 'home'} size={18} color={colors.onPrimary} style={styles.inlineIcon} />
-            <Text style={styles.placeOrderText}>{isRider ? (busy ? 'Loading live dispatch...' : 'Open rider workspace') : 'Continue shopping'}</Text>
-          </TouchableOpacity>}
+          <View style={styles.profileActions}>
+            {!isPartner && <TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={isRider ? requestRiderMode : onBack}>
+              <AppIcon name={isRider ? 'bike' : 'home'} size={18} color={colors.onPrimary} style={styles.inlineIcon} />
+              <Text style={styles.placeOrderText}>{isRider ? (busy ? 'Loading live dispatch...' : 'Open rider workspace') : 'Continue shopping'}</Text>
+            </TouchableOpacity>}
+            <TouchableOpacity style={styles.primaryButton} onPress={onSignOut}><Text style={styles.primaryButtonText}>Sign out</Text></TouchableOpacity>
+          </View>
           {isPartner && <View style={styles.signedInCard}><View style={styles.sectionHeadingRow}><AppIcon name="check" size={20} color={user.status === 'active' ? colors.secondary : colors.primary} /><Text style={styles.vendorName}>{user.status === 'active' ? 'Store activated' : 'Verification in progress'}</Text></View><Text style={styles.smsBody}>Partner Operations will use your registered email or phone if supporting documents are required.</Text></View>}
-          <TouchableOpacity style={styles.primaryButton} onPress={onSignOut}><Text style={styles.primaryButtonText}>Sign out</Text></TouchableOpacity>
           <View style={[styles.signedInCard, { borderColor: colors.error, marginTop: 18 }]}>
             <View style={styles.sectionHeadingRow}><AppIcon name="receipt" size={20} color={colors.error} /><Text style={[styles.vendorName, { color: colors.error }]}>Delete account</Text></View>
             <Text style={styles.smsBody}>Permanently remove your personal profile and disable access. Required order and financial records remain anonymised.</Text>
@@ -3576,7 +3646,7 @@ function ShopCard({ shop, rating, onRate, onReorder, onOpen }: { shop: ShopListi
 }
 
 
-function ShopDetailScreen({ shop, sections, similarItems, loading, error, onBack, onAddItem, onCheckout }: { shop: ShopListing; sections: ShopMenuSection[]; similarItems: ShopMenuItem[]; loading: boolean; error: string; onBack: () => void; onAddItem: (shop: ShopListing, item: ShopMenuItem, quantity: number) => void; onCheckout: () => void }) {
+function ShopDetailScreen({ shop, sections, similarItems, loading, error, onBack, onAddItem, onCheckout, favourites, onToggleFavourite, refreshing, onRefresh }: { shop: ShopListing; sections: ShopMenuSection[]; similarItems: ShopMenuItem[]; loading: boolean; error: string; onBack: () => void; onAddItem: (shop: ShopListing, item: ShopMenuItem, quantity: number) => void; onCheckout: () => void; favourites: FavouriteItem[]; onToggleFavourite: (shop: ShopListing, item: ShopMenuItem) => void; refreshing: boolean; onRefresh: () => Promise<void> }) {
   const [activeSection, setActiveSection] = useState('All');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [addedCount, setAddedCount] = useState(0);
@@ -3593,7 +3663,7 @@ function ShopDetailScreen({ shop, sections, similarItems, loading, error, onBack
   return (
     <View style={styles.shell}>
       <CustomerScreenHeader title={shop.name} onBack={onBack} />
-      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}>
         <Image source={{ uri: shop.image }} style={styles.shopDetailHeroImage} />
         <View style={styles.shopDetailSummary}>
           <Text style={styles.upperLabel}>{shop.badge} - {shop.distance}</Text>
@@ -3633,6 +3703,9 @@ function ShopDetailScreen({ shop, sections, similarItems, loading, error, onBack
                     <Text style={styles.shopMenuItemPrice}>{money(item.price)}{item.unitLabel ? ' / ' + item.unitLabel : ''}</Text>
                   </View>
                   <View style={styles.shopQuantityPanel}>
+                    <TouchableOpacity style={styles.itemFavouriteButton} onPress={() => onToggleFavourite(shop, item)} accessibilityLabel={`${favourites.some((entry) => entry.key === `${shop.id}:${item.id}`) ? 'Remove' : 'Save'} ${item.name}`}>
+                      <AppIcon name="heart" size={18} color={favourites.some((entry) => entry.key === `${shop.id}:${item.id}`) ? colors.error : colors.primary} />
+                    </TouchableOpacity>
                     <View style={styles.quantityStepper}>
                       <TouchableOpacity style={styles.quantityStepButton} onPress={() => changeQuantity(item.id, -1)}><Text style={styles.quantityStepText}>-</Text></TouchableOpacity>
                       <Text style={styles.quantityStepValue}>{quantity}</Text>
@@ -3648,7 +3721,7 @@ function ShopDetailScreen({ shop, sections, similarItems, loading, error, onBack
             })}
           </View>
         ))}
-        {!!similarItems.length && <View style={styles.shopMenuSection}><Text style={styles.checkoutSectionTitle}>Similar items</Text><Text style={styles.restaurantMeta}>More choices from this shop and related SokoEats stores.</Text>{similarItems.slice(0, 6).map((item) => <View key={item.id} style={styles.shopMenuItemCard}><Image source={{ uri: menuItemImage(item) }} style={styles.shopMenuItemImage} /><View style={styles.shopMenuItemInfo}><Text style={styles.vendorName}>{item.name}</Text><Text style={styles.restaurantMeta}>{item.description}</Text><Text style={styles.shopMenuItemPrice}>{money(item.price)}</Text></View></View>)}</View>}
+        {!!similarItems.length && <View style={styles.shopMenuSection}><Text style={styles.checkoutSectionTitle}>Similar items</Text><Text style={styles.restaurantMeta}>More choices from this shop and related SokoEats stores.</Text>{similarItems.slice(0, 6).map((item) => <View key={item.id} style={styles.shopMenuItemCard}><Image source={{ uri: menuItemImage(item) }} style={styles.shopMenuItemImage} /><View style={styles.shopMenuItemInfo}><Text style={styles.vendorName}>{item.name}</Text><Text style={styles.restaurantMeta}>{item.description}</Text><Text style={styles.shopMenuItemPrice}>{money(item.price)}</Text></View><TouchableOpacity style={styles.itemFavouriteButton} onPress={() => onToggleFavourite(shop, item)}><AppIcon name="heart" size={18} color={favourites.some((entry) => entry.key === `${shop.id}:${item.id}`) ? colors.error : colors.primary} /></TouchableOpacity></View>)}</View>}
       </ScrollView>
       <View style={styles.shopBasketBar}>
         <TouchableOpacity style={styles.placeOrderButton} onPress={selectedCount ? onCheckout : () => Alert.alert('Choose products', 'Add at least one product before reviewing your basket.')} activeOpacity={0.86}>
@@ -3900,10 +3973,19 @@ function CheckoutScreen({
   const [checkoutStatus, setCheckoutStatus] = useState('Calculating live delivery price and route...');
   const [pricingQuote, setPricingQuote] = useState<PricingQuote | null>(null);
   const [pricingBusy, setPricingBusy] = useState(false);
+  const [locationSheetVisible, setLocationSheetVisible] = useState(false);
+  const [deliveryLocation, setDeliveryLocation] = useState<DeliveryLocation | null>(null);
+  const [quoteRefresh, setQuoteRefresh] = useState(0);
+  const [recipientMode, setRecipientMode] = useState<'self' | 'someone'>('self');
+  const [recipientName, setRecipientName] = useState('');
+  const [recipientPhone, setRecipientPhone] = useState('');
 
   useEffect(() => {
     if (authSession?.user.phone) setPhone(authSession.user.phone.replace('+254', ''));
-  }, [authSession?.user.phone]);
+    if (authSession?.user.defaultAddress && !deliveryLocation) {
+      setDeliveryLocation({ address: authSession.user.defaultAddress, latitude: 0, longitude: 0 });
+    }
+  }, [authSession?.user.phone, authSession?.user.defaultAddress]);
 
   useEffect(() => {
     if (!authSession || authSession.user.role !== 'customer' || !shop?.id || !items.length) return;
@@ -3915,12 +3997,14 @@ function CheckoutScreen({
     let active = true;
     setPricingBusy(true);
     setPricingQuote(null);
-    sokoeatsApi<{ quote: PricingQuote }>('/api/orders/quote', { method: 'POST', body: JSON.stringify({ vendorSlug: shop.id, deliveryAddress: authSession.user.defaultAddress, discountCode: 'SOKO25', items: quoteItems }) })
-      .then(({ quote }) => { if (active) { setPricingQuote(quote); setCheckoutStatus(quote.surgeFee ? 'Busy-area pricing is active. KES ' + quote.surgeFee + ' supports faster rider supply and vendor readiness.' : 'Live route: ' + quote.distanceKm.toFixed(1) + ' km, about ' + quote.durationMin + ' min.'); } })
+    const selectedAddress = deliveryLocation?.address || authSession.user.defaultAddress;
+    const hasCoordinates = Boolean(deliveryLocation?.latitude && deliveryLocation?.longitude);
+    sokoeatsApi<{ quote: PricingQuote }>('/api/orders/quote', { method: 'POST', body: JSON.stringify({ vendorSlug: shop.id, deliveryAddress: selectedAddress, ...(hasCoordinates ? { latitude: deliveryLocation?.latitude, longitude: deliveryLocation?.longitude } : {}), items: quoteItems }) })
+      .then(({ quote }) => { if (active) { setPricingQuote(quote); setCheckoutStatus(quote.firstOrderOffer ? `First order offer applied: ${money(quote.waivedServiceFee)} service fee waived.` : quote.surgeFee ? 'Busy-area pricing is active. KES ' + quote.surgeFee + ' supports faster rider supply and vendor readiness.' : 'Live route: ' + quote.distanceKm.toFixed(1) + ' km, about ' + quote.durationMin + ' min.'); } })
       .catch((error) => { if (active) setCheckoutStatus(error instanceof Error ? error.message : 'Live delivery pricing is unavailable.'); })
       .finally(() => { if (active) setPricingBusy(false); });
     return () => { active = false; };
-  }, [authSession?.user.id, authSession?.user.defaultAddress, shop?.id, items]);
+  }, [authSession?.user.id, authSession?.user.defaultAddress, shop?.id, items, deliveryLocation?.address, deliveryLocation?.latitude, deliveryLocation?.longitude, quoteRefresh]);
 
   const checkoutSubtotal = pricingQuote?.subtotal ?? subtotal;
   const checkoutDeliveryFee = pricingQuote?.deliveryFee ?? deliveryFee;
@@ -3949,9 +4033,11 @@ function CheckoutScreen({
         body: JSON.stringify({
           phone: mobile,
           vendorSlug: shop?.id,
-          deliveryAddress: authSession?.user.defaultAddress,
-          notes: 'Customer confirmed order updates by SMS.',
-          discountCode: 'SOKO25',
+          deliveryAddress: deliveryLocation?.address || authSession?.user.defaultAddress,
+          recipientName: recipientMode === 'someone' ? recipientName.trim() : authSession?.user.name,
+          recipientPhone: recipientMode === 'someone' ? normalizeCheckoutPhone(recipientPhone) : mobile,
+          deliveryForSelf: recipientMode === 'self',
+          notes: recipientMode === 'someone' ? `Ordered by ${authSession?.user.name || 'SokoEats buyer'} for ${recipientName.trim()}.` : 'Buyer confirmed order updates by SMS.',
           pricingQuoteId: pricingQuote?.id,
           paymentMethod,
           paymentReference: reference,
@@ -4024,6 +4110,15 @@ function CheckoutScreen({
       onAuthRequired();
       return;
     }
+    if (!deliveryLocation?.address && !authSession.user.defaultAddress) {
+      setCheckoutStatus('Choose the exact delivery location before payment.');
+      setLocationSheetVisible(true);
+      return;
+    }
+    if (recipientMode === 'someone' && (!recipientName.trim() || !normalizeCheckoutPhone(recipientPhone))) {
+      setCheckoutStatus('Add the recipient name and a valid Kenyan mobile number before payment.');
+      return;
+    }
     if (!pendingPayment) {
       if (paymentMethod === 'mpesa') {
         console.info('[SokoEats][M-Pesa][mobile] modal-open', { amount: checkoutTotal });
@@ -4075,7 +4170,7 @@ function CheckoutScreen({
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.checkoutContent} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={styles.checkoutContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={pricingBusy} onRefresh={() => setQuoteRefresh((value) => value + 1)} tintColor={colors.primary} colors={[colors.primary]} />}>
         <View style={styles.checkoutIntro}>
           <Text style={styles.checkoutTitle}>Checkout</Text>
           <Text style={styles.checkoutSubtitle}>Review your order from {shop?.name || 'your selected shop'}</Text>
@@ -4092,16 +4187,40 @@ function CheckoutScreen({
                 <Text style={styles.addressName}>{authSession?.user.city || 'Delivery address'}</Text>
               </View>
             </View>
-            <TouchableOpacity>
+            <TouchableOpacity onPress={() => setLocationSheetVisible(true)}>
               <Text style={styles.changeText}>CHANGE</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.addressDetail}>
-            <Text style={styles.addressDetailText}>{authSession?.user.defaultAddress || 'Sign in and add your delivery address to continue.'}</Text>
+            <Text style={styles.addressDetailText}>{deliveryLocation?.address || authSession?.user.defaultAddress || 'Choose your delivery location to continue.'}</Text>
           </View>
+          <TouchableOpacity style={styles.currentLocationAction} onPress={() => setLocationSheetVisible(true)}>
+            <AppIcon name="pin" size={17} color={colors.secondary} />
+            <Text style={styles.currentLocationText}>Your location</Text>
+            <Text style={styles.currentLocationHint}>Use GPS or adjust map pin</Text>
+          </TouchableOpacity>
         </View>
 
-        <MapPanel title={maps.customer.checkout.title || 'Checkout delivery route'} subtitle={`ETA ${maps.customer.checkout.route?.etaMinutes || 18} min - ${maps.customer.checkout.route?.distanceKm || 4.2} km`} map={maps.customer.checkout.map} actionUrl={maps.customer.checkout.navigationUrl} actionLabel="Directions" />
+        <MapPanel title={maps.customer.checkout.title || 'Checkout delivery route'} subtitle={`ETA ${pricingQuote?.durationMin || maps.customer.checkout.route?.etaMinutes || 18} min - ${pricingQuote?.distanceKm?.toFixed(1) || maps.customer.checkout.route?.distanceKm || 4.2} km`} map={deliveryLocation?.latitude ? { center: { label: 'Delivery', lat: deliveryLocation.latitude, lng: deliveryLocation.longitude }, markers: [{ label: 'Delivery', lat: deliveryLocation.latitude, lng: deliveryLocation.longitude }] } : maps.customer.checkout.map} actionUrl={pricingQuote?.route.navigationUrl || maps.customer.checkout.navigationUrl} actionLabel="Directions" />
+
+        <Text style={styles.checkoutSectionTitle}>Who is receiving this order?</Text>
+        <View style={styles.recipientModeRow}>
+          <TouchableOpacity style={[styles.recipientModeButton, recipientMode === 'self' && styles.recipientModeButtonActive]} onPress={() => setRecipientMode('self')}>
+            <AppIcon name="person" size={18} color={recipientMode === 'self' ? colors.onPrimaryContainer : colors.primary} />
+            <Text style={[styles.recipientModeText, recipientMode === 'self' && styles.recipientModeTextActive]}>Me</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.recipientModeButton, recipientMode === 'someone' && styles.recipientModeButtonActive]} onPress={() => setRecipientMode('someone')}>
+            <AppIcon name="heart" size={18} color={recipientMode === 'someone' ? colors.onPrimaryContainer : colors.primary} />
+            <Text style={[styles.recipientModeText, recipientMode === 'someone' && styles.recipientModeTextActive]}>Someone else</Text>
+          </TouchableOpacity>
+        </View>
+        {recipientMode === 'someone' && (
+          <View style={styles.recipientCard}>
+            <Text style={styles.smsBody}>The recipient will receive delivery updates and the rider can contact them at arrival.</Text>
+            <View style={styles.recipientInputWrap}><AppIcon name="person" size={18} color={colors.primary} /><TextInput style={styles.recipientInput} value={recipientName} onChangeText={setRecipientName} placeholder="Recipient full name" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.recipientInputWrap}><Text style={styles.countryCode}>+254</Text><TextInput style={styles.recipientInput} value={recipientPhone} onChangeText={setRecipientPhone} keyboardType="phone-pad" placeholder="Recipient mobile number" placeholderTextColor={colors.outline} /></View>
+          </View>
+        )}
 
         <Text style={styles.checkoutSectionTitle}>Order Review</Text>
         <View style={styles.orderCard}>
@@ -4167,9 +4286,10 @@ function CheckoutScreen({
         <View style={styles.breakdownCard}>
           <PriceLine label="Subtotal" value={money(checkoutSubtotal)} />
           <PriceLine label="Delivery fee" value={money(checkoutDeliveryFee)} />
-          <PriceLine label="Service fee" value={money(checkoutServiceFee)} />
+          <PriceLine label="Service fee" value={money(checkoutServiceFee + (pricingQuote?.waivedServiceFee || 0))} />
           {!!pricingQuote?.surgeFee && <PriceLine label={`Busy area x${pricingQuote.surgeMultiplier.toFixed(2)}`} value={money(pricingQuote.surgeFee)} />}
-          <PriceLine label="Discount (Promo: SOKO25)" value={`-${money(checkoutDiscount)}`} discount />
+          {!!pricingQuote?.firstOrderOffer && <PriceLine label="First order: service fee waived" value={`-${money(pricingQuote.waivedServiceFee)}`} discount />}
+          {!!checkoutDiscount && <PriceLine label="Promotion" value={`-${money(checkoutDiscount)}`} discount />}
           <View style={styles.totalLine}>
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalAmount}>{money(checkoutTotal)}</Text>
@@ -4216,6 +4336,13 @@ function CheckoutScreen({
           </View>
         </View>
       </Modal>
+      <DeliveryLocationSheet
+        visible={locationSheetVisible}
+        initialAddress={deliveryLocation?.address || authSession?.user.defaultAddress}
+        initialCoordinates={deliveryLocation?.latitude ? deliveryLocation : null}
+        onClose={() => setLocationSheetVisible(false)}
+        onConfirm={(location) => { setDeliveryLocation(location); setLocationSheetVisible(false); setCheckoutStatus('Updating delivery route and price...'); }}
+      />
       <SourceLedger />
     </View>
   );
@@ -5570,6 +5697,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 16,
+    gap: 10,
   },
   orderItemLeft: {
     flex: 1,
@@ -5594,9 +5722,11 @@ const styles = StyleSheet.create({
     height: 44,
     borderRadius: 10,
     backgroundColor: colors.surfaceContainerHigh,
+    marginRight: 10,
   },
   orderItemTextBlock: {
     flex: 1,
+    minWidth: 0,
   },
   orderItemName: {
     color: colors.onSurface,
@@ -6269,4 +6399,115 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
+  orderHistoryCard: {
+    marginTop: 16,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    gap: 10,
+  },
+  favouriteItemCard: {
+    marginTop: 16,
+    borderRadius: 16,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    padding: 12,
+    flexDirection: 'row',
+    gap: 14,
+  },
+  favouriteItemImage: {
+    width: 92,
+    height: 92,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceContainerHigh,
+  },
+  favouriteItemInfo: { flex: 1, minWidth: 0 },
+  favouriteActions: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
+  removeFavouriteButton: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+  },
+  favouriteAddButton: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: colors.primaryContainer,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  emptyState: {
+    marginTop: 28,
+    borderRadius: 16,
+    padding: 28,
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.surfaceContainerLowest,
+  },
+  itemFavouriteButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    backgroundColor: colors.surfaceContainerLowest,
+    alignSelf: 'flex-end',
+  },
+  currentLocationAction: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: colors.outlineVariant,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  currentLocationText: { color: colors.secondary, fontSize: 14, fontWeight: '900' },
+  currentLocationHint: { flex: 1, textAlign: 'right', color: colors.onSurfaceVariant, fontSize: 11, fontWeight: '700' },
+  recipientModeRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+  recipientModeButton: {
+    flex: 1,
+    minHeight: 52,
+    borderRadius: 13,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    backgroundColor: colors.surfaceContainerLowest,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  recipientModeButtonActive: { borderColor: colors.primary, backgroundColor: colors.primaryContainer },
+  recipientModeText: { color: colors.primary, fontSize: 14, fontWeight: '900' },
+  recipientModeTextActive: { color: colors.onPrimaryContainer },
+  recipientCard: {
+    borderRadius: 16,
+    backgroundColor: colors.surfaceContainerLowest,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    padding: 14,
+    gap: 10,
+    marginBottom: 22,
+  },
+  recipientInputWrap: {
+    minHeight: 52,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceContainer,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  recipientInput: { flex: 1, color: colors.onSurface, fontSize: 14 },
 });

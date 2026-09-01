@@ -71,23 +71,30 @@ export async function createPricingQuote(client, { userId, vendorId, vendorSlug,
   if (subtotal < Number(vendor.minimum_order || 0)) throw Object.assign(new Error(`Minimum order is KES ${vendor.minimum_order}`), { status: 422 });
   const distanceFee = Math.max(0, Math.ceil(routeData.distanceKm - 3) * Number(process.env.SOKOEATS_DELIVERY_PER_KM || 35));
   const deliveryFee = Number(vendor.delivery_fee || 150) + distanceFee;
-  const serviceFee = Math.round(subtotal * Number(process.env.SOKOEATS_SERVICE_FEE_BPS || 400) / 10000);
+  const standardServiceFee = Math.round(subtotal * Number(process.env.SOKOEATS_SERVICE_FEE_BPS || 400) / 10000);
+  const previousOrder = await client.query(`SELECT EXISTS(
+    SELECT 1 FROM sokoeats_orders
+    WHERE customer_user_id=$1 AND payment_status='paid' AND status <> 'cancelled'
+  ) AS has_order`, [userId]);
+  const firstOrderOffer = !previousOrder.rows[0].has_order;
+  const waivedServiceFee = firstOrderOffer ? standardServiceFee : 0;
+  const serviceFee = standardServiceFee - waivedServiceFee;
   const demand = await activeSurge(client, vendor, origin);
   const surgeFee = Math.round(deliveryFee * (demand.multiplier - 1));
   const riderSurgeBonus = Math.round(surgeFee * 0.7);
   const vendorSurgeBonus = Math.round(surgeFee * 0.1);
   const platformSurgeRevenue = surgeFee - riderSurgeBonus - vendorSurgeBonus;
-  const discountAmount = discountCode === 'SOKO25' ? Math.min(250, subtotal) : 0;
+  const discountAmount = 0;
   const total = subtotal + deliveryFee + serviceFee + surgeFee - discountAmount;
   const result = await client.query(`INSERT INTO sokoeats_pricing_quotes
-    (user_id,vendor_id,items,delivery_address,dropoff_latitude,dropoff_longitude,subtotal,delivery_fee,service_fee,surge_fee,discount_amount,total,distance_km,duration_min,surge_multiplier,rider_surge_bonus,vendor_surge_bonus,platform_surge_revenue,demand_snapshot,route_polyline,pricing_version,expires_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,NOW()+INTERVAL '15 minutes') RETURNING *`,
-    [userId,vendor.id,JSON.stringify(lines),deliveryAddress,destination.lat,destination.lng,subtotal,deliveryFee,serviceFee,surgeFee,discountAmount,total,routeData.distanceKm.toFixed(2),routeData.durationMin,demand.multiplier,riderSurgeBonus,vendorSurgeBonus,platformSurgeRevenue,JSON.stringify(demand),routeData.polyline,VERSION]);
+    (user_id,vendor_id,items,delivery_address,dropoff_latitude,dropoff_longitude,subtotal,delivery_fee,service_fee,waived_service_fee,first_order_offer,surge_fee,discount_amount,total,distance_km,duration_min,surge_multiplier,rider_surge_bonus,vendor_surge_bonus,platform_surge_revenue,demand_snapshot,route_polyline,pricing_version,expires_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,NOW()+INTERVAL '15 minutes') RETURNING *`,
+    [userId,vendor.id,JSON.stringify(lines),deliveryAddress,destination.lat,destination.lng,subtotal,deliveryFee,serviceFee,waivedServiceFee,firstOrderOffer,surgeFee,discountAmount,total,routeData.distanceKm.toFixed(2),routeData.durationMin,demand.multiplier,riderSurgeBonus,vendorSurgeBonus,platformSurgeRevenue,JSON.stringify(demand),routeData.polyline,VERSION]);
   return { ...result.rows[0], vendor, origin, destination };
 }
 
 export function publicQuote(row) {
-  return { id: row.id, subtotal: Number(row.subtotal), deliveryFee: Number(row.delivery_fee), serviceFee: Number(row.service_fee), surgeFee: Number(row.surge_fee), discountAmount: Number(row.discount_amount), total: Number(row.total), distanceKm: Number(row.distance_km), durationMin: Number(row.duration_min), surgeMultiplier: Number(row.surge_multiplier), expiresAt: row.expires_at, route: { encodedPolyline: row.route_polyline, destination: { lat: Number(row.dropoff_latitude), lng: Number(row.dropoff_longitude) }, navigationUrl: `https://www.google.com/maps/dir/?api=1&destination=${row.dropoff_latitude},${row.dropoff_longitude}&travelmode=driving` } };
+  return { id: row.id, subtotal: Number(row.subtotal), deliveryFee: Number(row.delivery_fee), serviceFee: Number(row.service_fee), waivedServiceFee: Number(row.waived_service_fee || 0), firstOrderOffer: Boolean(row.first_order_offer), surgeFee: Number(row.surge_fee), discountAmount: Number(row.discount_amount), total: Number(row.total), distanceKm: Number(row.distance_km), durationMin: Number(row.duration_min), surgeMultiplier: Number(row.surge_multiplier), expiresAt: row.expires_at, route: { encodedPolyline: row.route_polyline, destination: { lat: Number(row.dropoff_latitude), lng: Number(row.dropoff_longitude) }, navigationUrl: `https://www.google.com/maps/dir/?api=1&destination=${row.dropoff_latitude},${row.dropoff_longitude}&travelmode=driving` } };
 }
 
 export async function lockedQuote(client, quoteId, userId) {

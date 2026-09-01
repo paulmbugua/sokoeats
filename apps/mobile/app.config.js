@@ -11,6 +11,7 @@ export default {
       'expo-web-browser',
       '@react-native-google-signin/google-signin',
       ['expo-camera', { cameraPermission: 'Allow SokoEats to scan merchant payment QR codes.' }],
+      ['expo-location', { locationWhenInUsePermission: 'Allow SokoEats to use your location for accurate delivery and rider navigation.' }],
     ],
     runtimeVersion: process.env.EXPO_RUNTIME_VERSION || '1.0.0',
     updates: { url: 'https://u.expo.dev/53ff8952-ff52-45f2-b580-73e42582bcbe' },
@@ -22,6 +23,7 @@ export default {
     ios: { bundleIdentifier: 'com.paulmbugua2.sokoeats', supportsTablet: true },
     android: {
       package: 'com.paulmbugua2.sokoeats',
+      config: { googleMaps: { apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY } },
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon-foreground.png',

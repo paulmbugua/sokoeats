@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS sokoeats_pricing_quotes (
   subtotal INT NOT NULL,
   delivery_fee INT NOT NULL,
   service_fee INT NOT NULL,
+  waived_service_fee INT NOT NULL DEFAULT 0,
+  first_order_offer BOOLEAN NOT NULL DEFAULT FALSE,
   surge_fee INT NOT NULL DEFAULT 0,
   discount_amount INT NOT NULL DEFAULT 0,
   total INT NOT NULL,
@@ -31,6 +33,8 @@ CREATE TABLE IF NOT EXISTS sokoeats_pricing_quotes (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_sokoeats_pricing_quotes_user ON sokoeats_pricing_quotes(user_id, expires_at DESC);
+ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS waived_service_fee INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS first_order_offer BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS sokoeats_surge_zones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -52,6 +56,7 @@ ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS surge_multiplier NUMERIC(4,
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS rider_surge_bonus INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS vendor_surge_bonus INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS platform_surge_revenue INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS waived_service_fee INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_order_settlements ADD COLUMN IF NOT EXISTS surge_fee INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_order_settlements ADD COLUMN IF NOT EXISTS rider_surge_bonus INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_order_settlements ADD COLUMN IF NOT EXISTS vendor_surge_bonus INT NOT NULL DEFAULT 0;
