@@ -1,0 +1,60 @@
+.quoteBox span,
+.quoteBox strong {
+  gap: 18px;
+}
+
+.quoteBox span b {
+  text-align: right;
+}
+
+.quoteBox .quoteSaving {
+  color: #8ed5ad;
+}
+
+.pricePreview {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 12px;
+  padding: 12px;
+  margin: 10px 0;
+  background: #eef6f1;
+  border-left: 3px solid #26714d;
+  border-radius: 5px;
+}
+
+.pricePreview span {
+  color: #4f6258;
+  font-size: 12px;
+}
+
+.pricePreview strong {
+  text-align: right;
+}
+
+.pricePreview small {
+  grid-column: 1 / -1;
+  color: #405148;
+  line-height: 1.45;
+  border-top: 1px solid #ceddd5;
+  padding-top: 8px;
+}
+
+.paymentChoiceSingle {
+  grid-template-columns: 1fr;
+}
+
+.paymentChoiceSingle button {
+  justify-content: space-between;
+  align-items: center;
+  min-height: 58px;
+}
+
+.paymentChoiceSingle span {
+  font-size: 16px;
+  font-weight: 900;
+}
+
+.paymentChoiceSingle small {
+  color: #ffe0b5;
+  font-weight: 700;
+}

@@ -2,6 +2,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import pool from '../config/db.js';
+import { exchangeGoogleWebCode, googleWebCredentials } from '../services/googleWebOAuth.js';
+import { hasCurrentTerms, recordTermsAcceptance, validateTermsAcceptance } from '../services/partnerTerms.js';
 
 let firebaseAuthInstance;
 
@@ -113,6 +115,7 @@ function requiredProfileFields(role) {
 function profileCompletion(row) {
   const role = row.role === 'courier' ? 'rider' : row.role;
   const missing = requiredProfileFields(role).filter((field) => !valuePresent(profileValue(row, field)));
+  if (!hasCurrentTerms(row)) missing.push('termsAcceptance');
   return { profileComplete: missing.length === 0, missingProfileFields: missing };
 }
 
@@ -125,6 +128,7 @@ function publicUser(row) {
     phone: row.phone,
     role: row.role === 'courier' ? 'rider' : row.role,
     status: row.status,
+    applicationReference: row.application_reference || null,
     authProvider: row.auth_provider,
     avatarUrl: row.avatar_url,
     city: row.city,
@@ -132,17 +136,19 @@ function publicUser(row) {
     emailVerified: row.email_verified,
     phoneVerified: row.phone_verified,
     profileComplete: completion.profileComplete,
+    termsAccepted: hasCurrentTerms(row),
+    termsVersion: row.partner_terms_version || null,
     missingProfileFields: completion.missingProfileFields,
     profile: row.profile || {},
   };
 }
 
-async function createSession(userRow, req, provider) {
+async function createSession(userRow, req, provider, db = pool) {
   const user = publicUser(userRow);
   const tokenId = crypto.randomUUID();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
   const token = jwt.sign({ sub: user.id, role: user.role, email: user.email, jti: tokenId }, getJwtSecret(), { expiresIn: `${SESSION_DAYS}d` });
-  await pool.query(
+  await db.query(
     `INSERT INTO sokoeats_auth_sessions (user_id, token_id, provider, user_agent, ip_address, expires_at)
      VALUES ($1,$2,$3,$4,$5,$6)`,
     [user.id, tokenId, provider, req.get('user-agent') || null, req.ip || null, expiresAt],
@@ -258,7 +264,7 @@ function slugify(value) {
   return String(value || 'sokoeats-shop').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 72);
 }
 
-async function ensureVendorForUser(userRow) {
+async function ensureVendorForUser(userRow, db = pool) {
   if (!['vendor', 'merchant'].includes(userRow.role)) return;
   const completion = profileCompletion(userRow);
   if (!completion.profileComplete) return;
@@ -266,25 +272,32 @@ async function ensureVendorForUser(userRow) {
   const businessName = profile.businessName || userRow.name;
   const shopType = vendorShopType(profile.businessCategory);
   const baseSlug = slugify(businessName);
-  const owned = await pool.query('SELECT id FROM sokoeats_vendors WHERE owner_user_id = $1 ORDER BY created_at LIMIT 1', [userRow.id]);
+  const owned = await db.query('SELECT id FROM sokoeats_vendors WHERE owner_user_id = $1::uuid ORDER BY created_at LIMIT 1', [userRow.id]);
   if (owned.rows[0]) {
-    await pool.query(
-      `UPDATE sokoeats_vendors SET name = $2, cuisine = $3, address = $4, shop_type = $5, tagline = $6, updated_at = NOW() WHERE id = $1`,
-      [owned.rows[0].id, businessName, profile.businessCategory || shopType, profile.storeAddress || userRow.default_address, shopType, profile.tagline || null],
+    await db.query(
+      `UPDATE sokoeats_vendors SET name = $2, cuisine = $3, address = $4, shop_type = $5, tagline = $6,
+       city_id = COALESCE(city_id,(SELECT id FROM sokoeats_cities WHERE lower(name)=lower($7) LIMIT 1)),updated_at = NOW() WHERE id = $1`,
+      [owned.rows[0].id, businessName, profile.businessCategory || shopType, profile.storeAddress || userRow.default_address, shopType, profile.tagline || null, userRow.city || profile.city || 'Nairobi'],
     );
   } else {
-    await pool.query(
-      `INSERT INTO sokoeats_vendors (name, slug, cuisine, address, status, shop_type, tagline, owner_user_id) VALUES ($1, $2 || '-' || substr($3::text, 1, 8), $4, $5, 'review', $6, $7, $3)`,
-      [businessName, baseSlug, userRow.id, profile.businessCategory || shopType, profile.storeAddress || userRow.default_address, shopType, profile.tagline || null],
+    await db.query(
+      `INSERT INTO sokoeats_vendors (name, slug, cuisine, address, status, shop_type, tagline, owner_user_id,city_id)
+       VALUES ($1,$2 || '-' || substr($3::text,1,8),$4,$5,'review',$6,$7,$3::uuid,(SELECT id FROM sokoeats_cities WHERE lower(name)=lower($8) LIMIT 1))`,
+      [businessName, baseSlug, userRow.id, profile.businessCategory || shopType, profile.storeAddress || userRow.default_address, shopType, profile.tagline || null, userRow.city || profile.city || 'Nairobi'],
     );
   }
 }
 
 function allowedWebReturnUrl(raw) {
-  const fallback = process.env.WEB_APP_URL || 'http://localhost:5173';
+  const fallback = process.env.WEB_APP_URL || 'http://localhost:3000';
   let target;
   try { target = new URL(raw || fallback); } catch { target = new URL(fallback); }
-  const allowed = new Set([fallback, ...(process.env.CORS_ORIGINS || '').split(',')].filter(Boolean).map((entry) => {
+  const allowed = new Set([
+    fallback,
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    ...(process.env.WEB_RETURN_ORIGINS || '').split(','),
+  ].filter(Boolean).map((entry) => {
     try { return new URL(entry).origin; } catch { return ''; }
   }));
   return allowed.has(target.origin) ? target.toString() : fallback;
@@ -302,32 +315,39 @@ function googleWebRedirectUri(req) {
 }
 
 export async function register(req, res, next) {
+  const client = await pool.connect();
   try {
     const role = normalizeRole(req.body.role);
     assertSelfRegistrationAllowed(role, req.body);
+    validateTermsAcceptance(role, req.body.termsAcceptance);
     const email = cleanEmail(req.body.email);
     const name = req.body.fullName || req.body.name || req.body.businessName || email.split('@')[0];
     if (!req.body.password || req.body.password.length < 8) {
       return res.status(422).json({ message: 'Password must be at least 8 characters' });
     }
-    const exists = await pool.query(`SELECT id FROM sokoeats_users WHERE email = $1`, [email]);
-    if (exists.rows[0]) return res.status(409).json({ message: 'A SokoEats account already exists for this email' });
     const passwordHash = await bcrypt.hash(req.body.password, 12);
     const profile = buildProfile(req.body, role);
-    const { rows } = await pool.query(
+    await client.query('BEGIN');
+    const exists = await client.query(`SELECT id FROM sokoeats_users WHERE email = $1`, [email]);
+    if (exists.rows[0]) throw Object.assign(new Error('A SokoEats account already exists for this email'), { status: 409 });
+    const { rows } = await client.query(
       `INSERT INTO sokoeats_users
         (name, email, phone, role, password_hash, status, auth_provider, city, default_address, email_verified, phone_verified, marketing_opt_in, terms_accepted_at, profile)
-       VALUES ($1,$2,$3,$4,$5,$6,'password',$7,$8,false,false,$9,NOW(),$10::jsonb)
+       VALUES ($1,$2,$3,$4,$5,$6,'password',$7,$8,false,false,$9,NULL,$10::jsonb)
        RETURNING *`,
       [name, email, req.body.phone || null, role, passwordHash, role === 'vendor' || role === 'merchant' ? 'review' : 'active', req.body.city || 'Nairobi', req.body.defaultAddress || req.body.address || null, req.body.marketingOptIn !== false, JSON.stringify(profile)],
     );
-    await ensureVendorForUser(rows[0]);
-    res.status(201).json(await createSession(rows[0], req, 'password'));
+    const acceptedUser = await recordTermsAcceptance(client, rows[0], req.body.termsAcceptance);
+    await ensureVendorForUser(acceptedUser, client);
+    const session = await createSession(acceptedUser, req, 'password', client);
+    await client.query('COMMIT');
+    res.status(201).json(session);
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     if (err?.code === '23505') err.status = 409;
     if (err?.code === '23505') err.message = 'A SokoEats account already exists for this email';
     next(err);
-  }
+  } finally { client.release(); }
 }
 
 export async function login(req, res, next) {
@@ -342,6 +362,7 @@ export async function login(req, res, next) {
     const ok = await bcrypt.compare(req.body.password, user.password_hash);
     if (!ok) return res.status(401).json({ message: 'Invalid email or password' });
     const { rows: updated } = await pool.query(`UPDATE sokoeats_users SET last_login_at = NOW() WHERE id = $1 RETURNING *`, [user.id]);
+    await ensureVendorForUser(updated[0]);
     res.json(await createSession(updated[0], req, 'password'));
   } catch (err) {
     next(err);
@@ -384,7 +405,7 @@ export async function googleAuth(req, res, next) {
       const { rows } = await pool.query(
         `INSERT INTO sokoeats_users
           (name, email, phone, role, password_hash, status, auth_provider, google_sub, avatar_url, city, default_address, email_verified, phone_verified, marketing_opt_in, terms_accepted_at, last_login_at, profile)
-         VALUES ($1,$2,$3,$4,NULL,$5,'google',$6,$7,$8,$9,true,false,$10,NOW(),NOW(),$11::jsonb)
+         VALUES ($1,$2,$3,$4,NULL,$5,'google',$6,$7,$8,$9,true,false,$10,NULL,NOW(),$11::jsonb)
          RETURNING *`,
         [googleProfile.name, googleProfile.email, req.body.phone || null, role, role === 'vendor' || role === 'merchant' ? 'review' : 'active', googleProfile.sub, googleProfile.avatarUrl, req.body.city || null, req.body.defaultAddress || req.body.address || req.body.storeAddress || null, req.body.marketingOptIn !== false, JSON.stringify(profile)],
       );
@@ -411,10 +432,15 @@ export async function me(req, res, next) {
 }
 
 export async function updateProfile(req, res, next) {
+  const client = await pool.connect();
   try {
     const payload = await verifyBearer(req);
-    const profile = buildProfile(req.body, payload.role);
-    const { rows } = await pool.query(
+    await client.query('BEGIN');
+    const existing = await client.query('SELECT * FROM sokoeats_users WHERE id=$1 FOR UPDATE', [payload.sub]);
+    if (!existing.rows[0] || existing.rows[0].deleted_at || existing.rows[0].status === 'disabled') throw Object.assign(new Error('Account is no longer active'), { status: 401 });
+    if (!hasCurrentTerms(existing.rows[0]) || req.body.termsAcceptance) validateTermsAcceptance(existing.rows[0].role, req.body.termsAcceptance);
+    const profile = Object.keys(req.body).every((key) => key === 'termsAcceptance') ? {} : buildProfile(req.body, payload.role);
+    const { rows } = await client.query(
       `UPDATE sokoeats_users SET
         name = COALESCE($2, name),
         phone = COALESCE($3, phone),
@@ -425,11 +451,49 @@ export async function updateProfile(req, res, next) {
        WHERE id = $1 RETURNING *`,
       [payload.sub, req.body.fullName || req.body.name || null, req.body.phone || null, req.body.city || null, req.body.defaultAddress || req.body.address || req.body.storeAddress || null, typeof req.body.marketingOptIn === 'boolean' ? req.body.marketingOptIn : null, JSON.stringify(profile)],
     );
-    await ensureVendorForUser(rows[0]);
-    res.json({ user: publicUser(rows[0]) });
+    const user = req.body.termsAcceptance ? await recordTermsAcceptance(client, rows[0], req.body.termsAcceptance) : rows[0];
+    await ensureVendorForUser(user, client);
+    await client.query('COMMIT');
+    res.json({ user: publicUser(user) });
   } catch (err) {
+    await client.query('ROLLBACK').catch(() => {});
     if (err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') return res.status(401).json({ message: 'Invalid or expired session' });
     next(err);
+  } finally { client.release(); }
+}
+
+export async function changePassword(req, res, next) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT * FROM sokoeats_users WHERE id=$1 FOR UPDATE', [req.authUser.id]);
+    const user = rows[0];
+    if (!user?.password_hash) throw Object.assign(new Error('This account does not use password sign-in.'), { status: 409 });
+    if (!await bcrypt.compare(req.body.currentPassword, user.password_hash)) {
+      throw Object.assign(new Error('Current password is incorrect.'), { status: 401 });
+    }
+    if (await bcrypt.compare(req.body.newPassword, user.password_hash)) {
+      throw Object.assign(new Error('Choose a new password that you have not used for this account.'), { status: 422 });
+    }
+    const passwordHash = await bcrypt.hash(req.body.newPassword, 12);
+    const updated = await client.query(
+      `UPDATE sokoeats_users SET password_hash=$2,
+       profile=jsonb_set(COALESCE(profile,'{}'::jsonb),'{mustChangePassword}','false'::jsonb,true)
+       WHERE id=$1 RETURNING *`,
+      [user.id, passwordHash],
+    );
+    await client.query(
+      'UPDATE sokoeats_auth_sessions SET revoked_at=NOW() WHERE user_id=$1 AND token_id<>$2 AND revoked_at IS NULL',
+      [user.id, req.auth.jti],
+    );
+    await client.query('COMMIT');
+    console.info('[SokoEats][Auth] password-changed', { userId: user.id, role: user.role });
+    res.json({ user: publicUser(updated.rows[0]), message: 'Password changed. Other signed-in devices have been logged out.' });
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
+    next(error);
+  } finally {
+    client.release();
   }
 }
 
@@ -477,9 +541,7 @@ export async function deleteAccount(req, res, next) {
 
 export async function beginGoogleWebAuth(req, res, next) {
   try {
-    const clientId = process.env.GOOGLE_CLIENT_ID_WEB;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    if (!clientId || !clientSecret) throw Object.assign(new Error('Google web OAuth is not configured'), { status: 503 });
+    const { clientId } = googleWebCredentials();
     const redirectUri = googleWebRedirectUri(req);
     const returnTo = allowedWebReturnUrl(req.query.returnTo);
     const role = normalizeRole(req.query.role || 'customer');
@@ -499,14 +561,8 @@ export async function googleWebCallback(req, res) {
     returnTo = allowedWebReturnUrl(state.returnTo);
     if (req.query.error) throw new Error(String(req.query.error_description || req.query.error));
     const redirectUri = googleWebRedirectUri(req);
-    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ code: String(req.query.code || ''), client_id: process.env.GOOGLE_CLIENT_ID_WEB, client_secret: process.env.GOOGLE_CLIENT_SECRET, redirect_uri: redirectUri, grant_type: 'authorization_code' }),
-    });
-    const tokens = await tokenResponse.json().catch(() => ({}));
-    if (!tokenResponse.ok || !tokens.id_token) throw new Error(tokens.error_description || 'Google OAuth token exchange failed');
-    const googleProfile = await verifyGoogleIdToken(tokens.id_token);
+    const idToken = await exchangeGoogleWebCode({ code: String(req.query.code || ''), redirectUri });
+    const googleProfile = await verifyGoogleIdToken(idToken);
     const existing = await pool.query('SELECT * FROM sokoeats_users WHERE email = $1 OR google_sub = $2 ORDER BY created_at ASC LIMIT 1', [googleProfile.email, googleProfile.sub]);
     const role = normalizeRole(state.role || 'customer');
     if (!['customer', 'rider'].includes(role)) throw new Error('Unsupported Google account role');
@@ -516,7 +572,7 @@ export async function googleWebCallback(req, res) {
       const updated = await pool.query(`UPDATE sokoeats_users SET name = COALESCE($2,name), auth_provider = 'google', google_sub = COALESCE(google_sub,$3), avatar_url = COALESCE($4,avatar_url), email_verified = true, last_login_at = NOW() WHERE id = $1 RETURNING *`, [userRow.id, googleProfile.name, googleProfile.sub, googleProfile.avatarUrl]);
       userRow = updated.rows[0];
     } else {
-      const created = await pool.query(`INSERT INTO sokoeats_users (name,email,role,status,auth_provider,google_sub,avatar_url,email_verified,terms_accepted_at,last_login_at,profile) VALUES ($1,$2,$3,'active','google',$4,$5,true,NOW(),NOW(),'{}'::jsonb) RETURNING *`, [googleProfile.name, googleProfile.email, role, googleProfile.sub, googleProfile.avatarUrl]);
+      const created = await pool.query(`INSERT INTO sokoeats_users (name,email,role,status,auth_provider,google_sub,avatar_url,email_verified,marketing_opt_in,terms_accepted_at,last_login_at,profile) VALUES ($1,$2,$3,'active','google',$4,$5,true,false,NULL,NOW(),'{}'::jsonb) RETURNING *`, [googleProfile.name, googleProfile.email, role, googleProfile.sub, googleProfile.avatarUrl]);
       userRow = created.rows[0];
     }
     const session = await createSession(userRow, req, 'google-web');

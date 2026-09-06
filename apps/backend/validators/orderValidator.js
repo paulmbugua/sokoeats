@@ -17,7 +17,7 @@ export const createOrderSchema = Joi.object({
   deliveryForSelf: Joi.boolean().required(),
   notes: Joi.string().allow('', null),
   discountCode: Joi.string().allow('', null),
-  paymentMethod: Joi.string().valid('mpesa', 'card').required(),
+  paymentMethod: Joi.string().valid('mpesa', 'card', 'paystack').required(),
   paymentReference: Joi.string().min(8).required(),
   pricingQuoteId: Joi.string().uuid().required(),
   items: Joi.array().items(orderItemSchema).min(1).required(),

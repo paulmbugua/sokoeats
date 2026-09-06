@@ -1,4 +1,7 @@
 import pool from '../config/db.js';
+import { distanceKm } from '../services/pricingService.js';
+import { resolveCoverage } from '../services/coverageService.js';
+import { itemPricing } from '../services/commercePricing.js';
 
 const shopTypes = new Set(['restaurants', 'groceries', 'pharmacy', 'gas', 'electronics']);
 
@@ -22,6 +25,7 @@ function vendorJson(row) {
     tagline: row.tagline,
     status: row.status,
     rating: toNumber(row.rating),
+    ratingCount: Number(row.rating_count || 0),
     prepMinutes: Number(row.prep_minutes || 0),
     deliveryFee: Number(row.delivery_fee || 0),
     minimumOrder: Number(row.minimum_order || 0),
@@ -29,15 +33,18 @@ function vendorJson(row) {
     latitude: row.latitude === null ? null : Number(row.latitude),
     longitude: row.longitude === null ? null : Number(row.longitude),
     imageUrl: row.image_url,
+    acceptingOrders: row.accepting_orders !== false,
     paymentCollectionMode: row.payment_collection_mode,
     paymentProvider: row.payment_provider,
     paymentAccountType: row.payment_account_type,
-    paymentShortcode: row.payment_shortcode,
     sections: Array.isArray(row.sections) ? row.sections : [],
+    deliveryAvailable: row.delivery_available !== false,
+    deliveryAvailabilityMessage: row.delivery_availability_message || null,
   };
 }
 
 function menuItemJson(row) {
+  const pricing = itemPricing(row, row);
   return {
     id: row.id,
     vendorId: row.vendor_id,
@@ -45,7 +52,7 @@ function menuItemJson(row) {
     sectionId: row.section_id,
     name: row.name,
     description: row.description,
-    price: Number(row.price || 0),
+    price: pricing.customerPrice,
     category: row.category,
     popular: row.popular,
     available: row.available,
@@ -79,7 +86,28 @@ export async function listVendors(req, res, next) {
         ORDER BY v.rating DESC, v.prep_minutes ASC, v.name ASC`,
       params,
     );
-    res.json({ vendors: rows.map(vendorJson) });
+    let visible = rows.map((vendor) => ({ ...vendor, delivery_available: true }));
+    let coverage = null;
+    if (req.query.latitude != null && req.query.longitude != null) {
+      const destination = { lat: Number(req.query.latitude), lng: Number(req.query.longitude) };
+      coverage = await resolveCoverage(pool, destination.lat, destination.lng);
+      visible = rows.map((vendor) => {
+        const inCity = coverage.serviceable && String(vendor.city_id) === String(coverage.city.id);
+        const inRadius = vendor.latitude == null || vendor.longitude == null ||
+          distanceKm({ lat: Number(vendor.latitude), lng: Number(vendor.longitude) }, destination) <= Number(vendor.service_radius_km || 20);
+        const deliveryAvailable = Boolean(inCity && inRadius);
+        return {
+          ...vendor,
+          delivery_available: deliveryAvailable,
+          delivery_availability_message: deliveryAvailable
+            ? null
+            : coverage.serviceable
+              ? `${vendor.name} does not currently deliver to this location`
+              : coverage.message,
+        };
+      }).sort((left, right) => Number(right.delivery_available) - Number(left.delivery_available));
+    }
+    res.json({ vendors: visible.map(vendorJson), coverage });
   } catch (err) { next(err); }
 }
 
@@ -101,7 +129,7 @@ export async function listMenu(req, res, next) {
       where += ` AND v.shop_type = $${params.length}`;
     }
     const { rows } = await pool.query(
-      `SELECT mi.*, v.slug AS vendor_slug
+      `SELECT mi.*, v.slug AS vendor_slug,v.commission_rate_bps,v.vat_registered
          FROM sokoeats_menu_items mi
          JOIN sokoeats_vendors v ON v.id = mi.vendor_id
         ${where}
@@ -120,7 +148,7 @@ export async function getVendorMenu(req, res, next) {
     if (!vendor) return res.status(404).json({ message: 'Vendor not found' });
     const [sectionsResult, itemsResult] = await Promise.all([
       pool.query('SELECT * FROM sokoeats_menu_categories WHERE vendor_id = $1 ORDER BY sort_order, title', [vendor.id]),
-      pool.query('SELECT mi.*, v.slug AS vendor_slug FROM sokoeats_menu_items mi JOIN sokoeats_vendors v ON v.id = mi.vendor_id WHERE mi.vendor_id = $1 AND mi.available = true ORDER BY mi.popular DESC, mi.category, mi.sort_order, mi.name', [vendor.id]),
+      pool.query('SELECT mi.*, v.slug AS vendor_slug,v.commission_rate_bps,v.vat_registered FROM sokoeats_menu_items mi JOIN sokoeats_vendors v ON v.id = mi.vendor_id WHERE mi.vendor_id = $1 AND mi.available = true ORDER BY mi.popular DESC, mi.category, mi.sort_order, mi.name', [vendor.id]),
     ]);
     const items = itemsResult.rows.map(menuItemJson);
     const sections = sectionsResult.rows.map((section) => ({
@@ -139,13 +167,15 @@ export async function getVendorMenu(req, res, next) {
 export async function similarMenuItems(req, res, next) {
   try {
     const { rows: sourceRows } = await pool.query(
-      `SELECT mi.*, v.shop_type FROM sokoeats_menu_items mi JOIN sokoeats_vendors v ON v.id = mi.vendor_id WHERE mi.id = $1 AND mi.available = true`,
+      `SELECT mi.*, v.shop_type, v.slug AS vendor_slug, v.commission_rate_bps, v.vat_registered
+         FROM sokoeats_menu_items mi JOIN sokoeats_vendors v ON v.id = mi.vendor_id
+        WHERE mi.id = $1 AND mi.available = true`,
       [req.params.id],
     );
     const source = sourceRows[0];
     if (!source) return res.status(404).json({ message: 'Menu item not found' });
     const { rows } = await pool.query(
-      `SELECT mi.*, v.slug AS vendor_slug
+      `SELECT mi.*, v.slug AS vendor_slug,v.commission_rate_bps,v.vat_registered
          FROM sokoeats_menu_items mi
          JOIN sokoeats_vendors v ON v.id = mi.vendor_id
         WHERE mi.id <> $1 AND mi.available = true AND v.status = 'active'

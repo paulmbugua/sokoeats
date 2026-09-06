@@ -1,12 +1,15 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { DeliveryBoard } from './DeliveryBoard';
 import {
   ArrowLeft,
   Check,
   ChevronRight,
   Clock3,
   Download,
+  Eye,
+  EyeOff,
   Headphones,
   LockKeyhole,
   LogIn,
@@ -34,6 +37,8 @@ import {
 } from '@sokoeats/shared/api';
 import type { MenuItem, Vendor } from '@sokoeats/shared/types';
 import { PartnerPortal } from './PartnerPortal';
+import { PartnerTerms, type TermsConsent } from './PartnerTerms';
+import { CustomerCareChat } from './CustomerCareChat';
 
 type Session = ReturnType<typeof readAuthSession>;
 type Line = { item: MenuItem; quantity: number };
@@ -42,10 +47,12 @@ type LiveVendor = Vendor & {
   tagline?: string;
   address?: string;
   sections?: Array<{ title: string }>;
+  deliveryAvailable?: boolean;
+  deliveryAvailabilityMessage?: string | null;
 };
 type Payment = {
   reference: string;
-  method: 'mpesa' | 'card';
+  method: 'mpesa' | 'card' | 'paystack';
   status: string;
   actionUrl?: string;
   providerMessage?: string;
@@ -56,7 +63,10 @@ type PricingQuote = {
   subtotal: number;
   deliveryFee: number;
   serviceFee: number;
+  waivedServiceFee: number;
+  firstOrderOffer: boolean;
   surgeFee: number;
+  vatAmount: number;
   discountAmount: number;
   total: number;
   distanceKm: number;
@@ -64,6 +74,16 @@ type PricingQuote = {
 };
 type Page = 'landing' | 'browse' | 'profile';
 type AuthRole = 'customer' | 'rider' | 'vendor' | 'merchant';
+const partnerRoleDetails = {
+  vendor: {
+    title: 'Vendor - Sell from your shop',
+    description: 'Choose Vendor if you own or operate one shop. Add products, set prices, receive orders and prepare them for delivery.',
+  },
+  merchant: {
+    title: 'Merchant - Manage the business',
+    description: 'Choose Merchant if you manage a registered business, brand or several shops. Manage business details, staff, payments and shop performance.',
+  },
+} as const;
 
 const CART_KEY = 'sokoeats.web.basket.v2';
 const PAYMENT_KEY = 'sokoeats.web.payment.v2';
@@ -96,17 +116,21 @@ export default function SokoEatsApp() {
   const [session, setSession] = useState<Session>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [authMode, setAuthMode] = useState<'login' | 'register'>('login');
+  const [termsAcceptance, setTermsAcceptance] = useState<TermsConsent | null>(null);
   const [authRole, setAuthRole] = useState<AuthRole>('customer');
   const [authBusy, setAuthBusy] = useState(false);
   const [authError, setAuthError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<'mpesa' | 'card'>('mpesa');
+  const [paymentMethod] = useState<'paystack'>('paystack');
   const [pendingPayment, setPendingPayment] = useState<Payment | null>(null);
   const [quote, setQuote] = useState<PricingQuote | null>(null);
   const [checkoutBusy, setCheckoutBusy] = useState(false);
   const [status, setStatus] = useState('');
   const [focused, setFocused] = useState<MenuItem | null>(null);
   const [similar, setSimilar] = useState<MenuItem[]>([]);
+  const [deliveryPin, setDeliveryPin] = useState<{ latitude: number; longitude: number; accuracy?: number } | null>(null);
   const [legal, setLegal] = useState<'terms' | 'privacy' | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteForm, setDeleteForm] = useState({ confirmation: '', password: '', reason: '' });
@@ -114,6 +138,7 @@ export default function SokoEatsApp() {
     fullName: '',
     email: '',
     password: '',
+    confirmPassword: '',
     phone: '',
     city: 'Nairobi',
     defaultAddress: '',
@@ -147,10 +172,27 @@ export default function SokoEatsApp() {
   };
 
   useEffect(() => {
+    const handleExpiredSession = (event: Event) => {
+      const message = (event as CustomEvent<{ message?: string }>).detail?.message;
+      setSession(null);
+      setAuthMode('login');
+      setAuthError(message || 'Your session has expired. Please sign in again.');
+      setAuthOpen(true);
+    };
+    window.addEventListener('sokoeats:session-expired', handleExpiredSession);
+    return () => window.removeEventListener('sokoeats:session-expired', handleExpiredSession);
+  }, []);
+
+  useEffect(() => {
     const saved = readBasket();
     setSelected(saved.vendorId);
     setCart(saved.lines || []);
-    setSession(readAuthSession());
+    const storedSession = readAuthSession();
+    setSession(storedSession);
+    if (storedSession) void api<{ user: NonNullable<Session>['user'] }>('/api/auth/me').then(({ user }) => {
+      if (readAuthSession()?.token !== storedSession.token) return;
+      const refreshed = { ...storedSession, user }; saveAuthSession(refreshed); setSession(refreshed);
+    }).catch(() => {});
     try {
       setPendingPayment(JSON.parse(localStorage.getItem(PAYMENT_KEY) || 'null'));
     } catch {
@@ -160,7 +202,7 @@ export default function SokoEatsApp() {
   }, []);
 
   useEffect(() => {
-    api<{ vendors: LiveVendor[] }>('/api/vendors')
+    const loadVendors = (path: string) => api<{ vendors: LiveVendor[]; coverage?: { serviceable: boolean; message?: string } | null }>(path)
       .then(({ vendors: next }) => {
         setVendors(next);
         setSelected((current) =>
@@ -168,6 +210,12 @@ export default function SokoEatsApp() {
         );
       })
       .catch((error) => setStatus(error.message));
+    if (!navigator.geolocation) { void loadVendors('/api/vendors'); return; }
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => void loadVendors(`/api/vendors?latitude=${encodeURIComponent(coords.latitude)}&longitude=${encodeURIComponent(coords.longitude)}`),
+      () => void loadVendors('/api/vendors'),
+      { enableHighAccuracy: false, timeout: 8000, maximumAge: 300000 },
+    );
   }, []);
 
   useEffect(() => {
@@ -210,6 +258,9 @@ export default function SokoEatsApp() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('auth_code');
     const error = params.get('auth_error');
+    // OAuth handoff codes are single-use. Remove them synchronously so React
+    // Strict Mode cannot replay the exchange while checking this effect.
+    if (code || error) window.history.replaceState({}, '', window.location.pathname);
     if (error) {
       setAuthError(error);
       setAuthOpen(true);
@@ -231,14 +282,15 @@ export default function SokoEatsApp() {
       .catch((nextError) => {
         setAuthError(nextError.message);
         setAuthOpen(true);
-      })
-      .finally(() => window.history.replaceState({}, '', window.location.pathname));
+      });
   }, []);
 
   const vendor = vendors.find((entry) => entry.id === selected);
   const subtotal = cart.reduce((sum, line) => sum + line.item.price * line.quantity, 0);
   const basketCount = cart.reduce((sum, line) => sum + line.quantity, 0);
-  const previewTotal = subtotal + Number(vendor?.deliveryFee || 0) + Math.round(subtotal * 0.04);
+  const previewDeliveryFee = Number(vendor?.deliveryFee || 0);
+  const previewServiceAndTax = Math.round(subtotal * 0.04);
+  const previewTotal = subtotal + previewDeliveryFee + previewServiceAndTax;
   const filteredVendors = vendors.filter(
     (entry) => category === 'All' || entry.category?.toLowerCase() === category.toLowerCase()
   );
@@ -294,6 +346,23 @@ export default function SokoEatsApp() {
       .then((result) => setSimilar(result.similar))
       .catch(() => setSimilar([]));
   };
+  const useCurrentDeliveryLocation = () => {
+    if (!navigator.geolocation) {
+      setStatus('Current location is not available in this browser. Enter an estate, road and town.');
+      return;
+    }
+    setStatus('Finding your current delivery location...');
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setDeliveryPin({ latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy });
+        setQuote(null);
+        setPendingPayment(null);
+        setStatus(`Delivery pin captured${coords.accuracy ? ` within about ${Math.round(coords.accuracy)}m` : ''}.`);
+      },
+      () => setStatus('Current location permission was denied or unavailable. Enter an estate, road and town.'),
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
+    );
+  };
   const beginCheckout = () => {
     if (!cart.length) return;
     if (!session) {
@@ -316,6 +385,8 @@ export default function SokoEatsApp() {
       if (!form.email.trim()) return void focusAuthField('email', 'Email address is required.');
       if (!form.password) return void focusAuthField('password', 'Password is required.');
       if (authMode === 'register' && form.password.length < 8) return void focusAuthField('password', 'Use a password of at least 8 characters.');
+      if (authMode === 'register' && !form.confirmPassword) return void focusAuthField('confirmPassword', 'Confirm your password.');
+      if (authMode === 'register' && form.password !== form.confirmPassword) return void focusAuthField('confirmPassword', 'The passwords do not match.');
       if (authMode === 'register' && !form.phone.trim()) return void focusAuthField('phone', 'Mobile number is required.');
       if (authMode === 'register' && !form.city.trim()) return void focusAuthField('city', 'City is required.');
       if (authMode === 'register' && authRole === 'customer' && !form.defaultAddress.trim()) return void focusAuthField('defaultAddress', 'Delivery address is required.');
@@ -331,11 +402,13 @@ export default function SokoEatsApp() {
       if (authMode === 'register' && isPartner && !form.directorNationalId.trim()) return void focusAuthField('directorNationalId', 'Director national ID is required.');
       if (authMode === 'register' && isPartner && !form.settlementAccount.trim()) return void focusAuthField('settlementAccount', 'Settlement account is required.');
       if (authMode === 'register' && isPartner && !form.commissionAccepted) return void focusAuthField('commissionAgreement', 'Accept the marketplace commission agreement to continue.');
+      if (authMode === 'register' && authRole !== 'customer' && termsAcceptance?.role !== authRole) return void focusAuthField('termsAcceptance', 'Read and accept the terms of service to continue.');
       const body =
         authMode === 'login'
           ? { role: authRole, email: form.email, password: form.password }
           : {
               role: authRole,
+              termsAcceptance: termsAcceptance || undefined,
               fullName: form.fullName,
               email: form.email,
               password: form.password,
@@ -353,13 +426,14 @@ export default function SokoEatsApp() {
               businessName: isPartner ? form.businessName : undefined,
               businessCategory: isPartner ? form.businessCategory : undefined,
               storeAddress: isPartner ? form.storeAddress : undefined,
-              marketingOptIn: true,
+              marketingOptIn: false,
             };
       const next = await api<NonNullable<Session>>(
         authMode === 'login' ? '/api/auth/login' : '/api/auth/register',
         { method: 'POST', body: JSON.stringify(body) }
       );
       saveAuthSession(next);
+      setSession(next);
       if (authMode === 'register' && isPartner) {
         await api('/api/vendor/compliance', {
           method: 'PUT',
@@ -422,6 +496,7 @@ export default function SokoEatsApp() {
       method: 'PATCH',
       body: JSON.stringify({
         name: form.fullName,
+        termsAcceptance: termsAcceptance || undefined,
         phone: form.phone,
         city: form.city,
         defaultAddress: session?.user.role === 'customer' ? form.defaultAddress : undefined,
@@ -448,6 +523,8 @@ export default function SokoEatsApp() {
       body: JSON.stringify({
         vendorId: vendor.id,
         deliveryAddress: form.defaultAddress,
+        city: form.city,
+        ...(deliveryPin ? { latitude: deliveryPin.latitude, longitude: deliveryPin.longitude } : {}),
         items: cart.map((line) => ({
           menuItemId: line.item.id,
           quantity: line.quantity,
@@ -480,7 +557,7 @@ export default function SokoEatsApp() {
       setStatus(
         result.payment.providerMessage || result.payment.promptMessage || 'Payment started.'
       );
-      if (paymentMethod === 'card' && result.payment.actionUrl)
+      if (result.payment.actionUrl)
         window.location.assign(result.payment.actionUrl);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Payment could not be started.');
@@ -672,7 +749,14 @@ export default function SokoEatsApp() {
   );
 
   if (session && (session.user.role === 'vendor' || session.user.role === 'merchant'))
-    return <PartnerPortal session={session} onSignOut={signOut} />;
+    return <><CustomerCareChat user={session.user}/><section className="profilePage"><PartnerTerms role={session.user.role} value={termsAcceptance} onChange={setTermsAcceptance} accepted={session.user.termsAccepted} />{!session.user.termsAccepted && <button className="primary" disabled={!termsAcceptance || authBusy} onClick={async () => {
+      setAuthBusy(true);
+      try {
+        const result = await api<{ user: NonNullable<Session>['user'] }>('/api/auth/profile', { method: 'PATCH', body: JSON.stringify({ termsAcceptance }) });
+        const next = { ...session, user: result.user }; saveAuthSession(next); setSession(next);
+      } catch (error) { setStatus(error instanceof Error ? error.message : 'Acceptance could not be saved.'); }
+      finally { setAuthBusy(false); }
+    }}>Accept and continue</button>}{status && <p role="status">{status}</p>}</section>{session.user.termsAccepted && <PartnerPortal session={session} onSignOut={signOut} />}{!session.user.termsAccepted && <button onClick={signOut}>Sign out</button>}</>;
 
   return (
     <main>
@@ -769,6 +853,7 @@ export default function SokoEatsApp() {
                     <small>
                       <Star size={14} /> {entry.rating} · {entry.prepMinutes} min
                     </small>
+                    {entry.acceptingOrders === false && <small>Shop paused · browse only</small>}
                   </div>
                   <ChevronRight />
                 </button>
@@ -840,6 +925,8 @@ export default function SokoEatsApp() {
                 <em>
                   <Star size={14} /> {entry.rating} <Clock3 size={14} /> {entry.prepMinutes}m
                 </em>
+                {entry.deliveryAvailable === false && <small>Browse only</small>}
+                {entry.acceptingOrders === false && <small>Shop paused</small>}
               </button>
             ))}
           </section>
@@ -855,7 +942,7 @@ export default function SokoEatsApp() {
                     <MapPin size={16} /> {vendor.address}
                   </p>
                 </div>
-                <strong>From {money(vendor.deliveryFee)} delivery</strong>
+                <strong>{vendor.deliveryAvailable === false ? 'Delivery coming soon here' : `From ${money(vendor.deliveryFee)} delivery`}</strong>
               </>
             )}
           </section>
@@ -917,9 +1004,13 @@ export default function SokoEatsApp() {
                 <p className="empty">Add products from this shop to begin.</p>
               )}
               <div className="totals">
-                <span>Basket</span>
+                <span>Items subtotal</span>
                 <b>{money(subtotal)}</b>
-                <span>Estimated total</span>
+                <span>Delivery fee</span>
+                <b>{money(previewDeliveryFee)}</b>
+                <span>Service & tax</span>
+                <b>{money(previewServiceAndTax)}</b>
+                <strong>Total</strong>
                 <b>{money(previewTotal)}</b>
               </div>
               <button className="primary" onClick={beginCheckout} disabled={!cart.length}>
@@ -1024,6 +1115,7 @@ export default function SokoEatsApp() {
                     onChange={(e) => setForm({ ...form, payoutPhone: e.target.value })}
                   />
                 </label>
+                <PartnerTerms role={session.user.role} value={termsAcceptance} onChange={setTermsAcceptance} accepted={session.user.termsAccepted} />
                 <button className="primary" onClick={() => void saveProfile().catch((error) => setStatus(error instanceof Error ? error.message : 'Profile could not be saved.'))}>
                   Save rider profile
                 </button>
@@ -1069,6 +1161,7 @@ export default function SokoEatsApp() {
               </section>
             )}
             {status && <p className="notice">{status}</p>}
+            {session.user.role === 'customer' && <DeliveryBoard />}
             <section className="securityPanel">
               <ShieldCheck />
               <div>
@@ -1134,10 +1227,16 @@ export default function SokoEatsApp() {
               ))}
             </div>
             {(authRole === 'vendor' || authRole === 'merchant') && (
-              <div className="roleChoice partnerType" aria-label="Store partner type">
-                <button className={authRole === 'vendor' ? 'active' : ''} onClick={() => setAuthRole('vendor')}>Vendor</button>
-                <button className={authRole === 'merchant' ? 'active' : ''} onClick={() => setAuthRole('merchant')}>Merchant</button>
-              </div>
+              <>
+                <div className="roleChoice partnerType" aria-label="Store partner type">
+                  <button className={authRole === 'vendor' ? 'active' : ''} onClick={() => setAuthRole('vendor')}>Vendor</button>
+                  <button className={authRole === 'merchant' ? 'active' : ''} onClick={() => setAuthRole('merchant')}>Merchant</button>
+                </div>
+                <div className="partnerRoleDescription" aria-live="polite">
+                  <Store aria-hidden="true" />
+                  <span><b>{partnerRoleDetails[authRole].title}</b>{partnerRoleDetails[authRole].description}</span>
+                </div>
+              </>
             )}
             {(authRole === 'customer' || authRole === 'rider') && (
               <>
@@ -1175,13 +1274,44 @@ export default function SokoEatsApp() {
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
             />
-            <input
-              data-auth-field="password"
-              type="password"
-              placeholder={authMode === 'register' ? 'Password, at least 8 characters' : 'Password'}
-              value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })}
-            />
+            <div className="passwordField" data-auth-field="password">
+              <input
+                type={showPassword ? 'text' : 'password'}
+                placeholder={authMode === 'register' ? 'Password, at least 8 characters' : 'Password'}
+                autoComplete={authMode === 'register' ? 'new-password' : 'current-password'}
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })}
+              />
+              <button
+                type="button"
+                className="passwordToggle"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((visible) => !visible)}
+              >
+                {showPassword ? <EyeOff /> : <Eye />}
+              </button>
+            </div>
+            {authMode === 'register' && (
+              <div className="passwordField" data-auth-field="confirmPassword">
+                <input
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  placeholder="Confirm password"
+                  autoComplete="new-password"
+                  value={form.confirmPassword}
+                  onChange={(e) => setForm({ ...form, confirmPassword: e.target.value })}
+                />
+                <button
+                  type="button"
+                  className="passwordToggle"
+                  aria-label={showConfirmPassword ? 'Hide confirmed password' : 'Show confirmed password'}
+                  aria-pressed={showConfirmPassword}
+                  onClick={() => setShowConfirmPassword((visible) => !visible)}
+                >
+                  {showConfirmPassword ? <EyeOff /> : <Eye />}
+                </button>
+              </div>
+            )}
             {authMode === 'register' && (
               <>
                 <div className="formPair">
@@ -1308,13 +1438,14 @@ export default function SokoEatsApp() {
                         checked={form.commissionAccepted}
                         onChange={(e) => setForm({ ...form, commissionAccepted: e.target.checked })}
                       />
-                      <span>I accept the marketplace-v1 agreement and 10% launch commission.</span>
+                      <span>I accept the marketplace-v1 agreement. SokoEats adds 10% to my entered product amount to create the customer-facing price.</span>
                     </label>
                   </>
                 )}
               </>
             )}
             {authError && <p className="error">{authError}</p>}
+            {authMode === 'register' && <PartnerTerms role={authRole} value={termsAcceptance} onChange={setTermsAcceptance} />}
             <button className="primary" disabled={authBusy} onClick={submitAuth}>
               {authBusy
                 ? 'Please wait...'
@@ -1367,42 +1498,41 @@ export default function SokoEatsApp() {
                 value={form.defaultAddress}
                 onChange={(e) => {
                   setForm({ ...form, defaultAddress: e.target.value });
+                  setDeliveryPin(null);
                   setQuote(null);
                   setPendingPayment(null);
                 }}
               />
             </label>
-            <div className="paymentChoice">
-              <button
-                className={paymentMethod === 'mpesa' ? 'active' : ''}
-                onClick={() => {
-                  setPaymentMethod('mpesa');
-                  setPendingPayment(null);
-                }}
-              >
-                M-Pesa
-              </button>
-              <button
-                className={paymentMethod === 'card' ? 'active' : ''}
-                onClick={() => {
-                  setPaymentMethod('card');
-                  setPendingPayment(null);
-                }}
-              >
-                Debit / credit card
+            <button className="textButton" type="button" onClick={useCurrentDeliveryLocation}>
+              <MapPin /> Use current location
+            </button>
+            {deliveryPin && (
+              <p className="notice">
+                Delivery pin ready: {deliveryPin.latitude.toFixed(5)}, {deliveryPin.longitude.toFixed(5)}
+                {deliveryPin.accuracy ? ` · ${Math.round(deliveryPin.accuracy)}m accuracy` : ''}
+              </p>
+            )}
+            <div className="paymentChoice paymentChoiceSingle" aria-label="Payment method">
+              <button className="active" type="button">
+                <span>M-Pesa / Card</span>
+                <small>Secure Paystack checkout</small>
               </button>
             </div>
             <div className="quoteBox">
               <span>
-                Basket <b>{money(quote?.subtotal ?? subtotal)}</b>
+                Item subtotal <b>{money(quote?.subtotal ?? subtotal)}</b>
               </span>
               <span>
-                Delivery{' '}
-                <b>{quote ? money(quote.deliveryFee + quote.surgeFee) : 'Calculated live'}</b>
+                Delivery fee <b>{money(quote?.deliveryFee ?? previewDeliveryFee)}</b>
               </span>
+              {!!quote?.surgeFee && <span>Busy-area delivery fee <b>{money(quote.surgeFee)}</b></span>}
               <span>
-                Service <b>{quote ? money(quote.serviceFee) : 'Calculated live'}</b>
+                Service fee <b>{money(quote ? quote.serviceFee + quote.waivedServiceFee : previewServiceAndTax)}</b>
               </span>
+              {!!quote?.firstOrderOffer && <span className="quoteSaving">First-order service fee saving <b>-{money(quote.waivedServiceFee)}</b></span>}
+              {!!quote?.discountAmount && <span className="quoteSaving">Promotion <b>-{money(quote.discountAmount)}</b></span>}
+              <span>VAT (where applicable) <b>{money(quote?.vatAmount ?? 0)}</b></span>
               {quote && (
                 <small>
                   <MapPin /> {quote.distanceKm.toFixed(1)} km · about {quote.durationMin} min
@@ -1416,7 +1546,7 @@ export default function SokoEatsApp() {
               <button className="primary" disabled={checkoutBusy} onClick={startPayment}>
                 {checkoutBusy
                   ? 'Preparing secure payment...'
-                  : `Pay with ${paymentMethod === 'mpesa' ? 'M-Pesa' : 'card'}`}
+                  : 'Pay with M-Pesa / Card'}
               </button>
             ) : (
               <button className="primary" disabled={checkoutBusy} onClick={confirmAndOrder}>
@@ -1516,6 +1646,7 @@ export default function SokoEatsApp() {
           </section>
         </div>
       )}
+      <CustomerCareChat user={session?.user || null} onSignIn={() => { setAuthMode('login'); setAuthOpen(true); }}/>
     </main>
   );
 }

@@ -54,9 +54,21 @@ export const quizSubmissionSchema = Joi.object({
 
 export const vendorProfileSettingsSchema = Joi.object({
   acceptingOrders: Joi.boolean(),
-  business: Joi.object().unknown(true),
-  operations: Joi.array().items(Joi.object().unknown(true)),
-}).unknown(true);
+  name: Joi.string().trim().min(2).max(120),
+  tagline: Joi.string().trim().max(180).allow('', null),
+  address: Joi.string().trim().min(3).max(240),
+  contactPhone: Joi.string().trim().max(30).allow('', null),
+  imageUrl: Joi.string().uri().max(2000).allow('', null),
+  prepMinutes: Joi.number().integer().min(5).max(180),
+  minimumOrder: Joi.number().integer().min(0).max(1000000),
+  openingHours: Joi.object().pattern(Joi.string(), Joi.string().max(80)),
+}).min(1);
+
+export const vendorReviewSchema = Joi.object({
+  orderId: Joi.string().uuid(),
+  rating: Joi.number().integer().min(1).max(5).required(),
+  comment: Joi.string().trim().max(600).allow('', null),
+});
 
 
 export const referralInvitationsSchema = Joi.object({
@@ -109,10 +121,10 @@ export const merchantOnboardingSubmissionSchema = Joi.object({
 export const merchantMenuItemSchema = Joi.object({
   vendorId: Joi.string().allow('', null),
   vendorSlug: Joi.string().pattern(/^[a-z0-9-]+$/).default('nairobi-grill-house'),
-  sectionTitle: Joi.string().min(2).max(80),
+  sectionTitle: Joi.string().trim().empty('').min(2).max(80),
   sectionDescription: Joi.string().max(220).allow('', null),
   sectionSortOrder: Joi.number().integer().min(0).allow(null),
-  name: Joi.string().min(2).max(140).required(),
+  name: Joi.string().trim().min(2).max(140).required(),
   description: Joi.string().max(500).allow('', null),
   price: Joi.alternatives().try(Joi.number().min(1), Joi.string().min(1)).required(),
   category: Joi.string().min(2).max(80).allow('', null),
@@ -128,6 +140,8 @@ export const merchantMenuCategorySchema = Joi.object({
   description: Joi.string().max(220).allow('', null),
   sortOrder: Joi.number().integer().min(0).default(0),
 }).unknown(false);
+
+export const merchantMenuItemUpdateSchema = merchantMenuItemSchema.fork('price', () => Joi.number().integer().min(1).required());
 
 export const vendorImageUploadSchema = Joi.object({
   filename: Joi.string().min(3).max(180).required(),

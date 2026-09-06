@@ -30,13 +30,18 @@ export async function createImageUpload({ ownerUserId, filename, contentType }) 
   const client = new S3Client({
     region: 'auto',
     endpoint: settings.endpoint,
+    // The browser supplies the body later; never sign an empty-body checksum.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
     credentials: { accessKeyId: settings.accessKeyId, secretAccessKey: settings.secretAccessKey },
   });
-  const uploadUrl = await getSignedUrl(client, new PutObjectCommand({
-    Bucket: settings.bucket,
-    Key: key,
-    ContentType: contentType,
-    CacheControl: 'public, max-age=31536000, immutable',
-  }), { expiresIn: 600 });
-  return { key, uploadUrl, publicUrl: `${settings.publicBaseUrl}/${key}`, expiresInSeconds: 600 };
+  const headers = { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=31536000, immutable' };
+  try {
+    const uploadUrl = await getSignedUrl(client, new PutObjectCommand({
+      Bucket: settings.bucket,
+      Key: key,
+      ContentType: contentType,
+      CacheControl: headers['Cache-Control'],
+    }), { expiresIn: 600, signableHeaders: new Set(['content-type', 'cache-control']) });
+    return { key, uploadUrl, publicUrl: `${settings.publicBaseUrl}/${key}`, headers, expiresInSeconds: 600 };
+  } finally { client.destroy(); }
 }

@@ -11,6 +11,7 @@ async function dispatchSms({ phone, message }) {
   if (!url || !process.env.SMS_API_KEY) return { status: 'queued', providerResponse: { configured: false } };
   const res = await fetch(url, {
     method: 'POST',
+    signal: AbortSignal.timeout(10000),
     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.SMS_API_KEY}` },
     body: JSON.stringify({ to: phone, message, senderId: smsSenderId(), from: smsSenderId(), brand: 'SokoEats' }),
   });
@@ -22,7 +23,11 @@ async function dispatchSms({ phone, message }) {
 export async function sendOrderUpdateSms(client, { orderId, orderCode, phone, status, extra }) {
   if (!phone) return null;
   const message = orderUpdateMessage(orderCode, status, extra);
-  const delivery = await dispatchSms({ phone, message });
+  // A provider outage must not roll back a genuine delivery milestone.
+  const delivery = await dispatchSms({ phone, message }).catch((error) => {
+    console.warn('[SokoEats][Delivery] sms-dispatch-failed', { orderId, event: status, reason: error.name });
+    return { status: 'failed', providerResponse: { error: 'SMS provider unavailable' } };
+  });
   const { rows } = await client.query(
     `INSERT INTO sokoeats_sms_notifications (order_id, phone, sender_id, brand_name, message, event, delivery_status, provider_response)
      VALUES ($1,$2,$3,'SokoEats',$4,$5,$6,$7)

@@ -5,7 +5,13 @@ import { createOrderSchema, updateOrderStatusSchema } from '../validators/orderV
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { quoteOrder } from '../controllers/pricingController.js';
 import { pricingQuoteSchema } from '../validators/pricingValidator.js';
+import { deliveryOrders, trackDelivery, deliveryAction, shareDeliveryLocation } from '../controllers/deliveryController.js';
+import { deliveryActionSchema, deliveryLocationSchema } from '../validators/deliveryValidator.js';
 const router = Router();
+router.get('/deliveries', requireAuth, deliveryOrders);
+router.get('/deliveries/:orderKey', requireAuth, trackDelivery);
+router.post('/deliveries/:orderKey/actions', requireAuth, validate(deliveryActionSchema), deliveryAction);
+router.post('/deliveries/:orderKey/location', requireAuth, validate(deliveryLocationSchema), shareDeliveryLocation);
 router.get('/orders', requireAuth, requireRole('admin', 'support'), listOrders);
 router.post('/orders/quote', requireAuth, requireRole('customer'), validate(pricingQuoteSchema), quoteOrder);
 router.post('/orders', requireAuth, validate(createOrderSchema), createOrder);

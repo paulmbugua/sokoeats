@@ -9,6 +9,8 @@
     "dev": "nodemon server.js",
     "db:setup": "node scripts/setupDatabase.js",
     "admin:provision": "node scripts/provisionAdmin.js",
+    "support:provision": "node scripts/provisionSupport.js",
+    "test:auth-guard": "node scripts/checkAuthGuard.js",
     "build": "node --check server.js",
     "lint": "node --check server.js"
   },
@@ -24,9 +26,11 @@
     "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
+    "nodemailer": "^7.0.0",
     "pg": "^8.16.0"
   },
   "devDependencies": {
+    "@types/nodemailer": "^7",
     "nodemon": "^3.1.4"
   }
 }

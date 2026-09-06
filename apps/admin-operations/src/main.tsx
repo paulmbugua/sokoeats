@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { ChevronRight, ShieldCheck, Store } from 'lucide-react';
 import { api, clearAuthSession, readAuthSession, saveAuthSession, type StoredAuthSession } from '@sokoeats/shared/api';
 import { PartnerPortal } from '../../web/src/PartnerPortal';
+import { CustomerCareChat } from '../../web/src/CustomerCareChat';
 import '../../web/src/PartnerPortal.css';
 import './styles.css';
 
@@ -38,8 +39,13 @@ function App() {
     const stored = readAuthSession();
     return stored && ['vendor', 'merchant'].includes(stored.user.role) ? stored : null;
   });
+  useEffect(() => {
+    const handleExpiredSession = () => setSession(null);
+    window.addEventListener('sokoeats:session-expired', handleExpiredSession);
+    return () => window.removeEventListener('sokoeats:session-expired', handleExpiredSession);
+  }, []);
   if (!session) return <SignIn onAuthenticated={setSession}/>;
-  return <PartnerPortal session={session} onSignOut={() => { clearAuthSession(); setSession(null); }}/>;
+  return <><PartnerPortal session={session} onSignOut={() => { clearAuthSession(); setSession(null); }}/><CustomerCareChat user={session.user}/></>;
 }
 
 ReactDOM.createRoot(document.getElementById('root')!).render(<React.StrictMode><App/></React.StrictMode>);

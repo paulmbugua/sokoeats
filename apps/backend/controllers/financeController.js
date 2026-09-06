@@ -1,6 +1,8 @@
 import pool from '../config/db.js';
 import { createDuePayouts, freezeSettlement, assignRider, confirmDeliveryOtp, markPickedUp, postJournal, postPaidPayout, processDueSettlements, resolveSettlementDispute, settlementDetails, vendorAccept, accounts, reference } from '../services/financeService.js';
-import { createPaystackRecipient, initiatePaystackTransfer, mpesaReceiptFromIntent, requestMpesaReversal, requestPaystackRefund, verifyPaystackTransfer, verifyPaystackWebhook } from '../services/financeProvider.js';
+import { createPaystackRecipient, createPaystackSubaccount, estimatePaystackTransferFee, initiatePaystackTransfer, requestPaystackRefund, verifyPaystackTransfer, verifyPaystackWebhook } from '../services/financeProvider.js';
+import { completePayoutBatch, createPayoutBatches } from '../services/payoutBatchService.js';
+import { dispatchQueuedEmail, queuePartnerApprovalEmail } from '../services/emailService.js';
 
 function financeKey() {
   const key = process.env.FINANCE_DATA_KEY;
@@ -57,6 +59,16 @@ export async function updateVendorCompliance(req, res, next) {
       const recipient = await createPaystackRecipient({ name: req.body.legalBusinessName, method: req.body.settlementMethod, accountNumber: req.body.settlementAccount, bankCode: req.body.settlementBankCode });
       recipientCode = recipient.recipient_code;
     }
+    let subaccountId = req.body.pspSubaccountId || null;
+    if (!subaccountId && req.body.settlementMethod === 'bank') {
+      const subaccount = await createPaystackSubaccount({
+        businessName: req.body.legalBusinessName,
+        bankCode: req.body.settlementBankCode,
+        accountNumber: req.body.settlementAccount,
+        commissionRateBps: vendor.commission_rate_bps || 1000,
+      });
+      subaccountId = subaccount.subaccount_code;
+    }
     await client.query('BEGIN');
     const { rows } = await client.query(
       `INSERT INTO sokoeats_vendor_compliance
@@ -64,7 +76,7 @@ export async function updateVendorCompliance(req, res, next) {
        VALUES ($1,$2,$3,pgp_sym_encrypt($4,$5),$6,$7,pgp_sym_encrypt($8,$5),$9,$10,$11,pgp_sym_encrypt($12,$5),$13,$14,$15,$16,$17,NOW(),$18,'submitted','pending_verification')
        ON CONFLICT (vendor_id) DO UPDATE SET legal_business_name=EXCLUDED.legal_business_name,registration_number=EXCLUDED.registration_number,kra_pin_encrypted=EXCLUDED.kra_pin_encrypted,kra_pin_last4=EXCLUDED.kra_pin_last4,director_name=EXCLUDED.director_name,director_national_id_encrypted=EXCLUDED.director_national_id_encrypted,director_national_id_last4=EXCLUDED.director_national_id_last4,settlement_method=EXCLUDED.settlement_method,settlement_bank_code=EXCLUDED.settlement_bank_code,settlement_account_encrypted=EXCLUDED.settlement_account_encrypted,settlement_account_last4=EXCLUDED.settlement_account_last4,psp_subaccount_id=EXCLUDED.psp_subaccount_id,psp_recipient_code=EXCLUDED.psp_recipient_code,commission_rate_bps=EXCLUDED.commission_rate_bps,commission_agreement_version=EXCLUDED.commission_agreement_version,commission_agreed_at=NOW(),commission_agreed_by=EXCLUDED.commission_agreed_by,verification_status='submitted',verification_note=NULL,payout_status='pending_verification',updated_at=NOW()
        RETURNING *`,
-      [vendor.id, req.body.legalBusinessName, req.body.registrationNumber, req.body.kraPin, financeKey(), last4(req.body.kraPin), req.body.directorName, req.body.directorNationalId, last4(req.body.directorNationalId), req.body.settlementMethod, req.body.settlementBankCode || null, req.body.settlementAccount, last4(req.body.settlementAccount), req.body.pspSubaccountId || null, recipientCode, vendor.commission_rate_bps || 1000, req.body.commissionAgreementVersion, req.auth.sub],
+      [vendor.id, req.body.legalBusinessName, req.body.registrationNumber, req.body.kraPin, financeKey(), last4(req.body.kraPin), req.body.directorName, req.body.directorNationalId, last4(req.body.directorNationalId), req.body.settlementMethod, req.body.settlementBankCode || null, req.body.settlementAccount, last4(req.body.settlementAccount), subaccountId, recipientCode, vendor.commission_rate_bps || 1000, req.body.commissionAgreementVersion, req.auth.sub],
     );
     await client.query(`UPDATE sokoeats_vendors SET commission_rate_bps=$2,verification_status='submitted',payout_status='pending_verification',updated_at=NOW() WHERE id=$1`, [vendor.id, rows[0].commission_rate_bps]);
     await client.query(
@@ -84,10 +96,20 @@ export async function reviewVendorCompliance(req, res, next) {
   try {
     await client.query('BEGIN');
     const status = req.body.status;
+    const partner = (await client.query(
+      `SELECT vc.verification_status AS previous_verification_status,v.id AS vendor_id,v.name AS shop_name,
+              u.id AS owner_id,u.name AS owner_name,u.email,u.role,u.application_reference
+       FROM sokoeats_vendor_compliance vc
+       JOIN sokoeats_vendors v ON v.id=vc.vendor_id
+       JOIN sokoeats_users u ON u.id=v.owner_user_id
+       WHERE vc.vendor_id=$1 FOR UPDATE OF vc,v,u`,
+      [req.params.vendorId],
+    )).rows[0];
+    if (!partner) throw Object.assign(new Error('Vendor compliance submission or account owner not found'), { status: 404 });
     const payoutStatus = status === 'verified' ? 'active' : status === 'suspended' ? 'frozen' : 'pending_verification';
     const { rows } = await client.query(
       `UPDATE sokoeats_vendor_compliance SET verification_status=$2,verification_note=$3,verified_by=$4,verified_at=CASE WHEN $2='verified' THEN NOW() ELSE verified_at END,payout_status=$5,updated_at=NOW() WHERE vendor_id=$1 RETURNING *`,
-      [req.params.vendorId, status, req.body.note || null, req.auth.sub, payoutStatus],
+      [req.params.vendorId, status, req.body.note || null, req.authUser.id, payoutStatus],
     );
     if (!rows[0]) throw Object.assign(new Error('Vendor compliance submission not found'), { status: 404 });
     if (status === 'verified' && !rows[0].psp_recipient_code) throw Object.assign(new Error('A Paystack recipient code is required before payout activation'), { status: 409 });
@@ -100,8 +122,19 @@ export async function reviewVendorCompliance(req, res, next) {
       [req.params.vendorId, status],
     );
     await client.query(`UPDATE sokoeats_payout_profiles SET status=$2,verified_at=CASE WHEN $2='active' THEN NOW() ELSE verified_at END,updated_at=NOW() WHERE vendor_id=$1`, [req.params.vendorId, payoutStatus]);
+    const emailOutboxId = status === 'verified' && partner.previous_verification_status !== 'verified'
+      ? await queuePartnerApprovalEmail(client, {
+          vendorId: partner.vendor_id,
+          shopName: partner.shop_name,
+          ownerName: partner.owner_name,
+          email: partner.email,
+          role: partner.role,
+          applicationReference: partner.application_reference,
+        })
+      : null;
     await client.query('COMMIT');
-    res.json({ compliance: publicCompliance(rows[0]) });
+    const emailNotification = emailOutboxId ? await dispatchQueuedEmail(emailOutboxId) : { status: 'not_needed' };
+    res.json({ compliance: publicCompliance(rows[0]), emailNotification });
   } catch (error) { await client.query('ROLLBACK').catch(() => {}); next(error); }
   finally { client.release(); }
 }
@@ -136,7 +169,16 @@ export async function pickupOrder(req, res, next) { try { res.json({ settlement:
 export async function deliverOrder(req, res, next) { try { res.json({ settlement: await withFinanceTransaction((client) => confirmDeliveryOtp(client, req.params.orderKey, req.body.otp, req.auth)) }); } catch (e) { next(e); } }
 export async function openDispute(req, res, next) { try { res.status(201).json({ dispute: await withFinanceTransaction((client) => freezeSettlement(client, req.params.orderKey, req.auth, req.body.reason)) }); } catch (e) { next(e); } }
 export async function resolveDispute(req, res, next) { try { res.json({ dispute: await withFinanceTransaction((client) => resolveSettlementDispute(client, req.params.disputeId, req.auth, req.body.resolution, req.body.note, req.body.adjustmentTarget, req.body.adjustmentAmount)) }); } catch (e) { next(e); } }
-export async function processDue(req, res, next) { try { const payouts = await withFinanceTransaction(processDueSettlements); res.json({ created: payouts.length, payouts }); } catch (e) { next(e); } }
+export async function processDue(req, res, next) {
+  try {
+    const result = await withFinanceTransaction(async (client) => {
+      const payouts = await processDueSettlements(client);
+      const batches = await createPayoutBatches(client);
+      return { payouts, batches };
+    });
+    res.json({ created: result.payouts.length, batchesCreated: result.batches.length, ...result });
+  } catch (e) { next(e); }
+}
 
 export async function getOrderFinance(req, res, next) {
   const client = await pool.connect();
@@ -175,13 +217,14 @@ export async function getRiderFinanceDashboard(req, res, next) {
 
 export async function getAdminFinanceDashboard(_req, res, next) {
   try {
-    const [accountsResult, payoutSummary, settlementSummary, complianceSummary, submissions, payouts, riders] = await Promise.all([
+    const [accountsResult, payoutSummary, settlementSummary, complianceSummary, submissions, payouts, batches, riders] = await Promise.all([
       pool.query(`SELECT a.code,a.name,a.account_type,a.owner_type,COALESCE(SUM(CASE WHEN l.direction='debit' THEN l.amount ELSE -l.amount END),0)::bigint AS debit_balance FROM sokoeats_ledger_accounts a LEFT JOIN sokoeats_ledger_lines l ON l.account_id=a.id GROUP BY a.id ORDER BY a.code`),
       pool.query(`SELECT status,beneficiary_type,COUNT(*)::int count,COALESCE(SUM(amount),0)::int amount FROM sokoeats_payouts GROUP BY status,beneficiary_type ORDER BY status,beneficiary_type`),
       pool.query(`SELECT state,COUNT(*)::int count,COALESCE(SUM(vendor_net+rider_entitlement),0)::int exposure FROM sokoeats_order_settlements GROUP BY state ORDER BY state`),
       pool.query(`SELECT verification_status,payout_status,COUNT(*)::int count FROM sokoeats_vendor_compliance GROUP BY verification_status,payout_status`),
-      pool.query(`SELECT vc.*,v.name AS vendor_name,v.risk_tier,u.name AS owner_name,u.email AS owner_email FROM sokoeats_vendor_compliance vc JOIN sokoeats_vendors v ON v.id=vc.vendor_id LEFT JOIN sokoeats_users u ON u.id=v.owner_user_id ORDER BY CASE vc.verification_status WHEN 'submitted' THEN 0 WHEN 'under_review' THEN 1 ELSE 2 END,vc.updated_at DESC LIMIT 100`),
+      pool.query(`SELECT vc.*,v.name AS vendor_name,v.risk_tier,u.application_reference,u.name AS owner_name,u.email AS owner_email FROM sokoeats_vendor_compliance vc JOIN sokoeats_vendors v ON v.id=vc.vendor_id LEFT JOIN sokoeats_users u ON u.id=v.owner_user_id ORDER BY CASE vc.verification_status WHEN 'submitted' THEN 0 WHEN 'under_review' THEN 1 ELSE 2 END,vc.updated_at DESC LIMIT 100`),
       pool.query(`SELECT p.reference,p.beneficiary_type,p.amount,p.status,p.scheduled_for,p.failure_reason,v.name AS vendor_name,u.name AS rider_name FROM sokoeats_payouts p LEFT JOIN sokoeats_vendors v ON v.id=p.vendor_id LEFT JOIN sokoeats_users u ON u.id=p.rider_user_id ORDER BY p.scheduled_for DESC LIMIT 100`),
+      pool.query(`SELECT b.reference,b.beneficiary_type,b.amount,b.estimated_provider_fee,b.actual_provider_fee,b.payout_method,b.status,b.scheduled_for,b.failure_reason,v.name AS vendor_name,u.name AS rider_name FROM sokoeats_payout_batches b LEFT JOIN sokoeats_vendors v ON v.id=b.vendor_id LEFT JOIN sokoeats_users u ON u.id=b.rider_user_id ORDER BY b.scheduled_for DESC LIMIT 100`),
       pool.query(`SELECT id,name,email,status FROM sokoeats_users WHERE role IN ('rider','courier') AND status='active' ORDER BY name`),
     ]);
     res.json({
@@ -189,8 +232,9 @@ export async function getAdminFinanceDashboard(_req, res, next) {
       payoutSummary: payoutSummary.rows,
       settlementSummary: settlementSummary.rows,
       complianceSummary: complianceSummary.rows,
-      vendorSubmissions: submissions.rows.map((row) => ({ ...publicCompliance(row), vendorName: row.vendor_name, ownerName: row.owner_name, ownerEmail: row.owner_email, riskTier: row.risk_tier })),
+      vendorSubmissions: submissions.rows.map((row) => ({ ...publicCompliance(row), applicationReference: row.application_reference, vendorName: row.vendor_name, ownerName: row.owner_name, ownerEmail: row.owner_email, riskTier: row.risk_tier })),
       payouts: payouts.rows,
+      payoutBatches: batches.rows,
       riders: riders.rows,
     });
   } catch (e) { next(e); }
@@ -199,37 +243,49 @@ export async function executePayout(req, res, next) {
   let payout;
   try {
     payout = await withFinanceTransaction(async (client) => {
-      const { rows } = await client.query(`SELECT * FROM sokoeats_payouts WHERE id=$1 OR reference=$1 FOR UPDATE`, [req.params.payoutKey]);
+      let { rows } = await client.query(`SELECT *,TRUE AS is_batch FROM sokoeats_payout_batches WHERE id::text=$1 OR reference=$1 FOR UPDATE`, [req.params.payoutKey]);
+      if (!rows[0]) ({ rows } = await client.query(`SELECT *,FALSE AS is_batch FROM sokoeats_payouts WHERE id::text=$1 OR reference=$1 FOR UPDATE`, [req.params.payoutKey]));
       if (!rows[0]) throw Object.assign(new Error('Payout not found'), { status: 404 });
       if (!['scheduled','failed'].includes(rows[0].status)) throw Object.assign(new Error(`Payout cannot be sent from ${rows[0].status}`), { status: 409 });
-      const settlement = (await client.query('SELECT * FROM sokoeats_order_settlements WHERE id=$1', [rows[0].settlement_id])).rows[0];
-      if (settlement.dispute_status === 'open' || settlement.frozen_at) throw Object.assign(new Error('Payout is frozen by an open dispute'), { status: 409 });
-      const updated = await client.query(`UPDATE sokoeats_payouts SET status='processing',failure_reason=NULL,updated_at=NOW() WHERE id=$1 RETURNING *`, [rows[0].id]);
-      return updated.rows[0];
+      if (!rows[0].is_batch) {
+        const settlement = (await client.query('SELECT * FROM sokoeats_order_settlements WHERE id=$1', [rows[0].settlement_id])).rows[0];
+        if (settlement.dispute_status === 'open' || settlement.frozen_at) throw Object.assign(new Error('Payout is frozen by an open dispute'), { status: 409 });
+      }
+      const table = rows[0].is_batch ? 'sokoeats_payout_batches' : 'sokoeats_payouts';
+      const updated = await client.query(`UPDATE ${table} SET status='processing',failure_reason=NULL,updated_at=NOW() WHERE id=$1 RETURNING *`, [rows[0].id]);
+      return { ...updated.rows[0], is_batch: rows[0].is_batch };
     });
     const provider = await initiatePaystackTransfer({ reference: payout.reference, amount: payout.amount, recipientCode: payout.recipient_code, reason: `SokoEats ${payout.beneficiary_type} settlement` });
     const status = provider.status === 'success' ? 'paid' : provider.status === 'otp' ? 'otp' : provider.status === 'failed' ? 'failed' : 'queued';
     const updated = await withFinanceTransaction(async (client) => {
-      const result = await client.query(`UPDATE sokoeats_payouts SET status=$2,provider_reference=$3,provider_payload=provider_payload || $4::jsonb,paid_at=CASE WHEN $2='paid' THEN NOW() ELSE paid_at END,updated_at=NOW() WHERE id=$1 RETURNING *`, [payout.id, status, provider.transfer_code || null, provider]);
-      if (status === 'paid') await postPaidPayout(client, result.rows[0], req.auth.sub);
+      const table = payout.is_batch ? 'sokoeats_payout_batches' : 'sokoeats_payouts';
+      const result = await client.query(`UPDATE ${table} SET status=$2,provider_reference=$3,provider_payload=provider_payload || $4::jsonb,paid_at=CASE WHEN $2='paid' THEN NOW() ELSE paid_at END,updated_at=NOW() WHERE id=$1 RETURNING *`, [payout.id, status, provider.transfer_code || null, provider]);
+      if (status === 'paid' && payout.is_batch) await completePayoutBatch(client, result.rows[0], provider, req.auth.sub);
+      else if (status === 'paid') await postPaidPayout(client, result.rows[0], req.auth.sub);
       return result.rows[0];
     });
     res.json({ payout: updated });
   } catch (error) {
-    if (payout?.id) await pool.query(`UPDATE sokoeats_payouts SET status='failed',failure_reason=$2,provider_payload=provider_payload || $3::jsonb,updated_at=NOW() WHERE id=$1`, [payout.id, error.message, error.providerPayload || {}]).catch(() => {});
+    if (payout?.id) {
+      const table = payout.is_batch ? 'sokoeats_payout_batches' : 'sokoeats_payouts';
+      await pool.query(`UPDATE ${table} SET status='failed',failure_reason=$2,provider_payload=provider_payload || $3::jsonb,updated_at=NOW() WHERE id=$1`, [payout.id, error.message, error.providerPayload || {}]).catch(() => {});
+    }
     next(error);
   }
 }
 
 export async function refreshPayout(req, res, next) {
   try {
-    const payout = (await pool.query(`SELECT * FROM sokoeats_payouts WHERE id=$1 OR reference=$1`, [req.params.payoutKey])).rows[0];
+    let payout = (await pool.query(`SELECT *,TRUE AS is_batch FROM sokoeats_payout_batches WHERE id::text=$1 OR reference=$1`, [req.params.payoutKey])).rows[0];
+    if (!payout) payout = (await pool.query(`SELECT *,FALSE AS is_batch FROM sokoeats_payouts WHERE id::text=$1 OR reference=$1`, [req.params.payoutKey])).rows[0];
     if (!payout) return res.status(404).json({ message: 'Payout not found' });
     const provider = await verifyPaystackTransfer(payout.reference);
     const status = provider.status === 'success' ? 'paid' : provider.status === 'failed' || provider.status === 'reversed' ? 'failed' : 'processing';
     const updated = await withFinanceTransaction(async (client) => {
-      const result = await client.query(`UPDATE sokoeats_payouts SET status=$2,provider_reference=COALESCE($3,provider_reference),provider_payload=provider_payload || $4::jsonb,paid_at=CASE WHEN $2='paid' THEN COALESCE(paid_at,NOW()) ELSE paid_at END,updated_at=NOW() WHERE id=$1 RETURNING *`, [payout.id, status, provider.transfer_code || null, provider]);
-      if (status === 'paid') await postPaidPayout(client, result.rows[0], req.auth.sub);
+      const table = payout.is_batch ? 'sokoeats_payout_batches' : 'sokoeats_payouts';
+      const result = await client.query(`UPDATE ${table} SET status=$2,provider_reference=COALESCE($3,provider_reference),provider_payload=provider_payload || $4::jsonb,paid_at=CASE WHEN $2='paid' THEN COALESCE(paid_at,NOW()) ELSE paid_at END,updated_at=NOW() WHERE id=$1 RETURNING *`, [payout.id, status, provider.transfer_code || null, provider]);
+      if (status === 'paid' && payout.is_batch) await completePayoutBatch(client, result.rows[0], provider, req.auth.sub);
+      else if (status === 'paid') await postPaidPayout(client, result.rows[0], req.auth.sub);
       return result.rows[0];
     });
     res.json({ payout: updated });
@@ -266,8 +322,11 @@ async function completeRefund(client, refund, providerPayload = {}) {
   }
   await client.query(`UPDATE sokoeats_refunds SET status='paid',provider_payload=provider_payload || $2::jsonb,processed_at=NOW(),updated_at=NOW() WHERE id=$1`, [refund.id, providerPayload]);
   await client.query(`UPDATE sokoeats_orders SET payment_status='refunded',finance_state='REFUNDED',updated_at=NOW() WHERE id=$1`, [refund.order_id]);
-  const settlement = (await client.query(`UPDATE sokoeats_order_settlements SET state='REFUNDED',updated_at=NOW() WHERE order_id=$1 RETURNING *`, [refund.order_id])).rows[0];
-  await client.query(`INSERT INTO sokoeats_settlement_events (settlement_id,from_state,to_state,event_type,actor_user_id,metadata) VALUES ($1,$2,'REFUNDED','original_provider_refund',$3,$4)`, [settlement.id, finance.state, refund.requested_by, { refundReference: refund.reference, amount: refund.amount }]);
+  const previous = (await client.query(`SELECT id,state FROM sokoeats_order_settlements WHERE order_id=$1 FOR UPDATE`, [refund.order_id])).rows[0];
+  if (previous?.state !== 'REFUNDED') {
+    await client.query(`UPDATE sokoeats_order_settlements SET state='REFUNDED',updated_at=NOW() WHERE id=$1`, [previous.id]);
+    await client.query(`INSERT INTO sokoeats_settlement_events (settlement_id,from_state,to_state,event_type,actor_user_id,metadata) VALUES ($1,$2,'REFUNDED','original_provider_refund',$3,$4)`, [previous.id, previous.state, refund.requested_by, { refundReference: refund.reference, amount: refund.amount }]);
+  }
 }
 export async function requestOrderRefund(req, res, next) {
   let refund;
@@ -287,9 +346,7 @@ export async function requestOrderRefund(req, res, next) {
       const result = await client.query(`INSERT INTO sokoeats_refunds (reference,order_id,payment_intent_id,amount,reason,provider,requested_by) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`, [reference('sko-refund'), s.order_id, s.payment_intent_id, amount, req.body.reason, payment.provider, req.auth.sub]);
       return { ...result.rows[0], payment };
     });
-    let provider;
-    if (refund.provider === 'paystack') provider = await requestPaystackRefund({ transactionReference: refund.payment.reference, amount: refund.amount });
-    else provider = await requestMpesaReversal({ transactionId: mpesaReceiptFromIntent(refund.payment), amount: refund.amount, reference: refund.reference });
+    const provider = await requestPaystackRefund({ transactionReference: refund.payment.reference, amount: refund.amount });
     const providerStatus = String(provider.status || provider.ResponseDescription || '').toLowerCase();
     const paid = ['processed','success','successful'].includes(providerStatus);
     await withFinanceTransaction(async (client) => {
@@ -307,12 +364,35 @@ export async function paystackTransferWebhook(req, res) {
   const raw = req.rawBody || Buffer.from(JSON.stringify(req.body));
   if (!verifyPaystackWebhook(raw, req.get('x-paystack-signature'))) return res.status(401).json({ message: 'Invalid Paystack signature' });
   const event = req.body;
-  if (!['transfer.success','transfer.failed','transfer.reversed','refund.processed','refund.failed'].includes(event.event)) return res.json({ ok: true, ignored: true });
+  if (!['charge.success','transfer.success','transfer.failed','transfer.reversed','refund.processed','refund.failed'].includes(event.event)) return res.json({ ok: true, ignored: true });
   await withFinanceTransaction(async (client) => {
-    if (event.event.startsWith('transfer.')) {
+    if (event.event === 'charge.success') {
+      const intent = (await client.query(`SELECT * FROM sokoeats_payment_intents WHERE reference=$1 FOR UPDATE`, [event.data.reference])).rows[0];
+      if (!intent) return;
+      const correctAmount = Number(event.data.amount) === Number(intent.amount) * 100;
+      const correctCurrency = event.data.currency === intent.currency;
+      if (!correctAmount || !correctCurrency) throw Object.assign(new Error('Paystack webhook amount or currency mismatch'), { status: 409 });
+      await client.query(
+        `UPDATE sokoeats_payment_intents SET status='paid',provider='paystack',provider_reference=$2,
+         provider_payload=provider_payload || $3::jsonb,paid_at=COALESCE(paid_at,NOW()),updated_at=NOW() WHERE id=$1`,
+        [intent.id, event.data.reference, { paystackCharge: event.data }],
+      );
+      console.info('[SokoEats][Payment] paystack:charge-success', { reference: event.data.reference, channel: event.data.channel, amount: event.data.amount });
+    } else if (event.event.startsWith('transfer.')) {
       const status = event.event === 'transfer.success' ? 'paid' : 'failed';
-      const result = await client.query(`UPDATE sokoeats_payouts SET status=$2,provider_reference=COALESCE($3,provider_reference),provider_payload=provider_payload || $4::jsonb,paid_at=CASE WHEN $2='paid' THEN COALESCE(paid_at,NOW()) ELSE paid_at END,failure_reason=CASE WHEN $2='failed' THEN $5 ELSE failure_reason END,updated_at=NOW() WHERE reference=$1 RETURNING *`, [event.data.reference, status, event.data.transfer_code || null, event.data, event.data.reason || event.event]);
-      if (result.rows[0] && status === 'paid') await postPaidPayout(client, result.rows[0]);
+      const batchResult = await client.query(
+        `UPDATE sokoeats_payout_batches SET status=$2,provider_reference=COALESCE($3,provider_reference),
+         provider_payload=provider_payload || $4::jsonb,actual_provider_fee=COALESCE($6,actual_provider_fee),
+         paid_at=CASE WHEN $2='paid' THEN COALESCE(paid_at,NOW()) ELSE paid_at END,
+         failure_reason=CASE WHEN $2='failed' THEN $5 ELSE failure_reason END,updated_at=NOW()
+         WHERE reference=$1 RETURNING *`,
+        [event.data.reference,status,event.data.transfer_code || null,event.data,event.data.reason || event.event,Math.round(Number(event.data.fees || event.data.fee || 0) / 100)],
+      );
+      if (batchResult.rows[0] && status === 'paid') await completePayoutBatch(client, batchResult.rows[0], event.data);
+      if (!batchResult.rows[0]) {
+        const result = await client.query(`UPDATE sokoeats_payouts SET status=$2,provider_reference=COALESCE($3,provider_reference),provider_payload=provider_payload || $4::jsonb,paid_at=CASE WHEN $2='paid' THEN COALESCE(paid_at,NOW()) ELSE paid_at END,failure_reason=CASE WHEN $2='failed' THEN $5 ELSE failure_reason END,updated_at=NOW() WHERE reference=$1 RETURNING *`, [event.data.reference, status, event.data.transfer_code || null, event.data, event.data.reason || event.event]);
+        if (result.rows[0] && status === 'paid') await postPaidPayout(client, result.rows[0]);
+      }
     } else {
       const refund = (await client.query(`SELECT * FROM sokoeats_refunds WHERE provider_reference=$1 OR reference=$1`, [String(event.data.id || event.data.transaction?.reference || '')])).rows[0];
       if (refund && event.event === 'refund.processed') await completeRefund(client, refund, event.data);
@@ -322,16 +402,25 @@ export async function paystackTransferWebhook(req, res) {
   res.json({ ok: true });
 }
 
-export async function mpesaRefundCallback(req, res) {
-  const payload = req.body?.Result || req.body;
-  const conversationId = payload?.ConversationID || payload?.OriginatorConversationID;
-  const resultCode = Number(payload?.ResultCode);
-  if (!conversationId) return res.status(422).json({ message: 'ConversationID is required' });
-  await withFinanceTransaction(async (client) => {
-    const refund = (await client.query(`SELECT * FROM sokoeats_refunds WHERE provider_reference=$1`, [conversationId])).rows[0];
-    if (!refund) return;
-    if (resultCode === 0) await completeRefund(client, refund, payload);
-    else await client.query(`UPDATE sokoeats_refunds SET status='failed',provider_payload=provider_payload || $2::jsonb,updated_at=NOW() WHERE id=$1`, [refund.id, payload]);
-  });
-  res.json({ ok: true });
+export async function getUnitEconomics(req, res, next) {
+  try {
+    const subtotal = Math.max(1, Number(req.query.subtotal || 1000));
+    const deliveryFee = Math.max(0, Number(req.query.deliveryFee || 150));
+    const channel = req.query.channel === 'card' ? 'card' : 'mpesa';
+    const vendorBatchOrders = Math.max(1, Number(req.query.vendorBatchOrders || 10));
+    const riderBatchDeliveries = Math.max(1, Number(req.query.riderBatchDeliveries || 10));
+    const commission = Math.round(subtotal * 0.10);
+    const serviceFee = Math.round(subtotal * 0.04);
+    const collected = subtotal + deliveryFee + serviceFee;
+    const collectionFee = Math.round(collected * (channel === 'card' ? 0.029 : 0.015));
+    const vendorNet = subtotal - commission;
+    const vendorTransferFeeShare = estimatePaystackTransferFee(vendorNet * vendorBatchOrders, 'mpesa_wallet') / vendorBatchOrders;
+    const riderTransferFeeShare = estimatePaystackTransferFee(deliveryFee * riderBatchDeliveries, 'mpesa_wallet') / riderBatchDeliveries;
+    const contribution = commission + serviceFee - collectionFee - vendorTransferFeeShare - riderTransferFeeShare;
+    res.json({
+      currency: 'KES', channel, assumptions: { commissionRate: 0.10, serviceFeeRate: 0.04, collectionRate: channel === 'card' ? 0.029 : 0.015, vendorBatchOrders, riderBatchDeliveries },
+      order: { subtotal, deliveryFee, collected, commission, serviceFee, collectionFee, vendorTransferFeeShare: Math.ceil(vendorTransferFeeShare), riderTransferFeeShare: Math.ceil(riderTransferFeeShare), contribution: Math.floor(contribution), contributionMargin: Number((contribution / collected).toFixed(4)) },
+      policy: { vendor: 'New partners T+1 after delivery; trusted partners same-day batch; disputes frozen.', rider: 'Daily batch by default; immediate only above the configured minimum.', refunds: 'Original Paystack transaction.' },
+    });
+  } catch (error) { next(error); }
 }

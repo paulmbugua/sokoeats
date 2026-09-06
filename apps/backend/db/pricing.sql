@@ -2,6 +2,14 @@
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS commission_plan TEXT NOT NULL DEFAULT 'launch';
 ALTER TABLE sokoeats_vendors ALTER COLUMN commission_rate_bps SET DEFAULT 1000;
 UPDATE sokoeats_vendors SET commission_rate_bps = 1000, commission_plan = 'launch' WHERE commission_rate_bps = 1500;
+ALTER TABLE sokoeats_orders DROP CONSTRAINT IF EXISTS sokoeats_orders_payment_method_check;
+ALTER TABLE sokoeats_orders ADD CONSTRAINT sokoeats_orders_payment_method_check CHECK (payment_method IN ('mpesa','card','paystack'));
+ALTER TABLE sokoeats_payment_intents DROP CONSTRAINT IF EXISTS sokoeats_payment_intents_method_check;
+ALTER TABLE sokoeats_payment_intents ADD CONSTRAINT sokoeats_payment_intents_method_check CHECK (method IN ('mpesa','card','paystack'));
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS vat_registered BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS vat_number TEXT;
+ALTER TABLE sokoeats_menu_items ADD COLUMN IF NOT EXISTS tax_category TEXT NOT NULL DEFAULT 'standard' CHECK (tax_category IN ('standard','zero_rated','exempt'));
+ALTER TABLE sokoeats_menu_items ADD COLUMN IF NOT EXISTS tax_rate_bps INT NOT NULL DEFAULT 1600 CHECK (tax_rate_bps IN (0,1600));
 
 CREATE TABLE IF NOT EXISTS sokoeats_pricing_quotes (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -12,6 +20,8 @@ CREATE TABLE IF NOT EXISTS sokoeats_pricing_quotes (
   dropoff_latitude NUMERIC(10,7) NOT NULL,
   dropoff_longitude NUMERIC(10,7) NOT NULL,
   subtotal INT NOT NULL,
+  platform_commission INT NOT NULL DEFAULT 0,
+  vat_amount INT NOT NULL DEFAULT 0,
   delivery_fee INT NOT NULL,
   service_fee INT NOT NULL,
   waived_service_fee INT NOT NULL DEFAULT 0,
@@ -33,8 +43,11 @@ CREATE TABLE IF NOT EXISTS sokoeats_pricing_quotes (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_sokoeats_pricing_quotes_user ON sokoeats_pricing_quotes(user_id, expires_at DESC);
+ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS delivery_zone_id UUID REFERENCES sokoeats_delivery_zones(id) ON DELETE SET NULL;
 ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS waived_service_fee INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS first_order_offer BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS platform_commission INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS vat_amount INT NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS sokoeats_surge_zones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -57,6 +70,11 @@ ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS rider_surge_bonus INT NOT N
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS vendor_surge_bonus INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS platform_surge_revenue INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS waived_service_fee INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS platform_commission INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS vat_amount INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_order_items ADD COLUMN IF NOT EXISTS partner_unit_price INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_order_items ADD COLUMN IF NOT EXISTS commission_amount INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_order_items ADD COLUMN IF NOT EXISTS tax_amount INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_order_settlements ADD COLUMN IF NOT EXISTS surge_fee INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_order_settlements ADD COLUMN IF NOT EXISTS rider_surge_bonus INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_order_settlements ADD COLUMN IF NOT EXISTS vendor_surge_bonus INT NOT NULL DEFAULT 0;

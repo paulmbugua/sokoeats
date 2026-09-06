@@ -2,9 +2,9 @@ import { Router } from 'express';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { validate } from '../validators/validate.js';
 import {
-  acceptVendorOrder, assignOrderRider, deliverOrder, executePayout, getAdminFinanceDashboard,
+  acceptVendorOrder, assignOrderRider, deliverOrder, executePayout, getAdminFinanceDashboard, getUnitEconomics,
   getOrderFinance, getRiderFinanceDashboard, getVendorCompliance, getVendorFinanceDashboard,
-  mpesaRefundCallback, openDispute, paystackTransferWebhook, pickupOrder, processDue,
+  openDispute, paystackTransferWebhook, pickupOrder, processDue,
   refreshPayout, requestOrderRefund, resolveDispute, reviewVendorCompliance,
   updateRiderPayoutProfile, updateVendorCompliance,
 } from '../controllers/financeController.js';
@@ -16,7 +16,7 @@ import {
 const router = Router();
 
 router.post('/finance/paystack/webhook', paystackTransferWebhook);
-router.post('/finance/mpesa/refund-callback', mpesaRefundCallback);
+router.post('/payments/paystack/webhook', paystackTransferWebhook);
 
 router.get('/vendor/compliance', requireAuth, requireRole('vendor', 'merchant'), getVendorCompliance);
 router.put('/vendor/compliance', requireAuth, requireRole('vendor', 'merchant'), validate(vendorComplianceSchema), updateVendorCompliance);
@@ -35,6 +35,7 @@ router.post('/finance/orders/:orderKey/disputes', requireAuth, validate(disputeS
 router.post('/finance/orders/:orderKey/refunds', requireAuth, requireRole('customer', 'admin', 'support'), validate(refundSchema), requestOrderRefund);
 
 router.get('/admin/finance', requireAuth, requireRole('admin', 'support'), getAdminFinanceDashboard);
+router.get('/admin/finance/unit-economics', requireAuth, requireRole('admin'), getUnitEconomics);
 router.patch('/finance/disputes/:disputeId', requireAuth, requireRole('admin', 'support'), validate(disputeResolutionSchema), resolveDispute);
 router.post('/finance/process-due', requireAuth, requireRole('admin'), processDue);
 router.post('/finance/payouts/:payoutKey/execute', requireAuth, requireRole('admin'), executePayout);

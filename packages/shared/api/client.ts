@@ -10,7 +10,10 @@ function defaultApiBase() {
     : '';
   const configured = nextConfigured || readViteEnv('VITE_API_URL') || readViteEnv('VITE_BACKEND_URL') || readViteEnv('EXPO_PUBLIC_BACKEND_URL') || readViteEnv('EXPO_PUBLIC_LAN_BACKEND_URL');
   if (configured) return configured.replace(/\/$/, '');
-  if (typeof window !== 'undefined' && window.location.hostname) return 'http://' + window.location.hostname + ':4000';
+  if (typeof window !== 'undefined' && window.location.hostname) {
+    const apiHost = window.location.hostname === 'localhost' ? '127.0.0.1' : window.location.hostname;
+    return 'http://' + apiHost + ':4000';
+  }
   return 'http://localhost:4000';
 }
 
@@ -20,7 +23,7 @@ const AUTH_KEY = 'sokoeats.auth';
 export type StoredAuthSession = {
   token: string;
   expiresAt: string;
-  user: { id: string; name: string; email: string; role: string; status?: string; avatarUrl?: string; phone?: string | null; city?: string | null; defaultAddress?: string | null; profileComplete?: boolean; missingProfileFields?: string[]; profile?: Record<string, unknown> };
+  user: { id: string; name: string; email: string; role: string; status?: string; applicationReference?: string | null; avatarUrl?: string; phone?: string | null; city?: string | null; defaultAddress?: string | null; profileComplete?: boolean; termsAccepted?: boolean; termsVersion?: string | null; missingProfileFields?: string[]; profile?: Record<string, unknown> };
 };
 
 export function readAuthSession(): StoredAuthSession | null {
@@ -59,6 +62,17 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
     headers,
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || 'Sokoeats request failed');
+  if (!res.ok) {
+    if (res.status === 401 && token && typeof window !== 'undefined') {
+      clearAuthSession();
+      window.dispatchEvent(new CustomEvent('sokoeats:session-expired', {
+        detail: { message: data.message || 'Your session has expired. Please sign in again.' },
+      }));
+    }
+    const details = res.status === 422 && Array.isArray(data.details)
+      ? data.details.filter((detail: unknown): detail is string => typeof detail === 'string').join('; ')
+      : '';
+    throw new Error(details ? `${data.message || 'Validation failed'}: ${details}` : data.message || 'Sokoeats request failed');
+  }
   return data as T;
 }

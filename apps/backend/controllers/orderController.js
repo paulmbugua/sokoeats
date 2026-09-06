@@ -13,6 +13,7 @@ const orderJson = (row) => ({
   subtotal: Number(row.subtotal),
   deliveryFee: Number(row.delivery_fee),
   serviceFee: Number(row.service_fee),
+  vatAmount: Number(row.vat_amount || 0),
   waivedServiceFee: Number(row.waived_service_fee || 0),
   discountAmount: Number(row.discount_amount || 0),
   total: Number(row.total),
@@ -20,6 +21,7 @@ const orderJson = (row) => ({
   paymentStatus: row.payment_status,
   paymentReference: row.payment_reference,
   deliveryAddress: row.delivery_address,
+  deliveryLocation: row.dropoff_latitude == null ? null : { latitude: Number(row.dropoff_latitude), longitude: Number(row.dropoff_longitude) },
   recipientName: row.recipient_name,
   recipientPhone: row.recipient_phone,
   deliveryForSelf: row.delivery_for_self,
@@ -33,6 +35,7 @@ async function resolveVendor(client, { vendorId, vendorSlug }) {
   const { rows } = await client.query(query[0], query[1]);
   if (!rows.length) throw Object.assign(new Error('Vendor not found'), { status: 404 });
   if (rows[0].status !== 'active') throw Object.assign(new Error('This shop is not currently accepting orders'), { status: 409 });
+  if (rows[0].accepting_orders === false) throw Object.assign(new Error('This shop is temporarily paused. Please choose another shop or try again later.'), { status: 409 });
   return rows[0];
 }
 
@@ -81,6 +84,8 @@ export async function createOrder(req, res, next) {
     });
 
     const quote = await lockedQuote(client, req.body.pricingQuoteId, customer.id);
+    if (quote.dropoff_latitude == null || quote.dropoff_longitude == null) throw Object.assign(new Error('A delivery pin is required before placing this order'), { status: 422 });
+    if (deliveryAddress.trim() !== quote.delivery_address.trim()) throw Object.assign(new Error('Delivery address changed after pricing. Confirm the new location before paying.'), { status: 409 });
     if (String(quote.vendor_id) !== String(vendor.id)) throw Object.assign(new Error('Pricing quote belongs to another shop'), { status: 409 });
     const signature = (value) => JSON.stringify(value.map((item) => [String(item.menuItemId), Number(item.quantity)]).sort());
     if (signature(items) !== signature(quote.items)) throw Object.assign(new Error('Basket changed after pricing. Refresh checkout before paying.'), { status: 409 });
@@ -103,17 +108,17 @@ export async function createOrder(req, res, next) {
 
     const order = await client.query(
       `INSERT INTO sokoeats_orders
-        (code, customer_user_id, vendor_id, pricing_quote_id, subtotal, delivery_fee, service_fee, waived_service_fee, surge_fee, discount_amount, total, delivery_address, recipient_name, recipient_phone, delivery_for_self, notes, payment_method, payment_status, payment_reference, payment_provider_reference,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude,route_polyline,estimated_distance_km,estimated_duration_min,surge_multiplier,rider_surge_bonus,vendor_surge_bonus,platform_surge_revenue)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'paid',$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+        (code, customer_user_id, vendor_id, pricing_quote_id, subtotal, delivery_fee, service_fee, waived_service_fee, surge_fee, discount_amount, total, delivery_address, recipient_name, recipient_phone, delivery_for_self, notes, payment_method, payment_status, payment_reference, payment_provider_reference,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude,route_polyline,estimated_distance_km,estimated_duration_min,surge_multiplier,rider_surge_bonus,vendor_surge_bonus,platform_surge_revenue,delivery_zone_id,platform_commission,vat_amount)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'paid',$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
        RETURNING *`,
-      [code(),customer.id,vendor.id,quote.id,subtotal,deliveryFee,serviceFee,waivedServiceFee,quote.surge_fee,discountAmount,total,deliveryAddress,recipientName || customer.name,recipientPhone || phone,deliveryForSelf !== false,notes||null,paymentMethod,paymentReference,paid.provider_reference||null,vendor.latitude,vendor.longitude,quote.dropoff_latitude,quote.dropoff_longitude,quote.route_polyline,quote.distance_km,quote.duration_min,quote.surge_multiplier,quote.rider_surge_bonus,quote.vendor_surge_bonus,quote.platform_surge_revenue],
+      [code(),customer.id,vendor.id,quote.id,subtotal,deliveryFee,serviceFee,waivedServiceFee,quote.surge_fee,discountAmount,total,deliveryAddress,recipientName || customer.name,recipientPhone || phone,deliveryForSelf !== false,notes||null,paymentMethod,paymentReference,paid.provider_reference||null,vendor.latitude,vendor.longitude,quote.dropoff_latitude,quote.dropoff_longitude,quote.route_polyline,quote.distance_km,quote.duration_min,quote.surge_multiplier,quote.rider_surge_bonus,quote.vendor_surge_bonus,quote.platform_surge_revenue,quote.delivery_zone_id,quote.platform_commission,quote.vat_amount],
     );
 
-    for (const line of lines) {
+    for (const line of quote.items) {
       await client.query(
-        `INSERT INTO sokoeats_order_items (order_id, menu_item_id, name, quantity, unit_price, line_total, notes)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [order.rows[0].id, line.item.id, line.item.name, line.quantity, line.item.price, line.lineTotal, line.notes || null],
+        `INSERT INTO sokoeats_order_items (order_id,menu_item_id,name,quantity,unit_price,line_total,notes,partner_unit_price,commission_amount,tax_amount)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+        [order.rows[0].id,line.menuItemId,line.name,line.quantity,line.unitPrice,line.lineTotal,line.notes||null,line.partnerUnitPrice,line.commissionAmount,line.vatAmount],
       );
     }
 

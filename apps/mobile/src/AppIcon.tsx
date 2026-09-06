@@ -1,7 +1,7 @@
 import React from 'react';
 import Svg, { Circle, Line, Path, Polyline, Rect } from 'react-native-svg';
 
-export type IconName = 'home' | 'grid' | 'receipt' | 'heart' | 'person' | 'bike' | 'cash' | 'bell' | 'bag' | 'back' | 'pin' | 'flag' | 'call' | 'search' | 'mic' | 'qr' | 'fork' | 'cart' | 'fuel' | 'plus' | 'tech' | 'menu' | 'bolt' | 'online' | 'lock' | 'sms' | 'chevron' | 'card' | 'check' | 'star';
+export type IconName = 'home' | 'grid' | 'receipt' | 'heart' | 'person' | 'bike' | 'cash' | 'bell' | 'bag' | 'back' | 'pin' | 'flag' | 'call' | 'search' | 'mic' | 'qr' | 'fork' | 'cart' | 'fuel' | 'plus' | 'tech' | 'menu' | 'bolt' | 'online' | 'lock' | 'sms' | 'chevron' | 'card' | 'image' | 'check' | 'star';
 
 export function AppIcon({ name, size = 18, color = '#904d00', style }: { name: IconName | string; size?: number; color?: string; style?: any }) {
   const common = { stroke: color, strokeWidth: 2.25, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, fill: 'none' };
@@ -60,6 +60,8 @@ export function AppIcon({ name, size = 18, color = '#904d00', style }: { name: I
       return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Polyline {...common} points="9 6 15 12 9 18" /></Svg>;
     case 'card':
       return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Rect {...common} x="3" y="5" width="18" height="14" rx="2" /><Line {...common} x1="3" y1="10" x2="21" y2="10" /></Svg>;
+    case 'image':
+      return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Rect {...common} x="3" y="4" width="18" height="16" rx="2" /><Circle {...common} cx="9" cy="9" r="2" /><Path {...common} d="m4 17 5-5 4 4 2-2 5 4" /></Svg>;
     case 'star':
       return <Svg width={size} height={size} viewBox="0 0 24 24" style={style}><Path {...common} fill={color} d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.9 6.6 19.8l1-6.1-4.4-4.3 6.1-.9L12 3Z" /></Svg>;
     case 'check':

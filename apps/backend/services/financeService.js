@@ -3,7 +3,7 @@ import pool from '../config/db.js';
 import { sendOrderUpdateSms } from './smsService.js';
 
 const FINANCE_STATES = ['PAYMENT_CONFIRMED','VENDOR_ACCEPTED','RIDER_ASSIGNED','PICKED_UP','DELIVERY_OTP_CONFIRMED','PAYOUT_ELIGIBLE','SETTLED','CANCELLED','REFUNDED'];
-const PSP_FEE_BPS = { mpesa: 150, card: 290 };
+const PSP_FEE_BPS = { mpesa: 150, card: 290, paystack: 250 };
 
 function money(value) { return Math.max(0, Math.round(Number(value || 0))); }
 function reference(prefix) { return `${prefix}-${crypto.randomUUID()}`.toLowerCase(); }
@@ -72,7 +72,8 @@ export async function initializeOrderFinance(client, { order, payment, vendor, c
   if (existing.rows[0]) return { settlement: existing.rows[0], deliveryOtp: null };
   const subtotal = money(order.subtotal);
   const commissionBps = Number(vendor.commission_rate_bps || 1000);
-  const commission = Math.min(subtotal, Math.round(subtotal * commissionBps / 10000));
+  const commission = Math.min(subtotal, money(order.platform_commission || Math.round(subtotal * commissionBps / 10000)));
+  const vatAmount = money(order.vat_amount);
   const surgeFee = money(order.surge_fee);
   const riderSurgeBonus = money(order.rider_surge_bonus);
   const vendorSurgeBonus = money(order.vendor_surge_bonus);
@@ -83,7 +84,8 @@ export async function initializeOrderFinance(client, { order, payment, vendor, c
   const serviceFee = money(order.service_fee);
   const discount = money(order.discount_amount);
   const total = money(order.total);
-  const pspCharge = Math.round(total * Number(PSP_FEE_BPS[payment.method] || 0) / 10000);
+  const actualPaystackFee = Number(payment.provider_payload?.paystackCharge?.fees || payment.provider_payload?.paystackVerification?.fees || 0) / 100;
+  const pspCharge = money(actualPaystackFee || Math.round(total * Number(PSP_FEE_BPS[payment.method] || 0) / 10000));
   const reserveRate = vendor.risk_tier === 'restricted' ? 1000 : 0;
   const reserveAmount = Math.round(vendorNet * reserveRate / 10000);
   const deliveryOtp = String(crypto.randomInt(100000, 1000000));
@@ -102,6 +104,7 @@ export async function initializeOrderFinance(client, { order, payment, vendor, c
     ...(riderEntitlement ? [{ account: riderPayable(), direction: 'credit', amount: riderEntitlement }] : []),
     ...(serviceFee ? [{ account: accounts.service, direction: 'credit', amount: serviceFee }] : []),
     ...(platformSurgeRevenue ? [{ account: accounts.surge, direction: 'credit', amount: platformSurgeRevenue }] : []),
+    ...(vatAmount ? [{ account: { code: 'tax:vat:payable', name: 'VAT collected payable', accountType: 'liability', ownerType: 'platform' }, direction: 'credit', amount: vatAmount }] : []),
   ];
   await postJournal(client, { reference: `order:${order.id}:allocation`, eventType: 'ORDER_ALLOCATION', orderId: order.id, paymentIntentId: payment.id, description: `Allocate ${order.code} proceeds`, createdBy, metadata: { discount }, entries: allocationEntries });
   if (commission) {
@@ -137,7 +140,7 @@ async function settlementForUpdate(client, orderKey) {
   const { rows } = await client.query(
     `SELECT s.*, o.code, o.status AS order_status, o.customer_user_id, o.rider_user_id AS order_rider_user_id,
             v.owner_user_id, v.name AS vendor_name, v.payout_status AS vendor_payout_status,
-            u.phone AS customer_phone
+            COALESCE(o.recipient_phone,u.phone) AS customer_phone
        FROM sokoeats_order_settlements s
        JOIN sokoeats_orders o ON o.id = s.order_id
        JOIN sokoeats_vendors v ON v.id = s.vendor_id
@@ -181,6 +184,11 @@ export async function assignRider(client, orderKey, riderUserId, auth) {
   if (row.state !== 'VENDOR_ACCEPTED') throw Object.assign(new Error(`Rider assignment is not allowed from ${row.state}`), { status: 409 });
   const rider = await client.query(`SELECT id,status FROM sokoeats_users WHERE id = $1 AND role IN ('rider','courier')`, [riderUserId]);
   if (!rider.rows[0] || rider.rows[0].status !== 'active') throw Object.assign(new Error('An active rider account is required'), { status: 422 });
+  const zone = await client.query(`SELECT delivery_zone_id FROM sokoeats_orders WHERE id=$1`, [row.order_id]);
+  if (zone.rows[0]?.delivery_zone_id) {
+    const membership = await client.query(`SELECT 1 FROM sokoeats_rider_delivery_zones WHERE rider_user_id=$1 AND zone_id=$2 AND active=true`, [riderUserId, zone.rows[0].delivery_zone_id]);
+    if (!membership.rows[0]) throw Object.assign(new Error('This rider is not approved for the order delivery zone'), { status: 422 });
+  }
   await client.query(`UPDATE sokoeats_orders SET rider_user_id = $2 WHERE id = $1`, [row.order_id, riderUserId]);
   await sendOrderUpdateSms(client, { orderId: row.order_id, orderCode: row.code, phone: row.customer_phone, status: 'rider_assigned', extra: 'A verified SokoEats rider has been assigned.' });
   return recordTransition(client, row, 'RIDER_ASSIGNED', 'rider_assigned', auth.sub, { riderUserId }, { rider_user_id: riderUserId, rider_assigned_at: new Date() });
@@ -201,10 +209,14 @@ export async function confirmDeliveryOtp(client, orderKey, otp, auth) {
   const expected = Buffer.from(row.delivery_otp_hash);
   if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) throw Object.assign(new Error('Delivery OTP is incorrect'), { status: 422 });
   const now = new Date();
-  const vendorDelayMs = row.risk_tier === 'trusted' ? 0 : row.risk_tier === 'standard' ? 6 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
-  const vendorReleaseAt = new Date(now.getTime() + vendorDelayMs);
+  const sameDayCutoff = new Date(now);
+  sameDayCutoff.setHours(Math.min(23, Math.max(0, Number(process.env.VENDOR_SAME_DAY_CUTOFF_HOUR || 21))), 0, 0, 0);
+  const vendorReleaseAt = row.risk_tier === 'trusted'
+    ? (now < sameDayCutoff ? sameDayCutoff : now)
+    : new Date(now.getTime() + (row.risk_tier === 'standard' ? 6 : 24) * 60 * 60 * 1000);
   const riderProfile = await client.query('SELECT schedule FROM sokoeats_payout_profiles WHERE rider_user_id = $1', [row.rider_user_id]);
-  const riderImmediate = riderProfile.rows[0]?.schedule === 'immediate';
+  const immediateMinimum = Number(process.env.RIDER_IMMEDIATE_MINIMUM || 1500);
+  const riderImmediate = riderProfile.rows[0]?.schedule === 'immediate' && Number(row.rider_entitlement) >= immediateMinimum;
   const riderReleaseAt = riderImmediate ? now : new Date(new Date(now).setHours(23, 59, 59, 999));
   await client.query(`UPDATE sokoeats_orders SET status = 'delivered' WHERE id = $1`, [row.order_id]);
   await sendOrderUpdateSms(client, { orderId: row.order_id, orderCode: row.code, phone: row.customer_phone, status: 'delivered', extra: 'Delivery OTP confirmed. Thank you for choosing SokoEats.' });

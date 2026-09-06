@@ -2,7 +2,7 @@ import Joi from 'joi';
 
 export const checkoutPaymentSchema = Joi.object({
   pricingQuoteId: Joi.string().uuid().required(),
-  method: Joi.string().valid('mpesa', 'card').required(),
+  method: Joi.string().valid('mpesa', 'card', 'paystack').required(),
   amount: Joi.number().integer().min(1).required(),
   currency: Joi.string().valid('KES').default('KES'),
   phone: Joi.string().min(9).required(),

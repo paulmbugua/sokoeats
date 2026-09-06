@@ -1,20 +1,29 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Modal, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import * as Location from 'expo-location';
-import MapView, { Marker, type MapPressEvent, type Region } from 'react-native-maps';
+import MapView, { Marker, PROVIDER_GOOGLE, type MapPressEvent, type Region } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppIcon } from './AppIcon';
+import { useMapDiagnostics } from './useMapDiagnostics';
+import { waitForLocationFix } from './waitForLocationFix';
 
 export type DeliveryLocation = {
   address: string;
   latitude: number;
   longitude: number;
+  accuracy?: number | null;
+  source?: 'gps' | 'pin';
 };
 
 const NAIROBI = { latitude: -1.286389, longitude: 36.817223 };
 
 async function addressFor(latitude: number, longitude: number) {
-  const [place] = await Location.reverseGeocodeAsync({ latitude, longitude });
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const places = await Promise.race([
+    Location.reverseGeocodeAsync({ latitude, longitude }),
+    new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error('Address lookup timed out')), 8000); }),
+  ]).finally(() => clearTimeout(timer));
+  const [place] = places;
   if (!place) return `${latitude.toFixed(6)}, ${longitude.toFixed(6)}`;
   return [place.name, place.street, place.district, place.city, place.region]
     .filter((part, index, values) => part && values.indexOf(part) === index)
@@ -35,48 +44,74 @@ export function DeliveryLocationSheet({
   onConfirm: (location: DeliveryLocation) => void;
 }) {
   const insets = useSafeAreaInsets();
+  const diagnostics = useMapDiagnostics('delivery-picker', visible);
   const initialPoint = initialCoordinates || NAIROBI;
-  const [point, setPoint] = useState(initialPoint);
+  const [point, setPoint] = useState<{ latitude: number; longitude: number } | null>(initialCoordinates || null);
+  const mapRef = useRef<MapView>(null);
+  const request = useRef(0);
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const [source, setSource] = useState<'gps' | 'pin'>('pin');
   const [address, setAddress] = useState(initialAddress || '');
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('Move the pin to the exact entrance where the rider should arrive.');
-  const region = useMemo<Region>(() => ({ ...point, latitudeDelta: 0.012, longitudeDelta: 0.012 }), [point]);
 
   useEffect(() => {
     if (!visible) return;
-    setPoint(initialCoordinates || NAIROBI);
+    setPoint(initialCoordinates || null);
+    setAccuracy(null);
+    setBusy(false);
     setAddress(initialAddress || '');
     setMessage('Move the pin to the exact entrance where the rider should arrive.');
+    return () => { request.current += 1; };
   }, [visible, initialAddress, initialCoordinates?.latitude, initialCoordinates?.longitude]);
 
-  const choosePoint = async (latitude: number, longitude: number) => {
+  const choosePoint = async (latitude: number, longitude: number, precision: number | null = null) => {
+    const id = ++request.current;
     setPoint({ latitude, longitude });
+    setAccuracy(precision);
+    setSource(precision == null ? 'pin' : 'gps');
+    setAddress('');
     setBusy(true);
     try {
-      setAddress(await addressFor(latitude, longitude));
-      setMessage('Pin selected. Add an apartment, floor, gate, or landmark if needed.');
+      const resolved = await addressFor(latitude, longitude);
+      if (id !== request.current) return;
+      setAddress(resolved);
+      setMessage(precision != null && precision > 50 ? 'GPS is approximate. Adjust the pin to your entrance before confirming.' : 'Pin selected. Add an apartment, floor, gate, or landmark if needed.');
     } catch {
+      if (id !== request.current) return;
       setMessage('Pin selected. Enter a clear address or nearby landmark below.');
     } finally {
-      setBusy(false);
+      if (id === request.current) setBusy(false);
     }
   };
 
   const useCurrentLocation = async () => {
+    const id = ++request.current;
     setBusy(true);
     setMessage('Finding your precise location...');
     try {
+      if (!(await Location.hasServicesEnabledAsync())) {
+        console.info('[SokoEats][Location] device-services-disabled');
+        setMessage('Turn on Location or GPS in your device settings, then tap Use your location again. You can also move the map pin manually.');
+        return;
+      }
       const permission = await Location.requestForegroundPermissionsAsync();
       if (permission.status !== Location.PermissionStatus.GRANTED) {
+        console.info('[SokoEats][Location] foreground-permission-denied', { canAskAgain: permission.canAskAgain });
         setMessage('Location permission is required. Enable it in device settings or move the pin manually.');
         return;
       }
-      const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      await choosePoint(current.coords.latitude, current.coords.longitude);
-    } catch {
-      setMessage('Your location could not be read. Check GPS and try again, or move the pin manually.');
+      const current = await waitForLocationFix((onPosition, onError) => Location.watchPositionAsync({ accuracy: Location.Accuracy.High, timeInterval: 1000, distanceInterval: 0 }, onPosition, onError), 15000);
+      if (id !== request.current) return;
+      if (Date.now() - current.timestamp > 30000) throw new Error('The GPS reading is out of date');
+      console.info('[SokoEats][Location] current-position-ready', { accuracy: current.coords.accuracy });
+      mapRef.current?.animateToRegion({ latitude: current.coords.latitude, longitude: current.coords.longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 }, 350);
+      await choosePoint(current.coords.latitude, current.coords.longitude, current.coords.accuracy);
+    } catch (error) {
+      console.warn('[SokoEats][Location] current-position-failed', { message: error instanceof Error ? error.message : String(error) });
+      if (id === request.current) setMessage('Your location could not be read. Check GPS and try again, or move the pin manually.');
     } finally {
-      setBusy(false);
+      if (id === request.current) setBusy(false);
     }
   };
 
@@ -86,11 +121,12 @@ export function DeliveryLocationSheet({
   };
 
   const confirm = () => {
+    if (!point) { setMessage('Select your current location or tap the map to place your delivery pin.'); return; }
     if (!address.trim()) {
       setMessage('Add a delivery address or landmark before continuing.');
       return;
     }
-    onConfirm({ address: address.trim(), ...point });
+    onConfirm({ address: address.trim(), ...point, accuracy, source });
   };
 
   return (
@@ -106,13 +142,13 @@ export function DeliveryLocationSheet({
           </View>
         </View>
 
-        <View style={styles.mapWrap}>
-          <MapView style={StyleSheet.absoluteFill} region={region} onPress={handleMapPress} showsUserLocation showsMyLocationButton={false}>
-            <Marker coordinate={point} draggable onDragEnd={(event) => void choosePoint(event.nativeEvent.coordinate.latitude, event.nativeEvent.coordinate.longitude)} />
+        <View style={styles.mapWrap} onLayout={diagnostics.onLayout}>
+          <MapView ref={mapRef} provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined} style={StyleSheet.absoluteFill} initialRegion={{ ...initialPoint, latitudeDelta: 0.012, longitudeDelta: 0.012 }} onPress={handleMapPress} showsUserLocation showsMyLocationButton={false} loadingEnabled={false} onMapReady={diagnostics.onMapReady} onMapLoaded={diagnostics.onMapLoaded}>
+            {point && <Marker coordinate={point} draggable onDragEnd={(event) => void choosePoint(event.nativeEvent.coordinate.latitude, event.nativeEvent.coordinate.longitude)} />}
           </MapView>
           <TouchableOpacity style={styles.locationButton} onPress={() => void useCurrentLocation()} disabled={busy}>
             {busy ? <ActivityIndicator size="small" color="#ffffff" /> : <AppIcon name="pin" size={18} color="#ffffff" />}
-            <Text style={styles.locationButtonText}>{busy ? 'Locating...' : 'Use your location'}</Text>
+            <Text style={styles.locationButtonText}>{busy ? 'Locating...' : 'Your current location'}</Text>
           </TouchableOpacity>
         </View>
 
@@ -129,7 +165,7 @@ export function DeliveryLocationSheet({
           <Text style={styles.message}>{message}</Text>
           <View style={styles.coordinates}>
             <AppIcon name="pin" size={15} color="#006d37" />
-            <Text style={styles.coordinateText}>{point.latitude.toFixed(6)}, {point.longitude.toFixed(6)}</Text>
+            <Text style={styles.coordinateText}>{point ? `${point.latitude.toFixed(6)}, ${point.longitude.toFixed(6)}${accuracy != null ? ` - GPS accuracy ${Math.round(accuracy)} m` : ''}` : 'No delivery pin selected'}</Text>
           </View>
           <TouchableOpacity style={styles.confirmButton} onPress={confirm} disabled={busy}>
             <AppIcon name="check" size={18} color="#2f1500" />

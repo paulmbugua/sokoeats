@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS sokoeats_vendors (
   minimum_order INT NOT NULL DEFAULT 300,
   image_url TEXT,
   address TEXT,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS sokoeats_menu_items (
@@ -107,16 +108,19 @@ ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS longitude NUMERIC(10,7);
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS place_id TEXT;
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS service_radius_km NUMERIC(5,2) NOT NULL DEFAULT 5;
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payment_collection_mode TEXT NOT NULL DEFAULT 'platform' CHECK (payment_collection_mode IN ('platform','direct'));
-ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payment_provider TEXT NOT NULL DEFAULT 'mpesa';
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payment_provider TEXT NOT NULL DEFAULT 'paystack';
+ALTER TABLE sokoeats_vendors ALTER COLUMN payment_provider SET DEFAULT 'paystack';
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payment_account_type TEXT NOT NULL DEFAULT 'paybill' CHECK (payment_account_type IN ('paybill','till','wallet'));
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payment_shortcode TEXT NOT NULL DEFAULT '4139123';
+ALTER TABLE sokoeats_vendors ALTER COLUMN payment_shortcode DROP NOT NULL;
+ALTER TABLE sokoeats_vendors ALTER COLUMN payment_shortcode DROP DEFAULT;
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payout_method TEXT NOT NULL DEFAULT 'mpesa';
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payout_schedule TEXT NOT NULL DEFAULT 'daily';
 UPDATE sokoeats_vendors
 SET payment_collection_mode = 'platform',
-    payment_provider = 'mpesa',
+    payment_provider = 'paystack',
     payment_account_type = 'paybill',
-    payment_shortcode = '4139123'
+    payment_shortcode = NULL
 WHERE payment_collection_mode = 'platform';
 
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS pickup_latitude NUMERIC(10,7);
@@ -183,7 +187,9 @@ CREATE INDEX IF NOT EXISTS idx_sokoeats_rider_locations_order ON sokoeats_rider_
 CREATE INDEX IF NOT EXISTS idx_sokoeats_delivery_routes_order ON sokoeats_delivery_routes(order_id);
 CREATE INDEX IF NOT EXISTS idx_sokoeats_service_zones_center ON sokoeats_service_zones(center_latitude, center_longitude);
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS discount_amount INT NOT NULL DEFAULT 0;
-ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_method TEXT CHECK (payment_method IN ('mpesa','card'));
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_method TEXT;
+ALTER TABLE sokoeats_orders DROP CONSTRAINT IF EXISTS sokoeats_orders_payment_method_check;
+ALTER TABLE sokoeats_orders ADD CONSTRAINT sokoeats_orders_payment_method_check CHECK (payment_method IN ('mpesa','card','paystack'));
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid','paid','refunded','failed'));
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_reference TEXT;
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS payment_provider_reference TEXT;
@@ -195,7 +201,7 @@ CREATE TABLE IF NOT EXISTS sokoeats_payment_intents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   reference TEXT UNIQUE NOT NULL,
   order_id UUID REFERENCES sokoeats_orders(id) ON DELETE SET NULL,
-  method TEXT NOT NULL CHECK (method IN ('mpesa','card')),
+  method TEXT NOT NULL CHECK (method IN ('mpesa','card','paystack')),
   provider TEXT NOT NULL,
   amount INT NOT NULL CHECK (amount > 0),
   currency TEXT NOT NULL DEFAULT 'KES',
@@ -261,6 +267,25 @@ CREATE TABLE IF NOT EXISTS sokoeats_auth_sessions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sokoeats_auth_sessions_user ON sokoeats_auth_sessions(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS sokoeats_email_outbox (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  dedupe_key TEXT UNIQUE NOT NULL,
+  recipient TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  text_body TEXT NOT NULL,
+  html_body TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sending','sent','failed')),
+  attempts INT NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  provider_message_id TEXT,
+  last_error TEXT,
+  metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  sent_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_email_outbox_delivery ON sokoeats_email_outbox(status,next_attempt_at,created_at);
 
 -- Marketplace shop taxonomy and vendor-editable product sections.
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS shop_type TEXT NOT NULL DEFAULT 'restaurants' CHECK (shop_type IN ('restaurants','groceries','pharmacy','gas','electronics'));
@@ -330,8 +355,9 @@ CREATE TABLE IF NOT EXISTS sokoeats_media_assets (
 -- Marketplace finance, compliance, ledger, and settlement subsystem.
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS risk_tier TEXT NOT NULL DEFAULT 'new'
   CHECK (risk_tier IN ('new','standard','trusted','restricted'));
-ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS commission_rate_bps INT NOT NULL DEFAULT 1500
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS commission_rate_bps INT NOT NULL DEFAULT 1000
   CHECK (commission_rate_bps BETWEEN 0 AND 5000);
+ALTER TABLE sokoeats_vendors ALTER COLUMN commission_rate_bps SET DEFAULT 1000;
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'not_submitted'
   CHECK (verification_status IN ('not_submitted','submitted','under_review','verified','rejected','suspended'));
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS payout_status TEXT NOT NULL DEFAULT 'not_configured'
@@ -355,7 +381,7 @@ CREATE TABLE IF NOT EXISTS sokoeats_vendor_compliance (
   psp_provider TEXT NOT NULL DEFAULT 'paystack',
   psp_subaccount_id TEXT,
   psp_recipient_code TEXT,
-  commission_rate_bps INT NOT NULL DEFAULT 1500 CHECK (commission_rate_bps BETWEEN 0 AND 5000),
+  commission_rate_bps INT NOT NULL DEFAULT 1000 CHECK (commission_rate_bps BETWEEN 0 AND 5000),
   commission_agreement_version TEXT NOT NULL,
   commission_agreed_at TIMESTAMPTZ NOT NULL,
   commission_agreed_by UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL,
@@ -523,6 +549,33 @@ CREATE TABLE IF NOT EXISTS sokoeats_payouts (
   UNIQUE(settlement_id, beneficiary_type)
 );
 
+CREATE TABLE IF NOT EXISTS sokoeats_payout_batches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  reference TEXT UNIQUE NOT NULL,
+  beneficiary_type TEXT NOT NULL CHECK (beneficiary_type IN ('vendor','rider')),
+  vendor_id UUID REFERENCES sokoeats_vendors(id) ON DELETE RESTRICT,
+  rider_user_id UUID REFERENCES sokoeats_users(id) ON DELETE RESTRICT,
+  recipient_code TEXT NOT NULL,
+  payout_method TEXT NOT NULL CHECK (payout_method IN ('mpesa_wallet','mpesa_till','mpesa_paybill','bank')),
+  amount INT NOT NULL CHECK (amount > 0),
+  estimated_provider_fee INT NOT NULL DEFAULT 0 CHECK (estimated_provider_fee >= 0),
+  actual_provider_fee INT CHECK (actual_provider_fee >= 0),
+  currency TEXT NOT NULL DEFAULT 'KES',
+  status TEXT NOT NULL DEFAULT 'scheduled' CHECK (status IN ('scheduled','queued','otp','processing','paid','failed','cancelled')),
+  scheduled_for TIMESTAMPTZ NOT NULL,
+  provider_reference TEXT,
+  provider_payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  failure_reason TEXT,
+  paid_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CHECK ((beneficiary_type='vendor' AND vendor_id IS NOT NULL AND rider_user_id IS NULL) OR
+         (beneficiary_type='rider' AND rider_user_id IS NOT NULL AND vendor_id IS NULL))
+);
+ALTER TABLE sokoeats_payouts ADD COLUMN IF NOT EXISTS batch_id UUID REFERENCES sokoeats_payout_batches(id) ON DELETE RESTRICT;
+CREATE INDEX IF NOT EXISTS sokoeats_payout_batches_due_idx ON sokoeats_payout_batches(status,scheduled_for);
+CREATE INDEX IF NOT EXISTS sokoeats_payouts_batch_idx ON sokoeats_payouts(batch_id);
+
 CREATE TABLE IF NOT EXISTS sokoeats_refunds (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   reference TEXT UNIQUE NOT NULL,
@@ -557,3 +610,95 @@ CREATE INDEX IF NOT EXISTS sokoeats_ledger_lines_account_idx ON sokoeats_ledger_
 CREATE INDEX IF NOT EXISTS sokoeats_settlements_state_release_idx ON sokoeats_order_settlements(state, vendor_release_at, rider_release_at);
 CREATE INDEX IF NOT EXISTS sokoeats_payouts_due_idx ON sokoeats_payouts(status, scheduled_for);
 CREATE INDEX IF NOT EXISTS sokoeats_refunds_order_idx ON sokoeats_refunds(order_id, created_at DESC);
+
+-- Nationwide enrollment and controlled delivery activation.
+CREATE TABLE IF NOT EXISTS sokoeats_counties (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  code TEXT UNIQUE NOT NULL,
+  name TEXT UNIQUE NOT NULL,
+  registration_open BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS sokoeats_cities (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  county_id UUID NOT NULL REFERENCES sokoeats_counties(id) ON DELETE RESTRICT,
+  name TEXT NOT NULL,
+  slug TEXT UNIQUE NOT NULL,
+  center_latitude NUMERIC(10,7),
+  center_longitude NUMERIC(10,7),
+  operations_status TEXT NOT NULL DEFAULT 'coming_soon' CHECK (operations_status IN ('coming_soon','onboarding','active','paused')),
+  delivery_mode TEXT NOT NULL DEFAULT 'instant' CHECK (delivery_mode IN ('instant','scheduled','both')),
+  support_team TEXT,
+  activated_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE TABLE IF NOT EXISTS sokoeats_delivery_zones (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  city_id UUID NOT NULL REFERENCES sokoeats_cities(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  center_latitude NUMERIC(10,7) NOT NULL,
+  center_longitude NUMERIC(10,7) NOT NULL,
+  radius_km NUMERIC(6,2) NOT NULL CHECK (radius_km > 0),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','paused')),
+  max_surge_multiplier NUMERIC(3,2) NOT NULL DEFAULT 1.75,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE(city_id,name)
+);
+CREATE TABLE IF NOT EXISTS sokoeats_vendor_delivery_zones (
+  vendor_id UUID NOT NULL REFERENCES sokoeats_vendors(id) ON DELETE CASCADE,
+  zone_id UUID NOT NULL REFERENCES sokoeats_delivery_zones(id) ON DELETE CASCADE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  PRIMARY KEY(vendor_id,zone_id)
+);
+CREATE TABLE IF NOT EXISTS sokoeats_rider_delivery_zones (
+  rider_user_id UUID NOT NULL REFERENCES sokoeats_users(id) ON DELETE CASCADE,
+  zone_id UUID NOT NULL REFERENCES sokoeats_delivery_zones(id) ON DELETE CASCADE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  PRIMARY KEY(rider_user_id,zone_id)
+);
+ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS city_id UUID REFERENCES sokoeats_cities(id) ON DELETE SET NULL;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS delivery_zone_id UUID REFERENCES sokoeats_delivery_zones(id) ON DELETE SET NULL;
+
+INSERT INTO sokoeats_counties(code,name) VALUES
+('001','Mombasa'),('002','Kwale'),('003','Kilifi'),('004','Tana River'),('005','Lamu'),('006','Taita-Taveta'),
+('007','Garissa'),('008','Wajir'),('009','Mandera'),('010','Marsabit'),('011','Isiolo'),('012','Meru'),('013','Tharaka-Nithi'),
+('014','Embu'),('015','Kitui'),('016','Machakos'),('017','Makueni'),('018','Nyandarua'),('019','Nyeri'),('020','Kirinyaga'),
+('021','Muranga'),('022','Kiambu'),('023','Turkana'),('024','West Pokot'),('025','Samburu'),('026','Trans Nzoia'),
+('027','Uasin Gishu'),('028','Elgeyo-Marakwet'),('029','Nandi'),('030','Baringo'),('031','Laikipia'),('032','Nakuru'),
+('033','Narok'),('034','Kajiado'),('035','Kericho'),('036','Bomet'),('037','Kakamega'),('038','Vihiga'),('039','Bungoma'),
+('040','Busia'),('041','Siaya'),('042','Kisumu'),('043','Homa Bay'),('044','Migori'),('045','Kisii'),('046','Nyamira'),('047','Nairobi')
+ON CONFLICT (code) DO UPDATE SET name=EXCLUDED.name;
+
+INSERT INTO sokoeats_cities(county_id,name,slug,center_latitude,center_longitude,operations_status,delivery_mode)
+SELECT id,'Nairobi','nairobi',-1.286389,36.817223,'active','instant' FROM sokoeats_counties WHERE code='047'
+ON CONFLICT (slug) DO NOTHING;
+INSERT INTO sokoeats_cities(county_id,name,slug,center_latitude,center_longitude,operations_status,delivery_mode)
+SELECT id,'Mombasa','mombasa',-4.043477,39.668206,'onboarding','instant' FROM sokoeats_counties WHERE code='001'
+ON CONFLICT (slug) DO NOTHING;
+INSERT INTO sokoeats_cities(county_id,name,slug,center_latitude,center_longitude,operations_status,delivery_mode)
+SELECT id,'Kisumu','kisumu',-0.091702,34.767956,'onboarding','instant' FROM sokoeats_counties WHERE code='042'
+ON CONFLICT (slug) DO NOTHING;
+INSERT INTO sokoeats_cities(county_id,name,slug,center_latitude,center_longitude,operations_status,delivery_mode)
+SELECT id,'Nakuru','nakuru',-0.303099,36.080025,'onboarding','instant' FROM sokoeats_counties WHERE code='032'
+ON CONFLICT (slug) DO NOTHING;
+INSERT INTO sokoeats_cities(county_id,name,slug,center_latitude,center_longitude,operations_status,delivery_mode)
+SELECT id,'Eldoret','eldoret',0.514277,35.269779,'onboarding','instant' FROM sokoeats_counties WHERE code='027'
+ON CONFLICT (slug) DO NOTHING;
+INSERT INTO sokoeats_delivery_zones(city_id,name,center_latitude,center_longitude,radius_km,status)
+SELECT id,'Nairobi Metro',-1.286389,36.817223,35,'active' FROM sokoeats_cities WHERE slug='nairobi'
+ON CONFLICT (city_id,name) DO NOTHING;
+INSERT INTO sokoeats_vendor_delivery_zones(vendor_id,zone_id)
+SELECT v.id,z.id FROM sokoeats_vendors v CROSS JOIN sokoeats_delivery_zones z
+JOIN sokoeats_cities c ON c.id=z.city_id AND c.slug='nairobi'
+WHERE v.status='active' AND (v.latitude IS NULL OR v.longitude IS NULL OR 6371 * 2 * ASIN(SQRT(
+    POWER(SIN(RADIANS(v.latitude-z.center_latitude)/2),2) +
+    COS(RADIANS(z.center_latitude))*COS(RADIANS(v.latitude))*POWER(SIN(RADIANS(v.longitude-z.center_longitude)/2),2)
+  )) <= z.radius_km)
+ON CONFLICT DO NOTHING;
+UPDATE sokoeats_vendors SET city_id=(SELECT id FROM sokoeats_cities WHERE slug='nairobi')
+WHERE status='active' AND city_id IS NULL;
+INSERT INTO sokoeats_rider_delivery_zones(rider_user_id,zone_id)
+SELECT u.id,z.id FROM sokoeats_users u CROSS JOIN sokoeats_delivery_zones z
+JOIN sokoeats_cities c ON c.id=z.city_id AND c.slug='nairobi'
+WHERE u.role IN ('courier','rider') AND u.status='active'
+ON CONFLICT DO NOTHING;

@@ -1,0 +1,21 @@
+import { Router } from 'express';
+import Joi from 'joi';
+import { requireAuth } from '../middleware/auth.js';
+import { validate } from '../validators/validate.js';
+import { careIdentity, getApplication, getOwnConversation, postCareMessage, getCareMessages, markCareRead, staffCareInbox, closeCareConversation } from '../controllers/customerCareController.js';
+const router = Router();
+const message = Joi.object({ body: Joi.string().trim().min(1).max(4000).required(), clientMessageId: Joi.string().guid({ version: 'uuidv4' }).required() });
+router.use('/care', requireAuth, careIdentity);
+router.param('id', (req, res, next, id) => {
+  if (Joi.string().guid().validate(id).error) return res.status(422).json({ message: 'Invalid conversation.' });
+  next();
+});
+router.get('/care/application', getApplication);
+router.get('/care/conversation', getOwnConversation);
+router.post('/care/conversation/messages', validate(message), postCareMessage);
+router.get('/care/inbox', staffCareInbox);
+router.get('/care/conversations/:id', getCareMessages);
+router.post('/care/conversations/:id/messages', validate(message), postCareMessage);
+router.post('/care/conversations/:id/read', validate(Joi.object({ sequence: Joi.number().integer().min(0).required() })), markCareRead);
+router.patch('/care/conversations/:id', validate(Joi.object({ status: Joi.string().valid('open', 'resolved').required() })), closeCareConversation);
+export default router;

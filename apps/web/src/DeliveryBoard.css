@@ -1,0 +1,18 @@
+.deliveryBoard { padding: 24px; color: #172822; background: #f4fafd; border-block: 1px solid #dae3df; }
+.deliveryBoard header { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.deliveryBoard h2 { font-size: 23px; margin: 0 0 16px; }
+.deliveryColumns { display: grid; grid-template-columns: minmax(180px, 300px) minmax(0, 1fr); gap: 24px; }
+.deliveryList { display: flex; flex-direction: column; gap: 8px; }
+.deliveryBoard button { cursor: pointer; background: white; color: #172822; border: 1px solid #ccd9d3; border-radius: 8px; padding: 12px; }
+.deliveryList button { display: flex; flex-direction: column; align-items: start; gap: 6px; text-align: left; overflow-wrap: anywhere; }
+.deliveryList button[aria-pressed=true] { border-color: #007b50; }
+.deliveryDetail { min-width: 0; overflow-wrap: anywhere; }
+.deliveryDetail a { display: inline-flex; align-items: center; gap: 6px; margin: 8px 16px 8px 0; color: #007b50; }
+.deliveryDetail ol { list-style: none; padding: 0; }
+.deliveryDetail ol li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 0; color: #62716a; }
+.deliveryDetail ol li[data-complete=true] { color: #007b50; }
+.deliveryDetail time { font-size: 12px; margin-left: auto; }
+.deliveryActions { display: flex; flex-wrap: wrap; gap: 10px; }
+.deliveryActions button { background: #007b50; color: white; }
+.deliveryBoard button:disabled { opacity: .5; cursor: wait; }
+@media(max-width: 640px) { .deliveryBoard { padding: 16px; } .deliveryColumns { grid-template-columns: minmax(0,1fr); } .deliveryList { max-height: 240px; overflow: auto; } }

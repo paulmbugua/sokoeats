@@ -12,7 +12,31 @@
 .roleChoice { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; margin: 16px 0; }
 .roleChoice button { padding: 10px 6px; color: #dce7e1; font-weight: 800; background: #26332d; border: 1px solid #506158; border-radius: 6px; }
 .roleChoice button.active { color: #ffc562; background: #44351f; border-color: #f0a240; }
+.partnerType { grid-template-columns: 1fr 1fr; margin-bottom: 8px; }
+.partnerRoleDescription { display: flex; align-items: flex-start; gap: 11px; padding: 13px; margin: 0 0 14px; color: #dce7e1; background: #202f28; border: 1px solid #45574e; border-radius: 6px; }
+.partnerRoleDescription svg { width: 20px; height: 20px; flex: none; margin-top: 2px; color: #ffc562; }
+.partnerRoleDescription span { display: grid; gap: 4px; font-size: 13px; line-height: 1.45; }
+.partnerRoleDescription b { color: #fff; font-size: 14px; }
 .formPair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.passwordField { position: relative; }
+.passwordField input { padding-right: 50px; }
+.passwordToggle {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  color: #dce7e1;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  transform: translateY(-50%);
+}
+.passwordToggle:hover, .passwordToggle:focus-visible { color: #ffc562; background: #33423b; }
+.passwordToggle svg { width: 19px; height: 19px; }
 .applicationNotice { display: flex; align-items: center; gap: 11px; padding: 12px; margin: 12px 0; color: #dce7e1; background: #26372f; border-left: 3px solid #f28b13; }
 .applicationNotice svg { flex: none; color: #ffc562; }
 .applicationNotice span { display: grid; gap: 2px; font-size: 13px; }

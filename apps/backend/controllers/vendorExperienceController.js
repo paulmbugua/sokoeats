@@ -1,8 +1,10 @@
 import pool from '../config/db.js';
 import { getScreenPayload, saveScreenPayload } from '../models/screenPayloadModel.js';
 import { createImageUpload } from '../services/r2Images.js';
+import { itemPricing } from '../services/commercePricing.js';
 
 function menuItemJson(row) {
+  const pricing = itemPricing(row, row);
   return {
     id: row.id,
     vendorId: row.vendor_id,
@@ -10,6 +12,10 @@ function menuItemJson(row) {
     name: row.name,
     description: row.description,
     price: Number(row.price),
+    customerPrice: pricing.customerPrice,
+    commissionAmount: pricing.commissionAmount,
+    commissionRateBps: pricing.commissionBps,
+    taxCategory: pricing.taxCategory,
     category: row.category,
     popular: Boolean(row.popular),
     available: Boolean(row.available),
@@ -38,9 +44,106 @@ async function loadVendorMenu(vendorSlug = 'nairobi-grill-house') {
     title: section.title,
     description: section.description,
     sortOrder: Number(section.sort_order || 0),
-    items: itemsResult.rows.filter((item) => String(item.section_id) === String(section.id) || item.category === section.title).map(menuItemJson),
+    items: itemsResult.rows.filter((item) => String(item.section_id) === String(section.id) || item.category === section.title).map(item => menuItemJson({ ...item, commission_rate_bps: vendor.commission_rate_bps, vat_registered: vendor.vat_registered })),
   }));
-  return { vendor: { id: vendor.id, name: vendor.name, slug: vendor.slug, shopType: vendor.shop_type, tagline: vendor.tagline, address: vendor.address }, sections, items: sections.flatMap((section) => section.items) };
+  return { vendor: { id: vendor.id, name: vendor.name, slug: vendor.slug, shopType: vendor.shop_type, tagline: vendor.tagline, address: vendor.address, contactPhone: vendor.contact_phone, imageUrl: vendor.image_url, acceptingOrders: vendor.accepting_orders, rating: Number(vendor.rating || 0), ratingCount: Number(vendor.rating_count || 0), prepMinutes: Number(vendor.prep_minutes || 0), minimumOrder: Number(vendor.minimum_order || 0), openingHours: vendor.profile?.openingHours || {} }, sections, items: sections.flatMap((section) => section.items) };
+}
+
+const metricJson = (row, prefix) => ({
+  sales: Number(row[`${prefix}_sales`] || 0),
+  customerRevenue: Number(row[`${prefix}_revenue`] || 0),
+  orders: Number(row[`${prefix}_orders`] || 0),
+  delivered: Number(row[`${prefix}_delivered`] || 0),
+});
+
+export async function vendorOperations(req, res, next) {
+  try {
+    const vendor = await ownedVendor(req.auth.sub);
+    const [metricsResult, trendResult, statusResult, ordersResult, ratingsResult, breakdownResult, catalogueResult] = await Promise.all([
+      pool.query(`SELECT
+        COALESCE(SUM(subtotal) FILTER (WHERE payment_status='paid' AND status<>'cancelled' AND created_at>=date_trunc('day',NOW())),0)::int today_sales,
+        COALESCE(SUM(total) FILTER (WHERE payment_status='paid' AND status<>'cancelled' AND created_at>=date_trunc('day',NOW())),0)::int today_revenue,
+        COUNT(*) FILTER (WHERE payment_status='paid' AND status<>'cancelled' AND created_at>=date_trunc('day',NOW()))::int today_orders,
+        COUNT(*) FILTER (WHERE status='delivered' AND created_at>=date_trunc('day',NOW()))::int today_delivered,
+        COALESCE(SUM(subtotal) FILTER (WHERE payment_status='paid' AND status<>'cancelled' AND created_at>=date_trunc('week',NOW())),0)::int week_sales,
+        COALESCE(SUM(total) FILTER (WHERE payment_status='paid' AND status<>'cancelled' AND created_at>=date_trunc('week',NOW())),0)::int week_revenue,
+        COUNT(*) FILTER (WHERE payment_status='paid' AND status<>'cancelled' AND created_at>=date_trunc('week',NOW()))::int week_orders,
+        COUNT(*) FILTER (WHERE status='delivered' AND created_at>=date_trunc('week',NOW()))::int week_delivered,
+        COALESCE(SUM(subtotal) FILTER (WHERE payment_status='paid' AND status<>'cancelled' AND created_at>=date_trunc('month',NOW())),0)::int month_sales,
+        COALESCE(SUM(total) FILTER (WHERE payment_status='paid' AND status<>'cancelled' AND created_at>=date_trunc('month',NOW())),0)::int month_revenue,
+        COUNT(*) FILTER (WHERE payment_status='paid' AND status<>'cancelled' AND created_at>=date_trunc('month',NOW()))::int month_orders,
+        COUNT(*) FILTER (WHERE status='delivered' AND created_at>=date_trunc('month',NOW()))::int month_delivered
+        FROM sokoeats_orders WHERE vendor_id=$1`, [vendor.id]),
+      pool.query(`WITH days AS (SELECT generate_series(current_date-INTERVAL '6 days',current_date,INTERVAL '1 day')::date AS sales_date)
+        SELECT d.sales_date AS day, COALESCE(SUM(o.subtotal) FILTER (WHERE o.payment_status='paid' AND o.status<>'cancelled'),0)::int sales,
+        COUNT(o.id) FILTER (WHERE o.payment_status='paid' AND o.status<>'cancelled')::int orders
+        FROM days d LEFT JOIN sokoeats_orders o ON o.vendor_id=$1 AND o.created_at>=d.sales_date AND o.created_at<d.sales_date+1
+        GROUP BY d.sales_date ORDER BY d.sales_date`, [vendor.id]),
+      pool.query(`SELECT status,COUNT(*)::int count FROM sokoeats_orders WHERE vendor_id=$1 AND created_at>=NOW()-INTERVAL '30 days' GROUP BY status`, [vendor.id]),
+      pool.query(`SELECT o.*,COALESCE(u.name,'Customer') customer_name,
+        COALESCE(json_agg(json_build_object('name',oi.name,'quantity',oi.quantity,'lineTotal',oi.line_total)) FILTER (WHERE oi.id IS NOT NULL),'[]') items
+        FROM sokoeats_orders o LEFT JOIN sokoeats_users u ON u.id=o.customer_user_id LEFT JOIN sokoeats_order_items oi ON oi.order_id=o.id
+        WHERE o.vendor_id=$1 GROUP BY o.id,u.name ORDER BY o.created_at DESC LIMIT 40`, [vendor.id]),
+      pool.query(`SELECT r.id,r.rating,r.comment,r.created_at,COALESCE(u.name,'SokoEats customer') customer_name,o.code order_code
+        FROM sokoeats_vendor_reviews r LEFT JOIN sokoeats_users u ON u.id=r.customer_user_id JOIN sokoeats_orders o ON o.id=r.order_id
+        WHERE r.vendor_id=$1 ORDER BY r.created_at DESC LIMIT 20`, [vendor.id]),
+      pool.query(`SELECT stars,COUNT(r.id)::int count FROM generate_series(1,5) stars LEFT JOIN sokoeats_vendor_reviews r ON r.vendor_id=$1 AND r.rating=stars GROUP BY stars ORDER BY stars DESC`, [vendor.id]),
+      pool.query(`SELECT COUNT(*)::int total,COUNT(*) FILTER (WHERE available)::int available,COUNT(*) FILTER (WHERE NOT available)::int unavailable FROM sokoeats_menu_items WHERE vendor_id=$1`, [vendor.id]),
+    ]);
+    const metrics = metricsResult.rows[0];
+    res.json({ operations: {
+      vendor: { id: vendor.id, name: vendor.name, slug: vendor.slug, shopType: vendor.shop_type, tagline: vendor.tagline, address: vendor.address, contactPhone: vendor.contact_phone, imageUrl: vendor.image_url, acceptingOrders: vendor.accepting_orders, rating: Number(vendor.rating || 0), ratingCount: Number(vendor.rating_count || 0), prepMinutes: Number(vendor.prep_minutes), minimumOrder: Number(vendor.minimum_order), openingHours: vendor.profile?.openingHours || {} },
+      metrics: { today: metricJson(metrics,'today'), week: metricJson(metrics,'week'), month: metricJson(metrics,'month') },
+      trend: trendResult.rows.map(row => ({ date: row.day, sales: Number(row.sales), orders: Number(row.orders) })),
+      orderStatuses: Object.fromEntries(statusResult.rows.map(row => [row.status, Number(row.count)])),
+      orders: ordersResult.rows.map(row => ({ id: row.id, code: row.code, status: row.status, paymentStatus: row.payment_status, customerName: row.customer_name, recipientName: row.recipient_name, deliveryAddress: row.delivery_address, subtotal: Number(row.subtotal), total: Number(row.total), createdAt: row.created_at, updatedAt: row.updated_at, items: row.items })),
+      ratings: { average: Number(vendor.rating || 0), count: Number(vendor.rating_count || 0), breakdown: breakdownResult.rows.map(row => ({ stars: Number(row.stars), count: Number(row.count) })), recent: ratingsResult.rows.map(row => ({ id: row.id, rating: Number(row.rating), comment: row.comment, customerName: row.customer_name, orderCode: row.order_code, createdAt: row.created_at })) },
+      catalogue: catalogueResult.rows[0],
+    } });
+  } catch (err) { next(err); }
+}
+
+export async function updateVendorStoreProfile(req, res, next) {
+  try {
+    const vendor = await ownedVendor(req.auth.sub);
+    const profile = { ...(vendor.profile || {}), ...(req.body.openingHours ? { openingHours: req.body.openingHours } : {}) };
+    const { rows } = await pool.query(`UPDATE sokoeats_vendors SET
+      name=COALESCE($2,name),tagline=COALESCE($3,tagline),address=COALESCE($4,address),contact_phone=COALESCE($5,contact_phone),
+      image_url=COALESCE($6,image_url),accepting_orders=COALESCE($7,accepting_orders),prep_minutes=COALESCE($8,prep_minutes),
+      minimum_order=COALESCE($9,minimum_order),profile=$10::jsonb,updated_at=NOW() WHERE id=$1 RETURNING *`,
+      [vendor.id,req.body.name ?? null,req.body.tagline ?? null,req.body.address ?? null,req.body.contactPhone ?? null,req.body.imageUrl ?? null,req.body.acceptingOrders ?? null,req.body.prepMinutes ?? null,req.body.minimumOrder ?? null,JSON.stringify(profile)]);
+    res.json({ vendor: { id: rows[0].id, name: rows[0].name, tagline: rows[0].tagline, address: rows[0].address, contactPhone: rows[0].contact_phone, imageUrl: rows[0].image_url, acceptingOrders: rows[0].accepting_orders, prepMinutes: Number(rows[0].prep_minutes), minimumOrder: Number(rows[0].minimum_order), openingHours: rows[0].profile?.openingHours || {} } });
+  } catch (err) { next(err); }
+}
+
+export async function updateOwnedVendorOrder(req, res, next) {
+  try {
+    const vendor = await ownedVendor(req.auth.sub);
+    const target = req.body.status;
+    const transitions = { accepted: ['preparing','cancelled'], preparing: ['ready','cancelled'] };
+    const current = (await pool.query('SELECT * FROM sokoeats_orders WHERE (id::text=$1 OR code=$1) AND vendor_id=$2', [req.params.orderKey,vendor.id])).rows[0];
+    if (!current) return res.status(404).json({ message: 'Order not found for this shop' });
+    if (!(transitions[current.status] || []).includes(target)) return res.status(409).json({ message: `Order cannot move from ${current.status} to ${target}` });
+    const { rows } = await pool.query('UPDATE sokoeats_orders SET status=$1,updated_at=NOW() WHERE id=$2 RETURNING *', [target,current.id]);
+    res.json({ order: rows[0] });
+  } catch (err) { next(err); }
+}
+
+export async function reviewVendor(req, res, next) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const order = (await client.query(`SELECT * FROM sokoeats_orders WHERE vendor_id=$1 AND customer_user_id=$2 AND status='delivered'
+      AND ($3::uuid IS NULL OR id=$3) ORDER BY updated_at DESC,created_at DESC LIMIT 1 FOR UPDATE`, [req.params.vendorId,req.auth.sub,req.body.orderId || null])).rows[0];
+    if (!order) throw Object.assign(new Error('Only a delivered order can be rated'), { status: 409 });
+    const { rows } = await client.query(`INSERT INTO sokoeats_vendor_reviews(vendor_id,order_id,customer_user_id,rating,comment) VALUES($1,$2,$3,$4,$5)
+      ON CONFLICT(order_id) DO UPDATE SET rating=EXCLUDED.rating,comment=EXCLUDED.comment,updated_at=NOW() RETURNING *`, [order.vendor_id,order.id,req.auth.sub,req.body.rating,req.body.comment || null]);
+    const summary = (await client.query('SELECT ROUND(AVG(rating)::numeric,1) rating,COUNT(*)::int rating_count FROM sokoeats_vendor_reviews WHERE vendor_id=$1', [order.vendor_id])).rows[0];
+    await client.query('UPDATE sokoeats_vendors SET rating=$2,rating_count=$3,updated_at=NOW() WHERE id=$1', [order.vendor_id,summary.rating,summary.rating_count]);
+    await client.query('COMMIT');
+    res.json({ review: rows[0], summary: { rating: Number(summary.rating), count: Number(summary.rating_count) } });
+  } catch (err) { await client.query('ROLLBACK').catch(() => {}); next(err); }
+  finally { client.release(); }
 }
 
 export async function vendorPortal(_req, res, next) {
@@ -210,14 +313,6 @@ export async function submitMerchantOnboarding(req, res, next) {
   } catch (err) { next(err); }
 }
 
-export async function acceptMerchantTerms(req, res, next) {
-  try {
-    const terms = await getScreenPayload('merchant_terms_conditions');
-    terms.acceptance = { ...req.body, accepted: true, acceptedAt: new Date().toISOString() };
-    res.json({ terms: await saveScreenPayload('merchant_terms_conditions', terms) });
-  } catch (err) { next(err); }
-}
-
 const menuCategoryRules = [
   ['Drinks', ['drink', 'juice', 'soda', 'water', 'tea', 'coffee', 'milk', 'smoothie']],
   ['Meals', ['meal', 'chicken', 'beef', 'nyama', 'pilau', 'rice', 'burger', 'pizza', 'ugali', 'fish']],
@@ -261,7 +356,7 @@ export async function createMerchantMenuItem(req, res, next) {
       [vendor.id, section.id, req.body.name, req.body.description || '', Math.round(price), section.title, req.body.popular === true, req.body.available !== false, req.body.imageUrl || null, req.body.unitLabel || null, req.body.sortOrder || 0],
     );
     const menu = await loadVendorMenu(vendor.slug);
-    res.status(201).json({ item: menuItemJson(rows[0]), menu, categorization: { category: sectionTitle, source: suppliedCategory ? 'partner' : 'sokoeats-auto' } });
+    res.status(201).json({ item: menuItemJson({ ...rows[0], commission_rate_bps: vendor.commission_rate_bps, vat_registered: vendor.vat_registered }), menu, categorization: { category: sectionTitle, source: suppliedCategory ? 'partner' : 'sokoeats-auto' } });
   } catch (err) { next(err); }
 }
 
@@ -276,6 +371,49 @@ export async function createMerchantMenuCategory(req, res, next) {
       [vendor.id, req.body.title, req.body.description || null, req.body.sortOrder || 0],
     );
     res.status(201).json({ category: rows[0], menu: await loadVendorMenu(vendor.slug) });
+  } catch (err) { next(err); }
+}
+
+export async function updateMerchantMenuItem(req, res, next) {
+  let client;
+  try {
+    const vendor = await ownedVendor(req.auth.sub);
+    client = await pool.connect();
+    await client.query('BEGIN');
+    const existing = await client.query('SELECT id FROM sokoeats_menu_items WHERE id::text = $1 AND vendor_id = $2 FOR UPDATE', [req.params.id, vendor.id]);
+    if (!existing.rows[0]) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ message: 'Menu item not found in your catalogue' });
+    }
+    const suppliedCategory = String(req.body.sectionTitle || req.body.category || '').trim();
+    const title = suppliedCategory || inferMenuCategory(vendor, req.body);
+    const { rows: sections } = await client.query(
+      `INSERT INTO sokoeats_menu_categories (vendor_id, title, sort_order) VALUES ($1,$2,50)
+       ON CONFLICT (vendor_id, title) DO UPDATE SET title = EXCLUDED.title RETURNING id`, [vendor.id, title],
+    );
+    const { rows } = await client.query(
+      `UPDATE sokoeats_menu_items SET section_id=$1, category=$2, name=$3, description=$4, price=$5,
+       image_url=$6, unit_label=$7, available=$8, popular=$9, sort_order=$10, updated_at=NOW()
+       WHERE id::text=$11 AND vendor_id=$12 RETURNING *`,
+      [sections[0].id, title, req.body.name, req.body.description || '', req.body.price,
+        req.body.imageUrl || null, req.body.unitLabel || null, req.body.available, req.body.popular,
+        req.body.sortOrder, req.params.id, vendor.id],
+    );
+    await client.query('COMMIT');
+    res.json({ item: menuItemJson({ ...rows[0], commission_rate_bps: vendor.commission_rate_bps, vat_registered: vendor.vat_registered }), categorization: { category: title, source: suppliedCategory ? 'partner' : 'sokoeats-auto' } });
+  } catch (err) {
+    if (client) await client.query('ROLLBACK');
+    next(err);
+  } finally { client?.release(); }
+}
+
+export async function deleteMerchantMenuItem(req, res, next) {
+  try {
+    const vendor = await ownedVendor(req.auth.sub);
+    // Order lines retain their name/price snapshots; their FK uses ON DELETE SET NULL.
+    const { rows } = await pool.query('DELETE FROM sokoeats_menu_items WHERE id::text=$1 AND vendor_id=$2 RETURNING id', [req.params.id, vendor.id]);
+    if (!rows[0]) return res.status(404).json({ message: 'Menu item not found in your catalogue' });
+    res.json({ deletedId: rows[0].id });
   } catch (err) { next(err); }
 }
 

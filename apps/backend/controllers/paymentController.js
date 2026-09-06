@@ -2,7 +2,7 @@ import pool from '../config/db.js';
 import { createPaymentPrompt, confirmGatewayPayment, normalizeKenyanPhone, paymentReference } from '../services/paymentGateway.js';
 import { lockedQuote } from '../services/pricingService.js';
 
-const providerMessage = (payload = {}) => payload.mpesaCallback?.ResultDesc || payload.mpesaQuery?.ResultDesc || payload.CustomerMessage || payload.ResponseDescription || payload.initiationError || null;
+const providerMessage = (payload = {}) => payload.display_text || payload.message || payload.initiationError || null;
 
 function maskPaymentPhone(value) {
   return String(value || '').replace(/(\+254\d{3})\d+(\d{2})/, '$1*****$2');
@@ -37,7 +37,7 @@ export async function initiateCheckoutPayment(req, res, next) {
     const phone = normalizeKenyanPhone(req.body.phone);
     const method = req.body.method;
     const currency = req.body.currency || 'KES';
-    const provider = method === 'mpesa' ? 'mpesa' : 'paystack';
+    const provider = 'paystack';
 
     paymentLog('checkout:init', { reference, method, provider, amount: req.body.amount, currency, phone: maskPaymentPhone(phone), hasCallbackUrl: Boolean(req.body.callbackUrl) });
 
@@ -55,7 +55,7 @@ export async function initiateCheckoutPayment(req, res, next) {
         amount: req.body.amount,
         currency,
         phone,
-        email: req.body.email,
+        email: req.body.email || req.auth.email,
         customerName: req.body.customerName,
         reference,
         callbackUrl: req.body.callbackUrl,
@@ -78,7 +78,7 @@ export async function initiateCheckoutPayment(req, res, next) {
       paymentLog('checkout:prompt-result', { reference, method, status: rows[0].status, providerReference: rows[0].provider_reference, providerMessage: providerMessage(rows[0].provider_payload) });
       return res.status(201).json({ payment: paymentJson(rows[0]) });
     } catch (promptErr) {
-      paymentLog('checkout:prompt-error', { reference, method, message: promptErr.message, gatewayPayload: promptErr.payload || null });
+      paymentLog('checkout:prompt-error', { reference, method, message: promptErr.message, gatewayPayload: promptErr.providerPayload || null });
       await pool.query(
         `UPDATE sokoeats_payment_intents
          SET status = 'failed',
@@ -86,7 +86,7 @@ export async function initiateCheckoutPayment(req, res, next) {
              provider_payload = provider_payload || $2::jsonb,
              updated_at = NOW()
          WHERE reference = $3`,
-        [promptErr.message || 'Payment prompt failed', { initiationError: promptErr.message || 'Payment prompt failed', gatewayPayload: promptErr.payload || null }, reference],
+        [promptErr.message || 'Payment prompt failed', { initiationError: promptErr.message || 'Payment prompt failed', gatewayPayload: promptErr.providerPayload || null }, reference],
       );
       throw promptErr;
     }
@@ -115,32 +115,5 @@ export async function confirmCheckoutPayment(req, res, next) {
 
     paymentLog('confirm:result', { reference: req.params.reference, method: rows[0].method, status: rows[0].status, providerReference: rows[0].provider_reference, providerMessage: providerMessage(rows[0].provider_payload) });
     res.json({ payment: paymentJson(rows[0]) });
-  } catch (err) { next(err); }
-}
-
-export async function mpesaCheckoutCallback(req, res, next) {
-  try {
-    const callback = req.body?.Body?.stkCallback || req.body?.stkCallback || req.body;
-    const checkoutRequestId = callback?.CheckoutRequestID;
-    const resultCode = Number(callback?.ResultCode);
-    if (!checkoutRequestId) return res.status(422).json({ message: 'CheckoutRequestID is required' });
-    paymentLog('mpesa-callback:received', { checkoutRequestId, merchantRequestId: callback?.MerchantRequestID, resultCode, resultDesc: callback?.ResultDesc });
-    const status = resultCode === 0 ? 'paid' : 'failed';
-    const { rows } = await pool.query(
-      `UPDATE sokoeats_payment_intents
-       SET status = $1,
-           provider_payload = provider_payload || $2::jsonb,
-           paid_at = CASE WHEN $1 = 'paid' THEN COALESCE(paid_at, NOW()) ELSE paid_at END,
-           updated_at = NOW()
-       WHERE provider_reference = $3
-       RETURNING *`,
-      [status, { mpesaCallback: callback }, checkoutRequestId],
-    );
-    if (!rows.length) {
-      console.warn('[SokoEats][Payment] mpesa-callback:unmatched', { checkoutRequestId, resultCode, resultDesc: callback?.ResultDesc });
-      return res.json({ ok: true, matched: false, message: 'M-Pesa callback accepted for an unknown or already archived payment intent' });
-    }
-    paymentLog('mpesa-callback:matched', { checkoutRequestId, reference: rows[0].reference, status: rows[0].status, resultCode, resultDesc: callback?.ResultDesc });
-    res.json({ ok: true, matched: true, payment: paymentJson(rows[0]) });
   } catch (err) { next(err); }
 }

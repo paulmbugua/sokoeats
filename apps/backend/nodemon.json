@@ -1,0 +1,7 @@
+{
+  "watch": ["server.js", "config", "controllers", "middleware", "models", "routes", "services", "validators", ".env"],
+  "ext": "js,json,env",
+  "ignore": ["tests/**", "scripts/**", "db/**", "node_modules/**"],
+  "delay": "1000",
+  "signal": "SIGTERM"
+}

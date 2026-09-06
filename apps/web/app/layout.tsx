@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next';
 import '../src/styles.css';
 import '../src/account.css';
 import '../src/PartnerPortal.css';
+import '../src/Pricing.css';
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://sokoeats.co.ke';
 

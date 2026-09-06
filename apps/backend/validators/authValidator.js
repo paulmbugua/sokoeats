@@ -2,8 +2,15 @@ import Joi from 'joi';
 
 const role = Joi.string().valid('normal','user','customer','rider','courier','vendor','merchant','merchant_admin','support','admin').default('customer');
 const phone = Joi.string().min(7).max(30).allow('', null);
+const termsAcceptance = Joi.object({
+  accepted: Joi.boolean().strict().valid(true).required(),
+  role: Joi.string().valid('rider', 'vendor', 'merchant').required(),
+  version: Joi.string().max(60).required(),
+  hash: Joi.string().hex().length(64).required(),
+}).unknown(false);
 
 export const registerSchema = Joi.object({
+  termsAcceptance,
   role,
   fullName: Joi.string().min(2).max(120),
   name: Joi.string().min(2).max(120),
@@ -33,13 +40,23 @@ export const registerSchema = Joi.object({
   department: Joi.string().max(80).allow('', null),
   preferredLanguage: Joi.string().max(40),
   inviteCode: Joi.string().max(120).allow('', null),
-  marketingOptIn: Joi.boolean().default(true),
+  marketingOptIn: Joi.boolean().default(false),
 }).unknown(false).or('fullName', 'name', 'businessName');
 
 export const loginSchema = Joi.object({
   role,
   email: Joi.string().email().required(),
   password: Joi.string().min(1).required(),
+}).unknown(false);
+
+export const changePasswordSchema = Joi.object({
+  currentPassword: Joi.string().min(1).max(128).required(),
+  newPassword: Joi.string().min(12).max(128)
+    .pattern(/[a-z]/, 'lowercase letter')
+    .pattern(/[A-Z]/, 'uppercase letter')
+    .pattern(/[0-9]/, 'number')
+    .pattern(/[^A-Za-z0-9]/, 'special character')
+    .required(),
 }).unknown(false);
 
 export const googleAuthSchema = Joi.object({
@@ -62,7 +79,7 @@ export const googleAuthSchema = Joi.object({
   department: Joi.string().max(80).allow('', null),
   preferredLanguage: Joi.string().max(40),
   inviteCode: Joi.string().max(120).allow('', null),
-  marketingOptIn: Joi.boolean().default(true),
+  marketingOptIn: Joi.boolean().default(false),
 }).unknown(false);
 
 export const deleteAccountSchema = Joi.object({
@@ -72,6 +89,7 @@ export const deleteAccountSchema = Joi.object({
 });
 
 export const updateProfileSchema = Joi.object({
+  termsAcceptance,
   fullName: Joi.string().min(2).max(120),
   name: Joi.string().min(2).max(120),
   phone,
