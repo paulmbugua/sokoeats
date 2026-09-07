@@ -97,6 +97,9 @@ async function promptPaystackCard({ amount, currency, email, reference, callback
     },
   });
   if (!data) return simulatedPrompt({ amount, currency, email, reference, method: 'card' });
+  if (!data.authorization_url) {
+    throw Object.assign(new Error('Paystack did not return a card checkout URL'), { status: 502, providerPayload: data });
+  }
   return {
     provider: 'paystack',
     status: 'requires_action',
@@ -126,6 +129,9 @@ async function promptPaystackCheckout({ amount, currency, email, reference, call
   };
   const data = await paystack('/transaction/initialize', { method: 'POST', body });
   if (!data) return simulatedPrompt({ amount, currency, email, phone, reference, method: 'paystack' });
+  if (!data.authorization_url) {
+    throw Object.assign(new Error('Paystack did not return a secure checkout URL'), { status: 502, providerPayload: data });
+  }
   return {
     provider: 'paystack',
     status: 'requires_action',

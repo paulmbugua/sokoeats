@@ -61,7 +61,13 @@ type Payment = {
 type PricingQuote = {
   id: string;
   subtotal: number;
+  taxableSubtotal: number;
+  vatRateBps: number;
+  smallOrderFee: number;
+  minimumOrder: number;
+  amountToMinimum: number;
   deliveryFee: number;
+  deliveryBreakdown: { baseFee?: number; minimumFee?: number; distanceFee?: number; timeFee?: number };
   serviceFee: number;
   waivedServiceFee: number;
   firstOrderOffer: boolean;
@@ -93,6 +99,8 @@ const APP_URL =
 const HERO_IMAGE =
   'https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=1800&q=88';
 const money = (value: number) => `KES ${Number(value || 0).toLocaleString('en-KE')}`;
+const MINIMUM_ORDER = 300;
+const SMALL_ORDER_FEE = 50;
 const categories = ['All', 'Restaurants', 'Groceries', 'Pharmacy', 'Gas', 'Electronics'];
 
 function readBasket(): { vendorId: string; lines: Line[] } {
@@ -288,9 +296,12 @@ export default function SokoEatsApp() {
   const vendor = vendors.find((entry) => entry.id === selected);
   const subtotal = cart.reduce((sum, line) => sum + line.item.price * line.quantity, 0);
   const basketCount = cart.reduce((sum, line) => sum + line.quantity, 0);
-  const previewDeliveryFee = Number(vendor?.deliveryFee || 0);
-  const previewServiceAndTax = Math.round(subtotal * 0.04);
-  const previewTotal = subtotal + previewDeliveryFee + previewServiceAndTax;
+  const previewDeliveryFee = Math.max(150, Number(vendor?.deliveryFee || 0));
+  const previewServiceFee = Math.round(subtotal * 0.04);
+  const previewVat = cart.reduce((sum, line) => sum + Number(line.item.vatAmount || 0) * line.quantity, 0);
+  const previewSmallOrderFee = subtotal > 0 && subtotal < MINIMUM_ORDER ? SMALL_ORDER_FEE : 0;
+  const previewAmountToMinimum = Math.max(0, MINIMUM_ORDER - subtotal);
+  const previewTotal = subtotal + previewSmallOrderFee + previewDeliveryFee + previewServiceFee + previewVat;
   const filteredVendors = vendors.filter(
     (entry) => category === 'All' || entry.category?.toLowerCase() === category.toLowerCase()
   );
@@ -354,10 +365,11 @@ export default function SokoEatsApp() {
     setStatus('Finding your current delivery location...');
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
+        console.info('[SokoEats][Web][Location] current-location-captured', { latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy });
         setDeliveryPin({ latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy });
         setQuote(null);
         setPendingPayment(null);
-        setStatus(`Delivery pin captured${coords.accuracy ? ` within about ${Math.round(coords.accuracy)}m` : ''}.`);
+        setStatus(`Delivery pin captured${coords.accuracy ? ` within about ${Math.round(coords.accuracy)}m` : ''}. Recalculating your route...`);
       },
       () => setStatus('Current location permission was denied or unavailable. Enter an estate, road and town.'),
       { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 },
@@ -375,6 +387,18 @@ export default function SokoEatsApp() {
       return;
     }
     setCheckoutOpen(true);
+    setPendingPayment(null);
+    setQuote(null);
+    setCheckoutBusy(true);
+    setStatus('Calculating VAT and your traffic-aware delivery route...');
+    void createQuote()
+      .then((nextQuote) => {
+        setStatus(nextQuote.smallOrderFee
+          ? `Add ${money(nextQuote.amountToMinimum)} more to reach the ${money(nextQuote.minimumOrder)} basket minimum and remove the ${money(nextQuote.smallOrderFee)} small-order fee.`
+          : `Route confirmed: ${nextQuote.distanceKm.toFixed(1)} km, about ${nextQuote.durationMin} min.`);
+      })
+      .catch((error) => setStatus(error instanceof Error ? error.message : 'Could not calculate checkout pricing.'))
+      .finally(() => setCheckoutBusy(false));
   };
   const submitAuth = async () => {
     setAuthBusy(true);
@@ -515,14 +539,16 @@ export default function SokoEatsApp() {
   };
   const createQuote = async () => {
     if (!vendor || !session) throw new Error('Choose a shop and sign in before checkout.');
-    if (!form.phone.trim() || !form.defaultAddress.trim())
-      throw new Error('Add a mobile number and delivery address before payment.');
+    if (!form.phone.trim())
+      throw new Error('Add a mobile number before payment.');
+    if (!deliveryPin && !form.defaultAddress.trim())
+      throw new Error('Use current location or enter an estate, road and town before payment.');
     await saveProfile();
     const result = await api<{ quote: PricingQuote }>('/api/orders/quote', {
       method: 'POST',
       body: JSON.stringify({
         vendorId: vendor.id,
-        deliveryAddress: form.defaultAddress,
+        deliveryAddress: form.defaultAddress.trim() || 'Current location',
         city: form.city,
         ...(deliveryPin ? { latitude: deliveryPin.latitude, longitude: deliveryPin.longitude } : {}),
         items: cart.map((line) => ({
@@ -532,9 +558,25 @@ export default function SokoEatsApp() {
         })),
       }),
     });
+    console.info('[SokoEats][Web][Location] quote-request', { hasDeliveryPin: Boolean(deliveryPin), latitude: deliveryPin?.latitude ?? null, longitude: deliveryPin?.longitude ?? null, address: form.defaultAddress.trim() || 'Current location' });
     setQuote(result.quote);
     return result.quote;
   };
+
+  useEffect(() => {
+    if (!checkoutOpen || !deliveryPin || !session || !cart.length) return;
+    let active = true;
+    setCheckoutBusy(true);
+    setStatus('Delivery pin captured. Calculating your route and delivery price...');
+    void createQuote().then((nextQuote) => {
+      if (!active) return;
+      setStatus(nextQuote.smallOrderFee ? `Route confirmed. Add ${money(nextQuote.amountToMinimum)} more to remove the ${money(nextQuote.smallOrderFee)} small-order fee.` : `Route confirmed: ${nextQuote.distanceKm.toFixed(1)} km, about ${nextQuote.durationMin} min.`);
+    }).catch((error) => {
+      if (active) setStatus(error instanceof Error ? error.message : 'Could not calculate checkout pricing.');
+    }).finally(() => { if (active) setCheckoutBusy(false); });
+    return () => { active = false; };
+  }, [checkoutOpen, deliveryPin, session?.user.id, cart.length]);
+
   const startPayment = async () => {
     if (!session?.user || !vendor) return;
     setCheckoutBusy(true);
@@ -1006,13 +1048,17 @@ export default function SokoEatsApp() {
               <div className="totals">
                 <span>Items subtotal</span>
                 <b>{money(subtotal)}</b>
-                <span>Delivery fee</span>
+                {previewSmallOrderFee > 0 && <><span>Small order fee</span><b>{money(previewSmallOrderFee)}</b></>}
+                <span>Delivery fee from</span>
                 <b>{money(previewDeliveryFee)}</b>
-                <span>Service & tax</span>
-                <b>{money(previewServiceAndTax)}</b>
+                <span>Service fee</span>
+                <b>{money(previewServiceFee)}</b>
+                <span>{previewVat > 0 ? 'VAT (16% taxable items)' : 'VAT (not applicable)'}</span>
+                <b>{money(previewVat)}</b>
                 <strong>Total</strong>
                 <b>{money(previewTotal)}</b>
               </div>
+              {previewAmountToMinimum > 0 && <p className="notice">Add {money(previewAmountToMinimum)} to reach the {money(MINIMUM_ORDER)} basket minimum and remove the {money(SMALL_ORDER_FEE)} small-order fee. Delivery is priced separately from the mapped route so rider earnings do not fall on small baskets.</p>}
               <button className="primary" onClick={beginCheckout} disabled={!cart.length}>
                 Continue to checkout <ChevronRight />
               </button>
@@ -1523,16 +1569,23 @@ export default function SokoEatsApp() {
               <span>
                 Item subtotal <b>{money(quote?.subtotal ?? subtotal)}</b>
               </span>
+              {(quote?.smallOrderFee ?? previewSmallOrderFee) > 0 && <span>
+                Small order fee <b>{money(quote?.smallOrderFee ?? previewSmallOrderFee)}</b>
+              </span>}
               <span>
                 Delivery fee <b>{money(quote?.deliveryFee ?? previewDeliveryFee)}</b>
               </span>
+              {quote && <small>
+                Route price: {money(quote.deliveryBreakdown.baseFee || 0)} base + {money(quote.deliveryBreakdown.distanceFee || 0)} distance + {money(quote.deliveryBreakdown.timeFee || 0)} traffic time; rider minimum {money(quote.deliveryBreakdown.minimumFee || 150)}.
+              </small>}
               {!!quote?.surgeFee && <span>Busy-area delivery fee <b>{money(quote.surgeFee)}</b></span>}
               <span>
-                Service fee <b>{money(quote ? quote.serviceFee + quote.waivedServiceFee : previewServiceAndTax)}</b>
+                Service fee <b>{money(quote ? quote.serviceFee + quote.waivedServiceFee : previewServiceFee)}</b>
               </span>
               {!!quote?.firstOrderOffer && <span className="quoteSaving">First-order service fee saving <b>-{money(quote.waivedServiceFee)}</b></span>}
               {!!quote?.discountAmount && <span className="quoteSaving">Promotion <b>-{money(quote.discountAmount)}</b></span>}
-              <span>VAT (where applicable) <b>{money(quote?.vatAmount ?? 0)}</b></span>
+              <span>{quote?.vatRateBps ? `VAT (${quote.vatRateBps / 100}% of ${money(quote.taxableSubtotal)})` : 'VAT (not applicable)'} <b>{money(quote?.vatAmount ?? previewVat)}</b></span>
+              {!!quote?.amountToMinimum && <small>Add {money(quote.amountToMinimum)} more to remove the {money(quote.smallOrderFee)} small-order fee. The delivery price remains route-based to protect rider earnings.</small>}
               {quote && (
                 <small>
                   <MapPin /> {quote.distanceKm.toFixed(1)} km · about {quote.durationMin} min

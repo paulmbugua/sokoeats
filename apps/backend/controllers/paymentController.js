@@ -75,7 +75,14 @@ export async function initiateCheckoutPayment(req, res, next) {
         [prompt.provider, prompt.status, prompt.providerReference || null, prompt.actionUrl || null, prompt.promptMessage, prompt.payload || {}, reference],
       );
 
-      paymentLog('checkout:prompt-result', { reference, method, status: rows[0].status, providerReference: rows[0].provider_reference, providerMessage: providerMessage(rows[0].provider_payload) });
+      paymentLog('checkout:prompt-result', {
+        reference,
+        method,
+        status: rows[0].status,
+        providerReference: rows[0].provider_reference,
+        hasActionUrl: Boolean(rows[0].action_url),
+        providerMessage: providerMessage(rows[0].provider_payload),
+      });
       return res.status(201).json({ payment: paymentJson(rows[0]) });
     } catch (promptErr) {
       paymentLog('checkout:prompt-error', { reference, method, message: promptErr.message, gatewayPayload: promptErr.providerPayload || null });

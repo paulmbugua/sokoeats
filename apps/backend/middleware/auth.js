@@ -56,7 +56,7 @@ export function requireRole(...roles) {
     try {
       const supportRequest = /^\/api\/rider\/(live-chat\/messages|incidents)$/.test(req.originalUrl?.split('?')[0] || '');
       if (needsPartnerTerms(req.auth.role) && !supportRequest && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
-        if (!hasCurrentTerms(req.authUser)) throw Object.assign(new Error('Complete your profile and accept the current terms of service before continuing.'), { status: 403 });
+        if (!hasCurrentTerms(req.authUser)) throw Object.assign(new Error('Open and accept the current terms of service for your account type before continuing.'), { status: 403 });
       }
       next();
     } catch (error) { next(error); }

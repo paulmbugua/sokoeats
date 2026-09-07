@@ -8,6 +8,10 @@ ALTER TABLE sokoeats_payment_intents DROP CONSTRAINT IF EXISTS sokoeats_payment_
 ALTER TABLE sokoeats_payment_intents ADD CONSTRAINT sokoeats_payment_intents_method_check CHECK (method IN ('mpesa','card','paystack'));
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS vat_registered BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE sokoeats_vendors ADD COLUMN IF NOT EXISTS vat_number TEXT;
+ALTER TABLE sokoeats_vendors ALTER COLUMN minimum_order SET DEFAULT 300;
+UPDATE sokoeats_vendors SET minimum_order = 300 WHERE minimum_order < 300;
+ALTER TABLE sokoeats_vendors DROP CONSTRAINT IF EXISTS sokoeats_vendors_minimum_order_floor;
+ALTER TABLE sokoeats_vendors ADD CONSTRAINT sokoeats_vendors_minimum_order_floor CHECK (minimum_order >= 300);
 ALTER TABLE sokoeats_menu_items ADD COLUMN IF NOT EXISTS tax_category TEXT NOT NULL DEFAULT 'standard' CHECK (tax_category IN ('standard','zero_rated','exempt'));
 ALTER TABLE sokoeats_menu_items ADD COLUMN IF NOT EXISTS tax_rate_bps INT NOT NULL DEFAULT 1600 CHECK (tax_rate_bps IN (0,1600));
 
@@ -20,9 +24,15 @@ CREATE TABLE IF NOT EXISTS sokoeats_pricing_quotes (
   dropoff_latitude NUMERIC(10,7) NOT NULL,
   dropoff_longitude NUMERIC(10,7) NOT NULL,
   subtotal INT NOT NULL,
+  taxable_subtotal INT NOT NULL DEFAULT 0,
+  vat_rate_bps INT NOT NULL DEFAULT 0,
   platform_commission INT NOT NULL DEFAULT 0,
   vat_amount INT NOT NULL DEFAULT 0,
+  small_order_fee INT NOT NULL DEFAULT 0,
+  minimum_order INT NOT NULL DEFAULT 300,
+  amount_to_minimum INT NOT NULL DEFAULT 0,
   delivery_fee INT NOT NULL,
+  delivery_breakdown JSONB NOT NULL DEFAULT '{}'::jsonb,
   service_fee INT NOT NULL,
   waived_service_fee INT NOT NULL DEFAULT 0,
   first_order_offer BOOLEAN NOT NULL DEFAULT FALSE,
@@ -48,6 +58,12 @@ ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS waived_service_fee 
 ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS first_order_offer BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS platform_commission INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS vat_amount INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS taxable_subtotal INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS vat_rate_bps INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS small_order_fee INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS minimum_order INT NOT NULL DEFAULT 300;
+ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS amount_to_minimum INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_pricing_quotes ADD COLUMN IF NOT EXISTS delivery_breakdown JSONB NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE TABLE IF NOT EXISTS sokoeats_surge_zones (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -72,6 +88,11 @@ ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS platform_surge_revenue INT 
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS waived_service_fee INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS platform_commission INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS vat_amount INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS taxable_subtotal INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS vat_rate_bps INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS small_order_fee INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS minimum_order INT NOT NULL DEFAULT 300;
+ALTER TABLE sokoeats_orders ADD COLUMN IF NOT EXISTS delivery_breakdown JSONB NOT NULL DEFAULT '{}'::jsonb;
 ALTER TABLE sokoeats_order_items ADD COLUMN IF NOT EXISTS partner_unit_price INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_order_items ADD COLUMN IF NOT EXISTS commission_amount INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_order_items ADD COLUMN IF NOT EXISTS tax_amount INT NOT NULL DEFAULT 0;
@@ -79,3 +100,4 @@ ALTER TABLE sokoeats_order_settlements ADD COLUMN IF NOT EXISTS surge_fee INT NO
 ALTER TABLE sokoeats_order_settlements ADD COLUMN IF NOT EXISTS rider_surge_bonus INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_order_settlements ADD COLUMN IF NOT EXISTS vendor_surge_bonus INT NOT NULL DEFAULT 0;
 ALTER TABLE sokoeats_order_settlements ADD COLUMN IF NOT EXISTS platform_surge_revenue INT NOT NULL DEFAULT 0;
+ALTER TABLE sokoeats_order_settlements ADD COLUMN IF NOT EXISTS small_order_fee INT NOT NULL DEFAULT 0;

@@ -3469,6 +3469,7 @@ __metadata:
     "@react-native-google-signin/google-signin": "npm:^16.1.4"
     "@react-navigation/native": "npm:^7.1.8"
     "@react-navigation/native-stack": "npm:^7.3.16"
+    "@sokoeats/shared": "workspace:*"
     "@tanstack/react-query": "npm:5.89.0"
     "@types/react": "npm:~19.1.10"
     axios: "npm:^1.12.2"
@@ -3494,10 +3495,8 @@ __metadata:
 "@sokoeats/shared@workspace:*, @sokoeats/shared@workspace:packages/shared":
   version: 0.0.0-use.local
   resolution: "@sokoeats/shared@workspace:packages/shared"
-  dependencies:
-    "@tanstack/react-query": "npm:5.89.0"
-    axios: "npm:^1.12.2"
-    react: "npm:19.1.0"
+  peerDependencies:
+    react: 19.1.0
   languageName: unknown
   linkType: soft
 

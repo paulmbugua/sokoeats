@@ -59,6 +59,7 @@ const accounts = {
   customerFunds: { code: 'customers:paid-orders:clearing', name: 'Customer funds clearing', accountType: 'liability', ownerType: 'customer' },
   commission: { code: 'platform:commission:revenue', name: 'Marketplace commission revenue', accountType: 'revenue' },
   service: { code: 'platform:service-fee:revenue', name: 'Service fee revenue', accountType: 'revenue' },
+  smallOrder: { code: 'platform:small-order-fee:revenue', name: 'Small order fee revenue', accountType: 'revenue' },
   surge: { code: 'platform:surge:revenue', name: 'Platform surge operations revenue', accountType: 'revenue' },
   promotion: { code: 'platform:promotions:expense', name: 'Platform-funded promotions', accountType: 'expense' },
   pspExpense: { code: 'platform:psp-fees:expense', name: 'Payment provider charges', accountType: 'expense', ownerType: 'provider' },
@@ -74,6 +75,7 @@ export async function initializeOrderFinance(client, { order, payment, vendor, c
   const commissionBps = Number(vendor.commission_rate_bps || 1000);
   const commission = Math.min(subtotal, money(order.platform_commission || Math.round(subtotal * commissionBps / 10000)));
   const vatAmount = money(order.vat_amount);
+  const smallOrderFee = money(order.small_order_fee);
   const surgeFee = money(order.surge_fee);
   const riderSurgeBonus = money(order.rider_surge_bonus);
   const vendorSurgeBonus = money(order.vendor_surge_bonus);
@@ -103,6 +105,7 @@ export async function initializeOrderFinance(client, { order, payment, vendor, c
     { account: vendorPayable(vendor), direction: 'credit', amount: subtotal + vendorSurgeBonus },
     ...(riderEntitlement ? [{ account: riderPayable(), direction: 'credit', amount: riderEntitlement }] : []),
     ...(serviceFee ? [{ account: accounts.service, direction: 'credit', amount: serviceFee }] : []),
+    ...(smallOrderFee ? [{ account: accounts.smallOrder, direction: 'credit', amount: smallOrderFee }] : []),
     ...(platformSurgeRevenue ? [{ account: accounts.surge, direction: 'credit', amount: platformSurgeRevenue }] : []),
     ...(vatAmount ? [{ account: { code: 'tax:vat:payable', name: 'VAT collected payable', accountType: 'liability', ownerType: 'platform' }, direction: 'credit', amount: vatAmount }] : []),
   ];
@@ -127,9 +130,9 @@ export async function initializeOrderFinance(client, { order, payment, vendor, c
   }
   const { rows } = await client.query(
     `INSERT INTO sokoeats_order_settlements
-      (order_id,payment_intent_id,vendor_id,state,vendor_gross,vendor_commission,vendor_net,service_fee,delivery_fee,rider_entitlement,psp_charge,reserve_amount,risk_tier,delivery_otp_hash,surge_fee,rider_surge_bonus,vendor_surge_bonus,platform_surge_revenue)
-     VALUES ($1,$2,$3,'PAYMENT_CONFIRMED',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
-    [order.id,payment.id,vendor.id,subtotal,commission,vendorNet,serviceFee,deliveryFee,riderEntitlement,pspCharge,reserveAmount,vendor.risk_tier||'new',otpDigest(order.id,deliveryOtp),surgeFee,riderSurgeBonus,vendorSurgeBonus,platformSurgeRevenue],
+      (order_id,payment_intent_id,vendor_id,state,vendor_gross,vendor_commission,vendor_net,service_fee,small_order_fee,delivery_fee,rider_entitlement,psp_charge,reserve_amount,risk_tier,delivery_otp_hash,surge_fee,rider_surge_bonus,vendor_surge_bonus,platform_surge_revenue)
+     VALUES ($1,$2,$3,'PAYMENT_CONFIRMED',$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+    [order.id,payment.id,vendor.id,subtotal,commission,vendorNet,serviceFee,smallOrderFee,deliveryFee,riderEntitlement,pspCharge,reserveAmount,vendor.risk_tier||'new',otpDigest(order.id,deliveryOtp),surgeFee,riderSurgeBonus,vendorSurgeBonus,platformSurgeRevenue],
   );
   await client.query(`UPDATE sokoeats_orders SET finance_state = 'PAYMENT_CONFIRMED' WHERE id = $1`, [order.id]);
   await client.query(`INSERT INTO sokoeats_settlement_events (settlement_id,to_state,event_type,actor_user_id,metadata) VALUES ($1,'PAYMENT_CONFIRMED','payment_confirmed',$2,$3)`, [rows[0].id, createdBy, { paymentReference: payment.reference, at: now.toISOString() }]);

@@ -57,12 +57,14 @@ export const vendorProfileSettingsSchema = Joi.object({
   name: Joi.string().trim().min(2).max(120),
   tagline: Joi.string().trim().max(180).allow('', null),
   address: Joi.string().trim().min(3).max(240),
+  latitude: Joi.number().min(-90).max(90),
+  longitude: Joi.number().min(-180).max(180),
   contactPhone: Joi.string().trim().max(30).allow('', null),
   imageUrl: Joi.string().uri().max(2000).allow('', null),
   prepMinutes: Joi.number().integer().min(5).max(180),
-  minimumOrder: Joi.number().integer().min(0).max(1000000),
+  minimumOrder: Joi.number().integer().min(300).max(1000000),
   openingHours: Joi.object().pattern(Joi.string(), Joi.string().max(80)),
-}).min(1);
+}).and('latitude', 'longitude').min(1);
 
 export const vendorReviewSchema = Joi.object({
   orderId: Joi.string().uuid(),

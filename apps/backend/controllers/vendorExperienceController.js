@@ -2,6 +2,7 @@ import pool from '../config/db.js';
 import { getScreenPayload, saveScreenPayload } from '../models/screenPayloadModel.js';
 import { createImageUpload } from '../services/r2Images.js';
 import { itemPricing } from '../services/commercePricing.js';
+import { resolveCoverage } from '../services/coverageService.js';
 
 function menuItemJson(row) {
   const pricing = itemPricing(row, row);
@@ -16,6 +17,8 @@ function menuItemJson(row) {
     commissionAmount: pricing.commissionAmount,
     commissionRateBps: pricing.commissionBps,
     taxCategory: pricing.taxCategory,
+    taxRateBps: pricing.taxRateBps,
+    vatAmount: pricing.vatAmount,
     category: row.category,
     popular: Boolean(row.popular),
     available: Boolean(row.available),
@@ -46,7 +49,7 @@ async function loadVendorMenu(vendorSlug = 'nairobi-grill-house') {
     sortOrder: Number(section.sort_order || 0),
     items: itemsResult.rows.filter((item) => String(item.section_id) === String(section.id) || item.category === section.title).map(item => menuItemJson({ ...item, commission_rate_bps: vendor.commission_rate_bps, vat_registered: vendor.vat_registered })),
   }));
-  return { vendor: { id: vendor.id, name: vendor.name, slug: vendor.slug, shopType: vendor.shop_type, tagline: vendor.tagline, address: vendor.address, contactPhone: vendor.contact_phone, imageUrl: vendor.image_url, acceptingOrders: vendor.accepting_orders, rating: Number(vendor.rating || 0), ratingCount: Number(vendor.rating_count || 0), prepMinutes: Number(vendor.prep_minutes || 0), minimumOrder: Number(vendor.minimum_order || 0), openingHours: vendor.profile?.openingHours || {} }, sections, items: sections.flatMap((section) => section.items) };
+  return { vendor: { id: vendor.id, name: vendor.name, slug: vendor.slug, shopType: vendor.shop_type, tagline: vendor.tagline, address: vendor.address, latitude: vendor.latitude == null ? null : Number(vendor.latitude), longitude: vendor.longitude == null ? null : Number(vendor.longitude), contactPhone: vendor.contact_phone, imageUrl: vendor.image_url, acceptingOrders: vendor.accepting_orders, rating: Number(vendor.rating || 0), ratingCount: Number(vendor.rating_count || 0), prepMinutes: Number(vendor.prep_minutes || 0), minimumOrder: Number(vendor.minimum_order || 0), openingHours: vendor.profile?.openingHours || {} }, sections, items: sections.flatMap((section) => section.items) };
 }
 
 const metricJson = (row, prefix) => ({
@@ -92,7 +95,7 @@ export async function vendorOperations(req, res, next) {
     ]);
     const metrics = metricsResult.rows[0];
     res.json({ operations: {
-      vendor: { id: vendor.id, name: vendor.name, slug: vendor.slug, shopType: vendor.shop_type, tagline: vendor.tagline, address: vendor.address, contactPhone: vendor.contact_phone, imageUrl: vendor.image_url, acceptingOrders: vendor.accepting_orders, rating: Number(vendor.rating || 0), ratingCount: Number(vendor.rating_count || 0), prepMinutes: Number(vendor.prep_minutes), minimumOrder: Number(vendor.minimum_order), openingHours: vendor.profile?.openingHours || {} },
+      vendor: { id: vendor.id, name: vendor.name, slug: vendor.slug, shopType: vendor.shop_type, tagline: vendor.tagline, address: vendor.address, latitude: vendor.latitude == null ? null : Number(vendor.latitude), longitude: vendor.longitude == null ? null : Number(vendor.longitude), contactPhone: vendor.contact_phone, imageUrl: vendor.image_url, acceptingOrders: vendor.accepting_orders, rating: Number(vendor.rating || 0), ratingCount: Number(vendor.rating_count || 0), prepMinutes: Number(vendor.prep_minutes), minimumOrder: Number(vendor.minimum_order), openingHours: vendor.profile?.openingHours || {} },
       metrics: { today: metricJson(metrics,'today'), week: metricJson(metrics,'week'), month: metricJson(metrics,'month') },
       trend: trendResult.rows.map(row => ({ date: row.day, sales: Number(row.sales), orders: Number(row.orders) })),
       orderStatuses: Object.fromEntries(statusResult.rows.map(row => [row.status, Number(row.count)])),
@@ -106,13 +109,27 @@ export async function vendorOperations(req, res, next) {
 export async function updateVendorStoreProfile(req, res, next) {
   try {
     const vendor = await ownedVendor(req.auth.sub);
+    const globalTestLocations = process.env.NODE_ENV !== 'production' && process.env.SOKOEATS_ALLOW_GLOBAL_TEST_LOCATIONS === 'true';
+    let pickupCoverage = null;
+    if (req.body.latitude != null && req.body.longitude != null) {
+      pickupCoverage = await resolveCoverage(pool, req.body.latitude, req.body.longitude);
+      if (!pickupCoverage.serviceable && !globalTestLocations) {
+        throw Object.assign(new Error('This shop pickup pin is outside an active SokoEats delivery zone.'), { status: 422, code: 'VENDOR_OUTSIDE_ACTIVE_ZONE' });
+      }
+      if (!pickupCoverage.serviceable) console.info('[SokoEats][Vendor] global-test-pickup', { vendorId: vendor.id });
+    }
     const profile = { ...(vendor.profile || {}), ...(req.body.openingHours ? { openingHours: req.body.openingHours } : {}) };
     const { rows } = await pool.query(`UPDATE sokoeats_vendors SET
       name=COALESCE($2,name),tagline=COALESCE($3,tagline),address=COALESCE($4,address),contact_phone=COALESCE($5,contact_phone),
       image_url=COALESCE($6,image_url),accepting_orders=COALESCE($7,accepting_orders),prep_minutes=COALESCE($8,prep_minutes),
-      minimum_order=COALESCE($9,minimum_order),profile=$10::jsonb,updated_at=NOW() WHERE id=$1 RETURNING *`,
-      [vendor.id,req.body.name ?? null,req.body.tagline ?? null,req.body.address ?? null,req.body.contactPhone ?? null,req.body.imageUrl ?? null,req.body.acceptingOrders ?? null,req.body.prepMinutes ?? null,req.body.minimumOrder ?? null,JSON.stringify(profile)]);
-    res.json({ vendor: { id: rows[0].id, name: rows[0].name, tagline: rows[0].tagline, address: rows[0].address, contactPhone: rows[0].contact_phone, imageUrl: rows[0].image_url, acceptingOrders: rows[0].accepting_orders, prepMinutes: Number(rows[0].prep_minutes), minimumOrder: Number(rows[0].minimum_order), openingHours: rows[0].profile?.openingHours || {} } });
+      minimum_order=COALESCE($9,minimum_order),profile=$10::jsonb,latitude=COALESCE($11,latitude),longitude=COALESCE($12,longitude),updated_at=NOW() WHERE id=$1 RETURNING *`,
+      [vendor.id,req.body.name ?? null,req.body.tagline ?? null,req.body.address ?? null,req.body.contactPhone ?? null,req.body.imageUrl ?? null,req.body.acceptingOrders ?? null,req.body.prepMinutes ?? null,req.body.minimumOrder == null ? null : Math.max(300, Number(req.body.minimumOrder)),JSON.stringify(profile),req.body.latitude ?? null,req.body.longitude ?? null]);
+    if (pickupCoverage?.zone?.id) {
+      await pool.query('UPDATE sokoeats_vendors SET city_id=$2 WHERE id=$1', [vendor.id, pickupCoverage.city.id]);
+      await pool.query(`INSERT INTO sokoeats_vendor_delivery_zones(vendor_id,zone_id,active) VALUES ($1,$2,TRUE)
+        ON CONFLICT (vendor_id,zone_id) DO UPDATE SET active=TRUE`, [vendor.id, pickupCoverage.zone.id]);
+    }
+    res.json({ vendor: { id: rows[0].id, name: rows[0].name, tagline: rows[0].tagline, address: rows[0].address, latitude: rows[0].latitude == null ? null : Number(rows[0].latitude), longitude: rows[0].longitude == null ? null : Number(rows[0].longitude), contactPhone: rows[0].contact_phone, imageUrl: rows[0].image_url, acceptingOrders: rows[0].accepting_orders, prepMinutes: Number(rows[0].prep_minutes), minimumOrder: Number(rows[0].minimum_order), openingHours: rows[0].profile?.openingHours || {} } });
   } catch (err) { next(err); }
 }
 

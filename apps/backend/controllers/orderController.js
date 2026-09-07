@@ -11,7 +11,12 @@ const orderJson = (row) => ({
   vendorName: row.vendor_name,
   status: row.status,
   subtotal: Number(row.subtotal),
+  taxableSubtotal: Number(row.taxable_subtotal || 0),
+  vatRateBps: Number(row.vat_rate_bps || 0),
+  smallOrderFee: Number(row.small_order_fee || 0),
+  minimumOrder: Number(row.minimum_order || 300),
   deliveryFee: Number(row.delivery_fee),
+  deliveryBreakdown: row.delivery_breakdown || {},
   serviceFee: Number(row.service_fee),
   vatAmount: Number(row.vat_amount || 0),
   waivedServiceFee: Number(row.waived_service_fee || 0),
@@ -90,6 +95,11 @@ export async function createOrder(req, res, next) {
     const signature = (value) => JSON.stringify(value.map((item) => [String(item.menuItemId), Number(item.quantity)]).sort());
     if (signature(items) !== signature(quote.items)) throw Object.assign(new Error('Basket changed after pricing. Refresh checkout before paying.'), { status: 409 });
     subtotal = Number(quote.subtotal);
+    const taxableSubtotal = Number(quote.taxable_subtotal || 0);
+    const vatRateBps = Number(quote.vat_rate_bps || 0);
+    const vatAmount = Number(quote.vat_amount || 0);
+    const smallOrderFee = Number(quote.small_order_fee || 0);
+    const minimumOrder = Number(quote.minimum_order || 300);
     const deliveryFee = Number(quote.delivery_fee);
     const serviceFee = Number(quote.service_fee);
     const waivedServiceFee = Number(quote.waived_service_fee || 0);
@@ -108,10 +118,10 @@ export async function createOrder(req, res, next) {
 
     const order = await client.query(
       `INSERT INTO sokoeats_orders
-        (code, customer_user_id, vendor_id, pricing_quote_id, subtotal, delivery_fee, service_fee, waived_service_fee, surge_fee, discount_amount, total, delivery_address, recipient_name, recipient_phone, delivery_for_self, notes, payment_method, payment_status, payment_reference, payment_provider_reference,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude,route_polyline,estimated_distance_km,estimated_duration_min,surge_multiplier,rider_surge_bonus,vendor_surge_bonus,platform_surge_revenue,delivery_zone_id,platform_commission,vat_amount)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'paid',$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
+        (code,customer_user_id,vendor_id,pricing_quote_id,subtotal,taxable_subtotal,vat_rate_bps,vat_amount,small_order_fee,minimum_order,delivery_fee,delivery_breakdown,service_fee,waived_service_fee,surge_fee,discount_amount,total,delivery_address,recipient_name,recipient_phone,delivery_for_self,notes,payment_method,payment_status,payment_reference,payment_provider_reference,pickup_latitude,pickup_longitude,dropoff_latitude,dropoff_longitude,route_polyline,estimated_distance_km,estimated_duration_min,surge_multiplier,rider_surge_bonus,vendor_surge_bonus,platform_surge_revenue,delivery_zone_id,platform_commission)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,'paid',$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37,$38)
        RETURNING *`,
-      [code(),customer.id,vendor.id,quote.id,subtotal,deliveryFee,serviceFee,waivedServiceFee,quote.surge_fee,discountAmount,total,deliveryAddress,recipientName || customer.name,recipientPhone || phone,deliveryForSelf !== false,notes||null,paymentMethod,paymentReference,paid.provider_reference||null,vendor.latitude,vendor.longitude,quote.dropoff_latitude,quote.dropoff_longitude,quote.route_polyline,quote.distance_km,quote.duration_min,quote.surge_multiplier,quote.rider_surge_bonus,quote.vendor_surge_bonus,quote.platform_surge_revenue,quote.delivery_zone_id,quote.platform_commission,quote.vat_amount],
+      [code(),customer.id,vendor.id,quote.id,subtotal,taxableSubtotal,vatRateBps,vatAmount,smallOrderFee,minimumOrder,deliveryFee,quote.delivery_breakdown || {},serviceFee,waivedServiceFee,quote.surge_fee,discountAmount,total,deliveryAddress,recipientName || customer.name,recipientPhone || phone,deliveryForSelf !== false,notes||null,paymentMethod,paymentReference,paid.provider_reference||null,vendor.latitude,vendor.longitude,quote.dropoff_latitude,quote.dropoff_longitude,quote.route_polyline,quote.distance_km,quote.duration_min,quote.surge_multiplier,quote.rider_surge_bonus,quote.vendor_surge_bonus,quote.platform_surge_revenue,quote.delivery_zone_id,quote.platform_commission],
     );
 
     for (const line of quote.items) {

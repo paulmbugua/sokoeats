@@ -47,7 +47,7 @@ type AuthUser = { id: string; name: string; email: string; phone?: string | null
 type AuthSession = { token: string; expiresAt: string; user: AuthUser };
 type CheckoutPayment = { reference: string; method: PaymentMethod; amount: number; status: string; actionUrl?: string; promptMessage?: string; providerMessage?: string | null; providerReference?: string; simulation?: boolean };
 type CheckoutOrderResult = { order: { code: string; total: number; paymentStatus: string } };
-type PricingQuote = { id: string; subtotal: number; deliveryFee: number; serviceFee: number; waivedServiceFee: number; firstOrderOffer: boolean; surgeFee: number; vatAmount: number; discountAmount: number; total: number; distanceKm: number; durationMin: number; surgeMultiplier: number; expiresAt: string; route: { encodedPolyline?: string | null; destination: { lat: number; lng: number }; navigationUrl: string } };
+type PricingQuote = { id: string; subtotal: number; taxableSubtotal: number; vatRateBps: number; vatAmount: number; smallOrderFee: number; minimumOrder: number; amountToMinimum: number; deliveryFee: number; deliveryBreakdown: { baseFee?: number; minimumFee?: number; distanceFee?: number; timeFee?: number }; serviceFee: number; waivedServiceFee: number; firstOrderOffer: boolean; surgeFee: number; discountAmount: number; total: number; distanceKm: number; durationMin: number; surgeMultiplier: number; expiresAt: string; route: { encodedPolyline?: string | null; destination: { lat: number; lng: number }; navigationUrl: string } };
 type NativeVersionUpdate = { platform: 'android' | 'ios'; currentVersion: string; latestVersion: string; minimumVersion?: string; available: boolean; required: boolean; storeUrl?: string; title?: string; message?: string };
 type NativeVersionResponse = { update?: NativeVersionUpdate };
 type UpdateSheetKind = 'native' | 'ota';
@@ -2697,8 +2697,9 @@ function SokoEatsApp() {
   const subtotal = useMemo(() => basketItems.reduce((sum, item) => sum + item.price, 0), [basketItems]);
   const deliveryFee = 150;
   const serviceFee = Math.round(subtotal * 0.04);
+  const smallOrderFee = subtotal > 0 && subtotal < 300 ? 50 : 0;
   const discount = 0;
-  const total = subtotal + deliveryFee + serviceFee - discount;
+  const total = subtotal + smallOrderFee + deliveryFee + serviceFee - discount;
 
   const topSystemInset = Math.max(insets.top, StatusBar.currentHeight ?? 0, 10);
 
@@ -4412,14 +4413,28 @@ function CheckoutScreen({
     setPricingQuote(null);
     const selectedAddress = deliveryLocation?.address || authSession.user.defaultAddress;
     const hasCoordinates = Number.isFinite(deliveryLocation.latitude) && Number.isFinite(deliveryLocation.longitude);
+    console.info('[SokoEats][Checkout] quote-location', { hasConfirmedPin: hasCoordinates, source: deliveryLocation.source || 'pin', hasAddress: Boolean(selectedAddress) });
     sokoeatsApi<{ quote: PricingQuote }>('/api/orders/quote', { method: 'POST', body: JSON.stringify({ vendorSlug: shop.id, deliveryAddress: selectedAddress, city: authSession?.user.city, ...(hasCoordinates ? { latitude: deliveryLocation?.latitude, longitude: deliveryLocation?.longitude } : {}), items: quoteItems }) })
-      .then(({ quote }) => { if (active) { setPricingQuote(quote); setCheckoutStatus(quote.firstOrderOffer ? `First order offer applied: ${money(quote.waivedServiceFee)} service fee waived.` : quote.surgeFee ? 'Busy-area pricing is active. KES ' + quote.surgeFee + ' supports faster rider supply and vendor readiness.' : 'Live route: ' + quote.distanceKm.toFixed(1) + ' km, about ' + quote.durationMin + ' min.'); } })
-      .catch((error) => { if (active) setCheckoutStatus(error instanceof Error ? error.message : 'Live delivery pricing is unavailable.'); })
+      .then(({ quote }) => { if (active) {
+        setPricingQuote(quote);
+        const routeSummary = `Route confirmed: ${quote.distanceKm.toFixed(1)} km, about ${quote.durationMin} min.`;
+        const minimumSummary = quote.smallOrderFee
+          ? ` Add ${money(quote.amountToMinimum)} to reach ${money(quote.minimumOrder)} and remove the ${money(quote.smallOrderFee)} small-order fee.`
+          : '';
+        const offerSummary = quote.firstOrderOffer ? ` First-order service fee saving: ${money(quote.waivedServiceFee)}.` : '';
+        const surgeSummary = quote.surgeFee ? ` Busy-area fee: ${money(quote.surgeFee)}.` : '';
+        setCheckoutStatus(routeSummary + minimumSummary + offerSummary + surgeSummary);
+      } })
+      .catch((error) => {
+        console.warn('[SokoEats][Checkout] quote-failed', { hasConfirmedPin: hasCoordinates, message: error instanceof Error ? error.message : String(error) });
+        if (active) setCheckoutStatus(error instanceof Error ? error.message : 'Live delivery pricing is unavailable.');
+      })
       .finally(() => { if (active) setPricingBusy(false); });
     return () => { active = false; };
   }, [authSession?.user.id, authSession?.user.defaultAddress, shop?.id, items, deliveryLocation?.address, deliveryLocation?.latitude, deliveryLocation?.longitude, quoteRefresh]);
 
   const checkoutSubtotal = pricingQuote?.subtotal ?? subtotal;
+  const checkoutSmallOrderFee = pricingQuote?.smallOrderFee ?? (subtotal > 0 && subtotal < 300 ? 50 : 0);
   const checkoutDeliveryFee = pricingQuote?.deliveryFee ?? deliveryFee;
   const checkoutServiceFee = pricingQuote?.serviceFee ?? serviceFee;
   const checkoutDiscount = pricingQuote?.discountAmount ?? discount;
@@ -4490,6 +4505,16 @@ function CheckoutScreen({
       setPendingPayment(payment);
       setCardCheckoutOpened(false);
       setCheckoutStatus(payment.providerMessage || payment.promptMessage || 'Paystack checkout is ready. Choose M-Pesa or card securely, then return to SokoEats.');
+      if (payment.status === 'requires_action' && payment.actionUrl) {
+        console.info('[SokoEats][Paystack][mobile] checkout-open', { reference: payment.reference, hasActionUrl: true });
+        setCardCheckoutOpened(true);
+        const browserResult = await WebBrowser.openBrowserAsync(payment.actionUrl);
+        console.info('[SokoEats][Paystack][mobile] checkout-closed', { reference: payment.reference, type: browserResult.type });
+        setCheckoutStatus('Complete the payment in Paystack, then tap Confirm Payment & Place Order.');
+      } else if (payment.status === 'requires_action') {
+        console.warn('[SokoEats][Paystack][mobile] checkout-missing-url', { reference: payment.reference, providerReference: payment.providerReference });
+        setCheckoutStatus('Paystack did not provide a secure checkout link. Please try again.');
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unable to start payment';
       console.warn('[SokoEats][Paystack][mobile] checkout-error', { method: paymentMethod, phone: maskCheckoutPhone(paymentPhone !== undefined ? paymentPhone : phone), message });
@@ -4521,7 +4546,7 @@ function CheckoutScreen({
     if (pendingPayment.actionUrl && !cardCheckoutOpened) {
       setCardCheckoutOpened(true);
       setCheckoutStatus('Complete Paystack payment using M-Pesa or card, then return to SokoEats and confirm payment to place your order.');
-      void Linking.openURL(pendingPayment.actionUrl).catch(() => {
+      void WebBrowser.openBrowserAsync(pendingPayment.actionUrl).catch(() => {
         setCardCheckoutOpened(false);
         Alert.alert('Paystack unavailable', 'Unable to open Paystack checkout. Try again.');
       });
@@ -4665,12 +4690,15 @@ function CheckoutScreen({
 
         <View style={styles.breakdownCard}>
           <PriceLine label="Subtotal" value={money(checkoutSubtotal)} />
+          {!!checkoutSmallOrderFee && <PriceLine label="Small order fee" value={money(checkoutSmallOrderFee)} />}
           <PriceLine label="Delivery fee" value={money(checkoutDeliveryFee)} />
+          {pricingQuote && <Text style={styles.breakdownNote}>Route price: {money(pricingQuote.deliveryBreakdown.baseFee || 0)} base + {money(pricingQuote.deliveryBreakdown.distanceFee || 0)} distance + {money(pricingQuote.deliveryBreakdown.timeFee || 0)} traffic time. Rider minimum: {money(pricingQuote.deliveryBreakdown.minimumFee || 150)}.</Text>}
           <PriceLine label="Service fee" value={money(checkoutServiceFee + (pricingQuote?.waivedServiceFee || 0))} />
           {!!pricingQuote?.surgeFee && <PriceLine label={`Busy area x${pricingQuote.surgeMultiplier.toFixed(2)}`} value={money(pricingQuote.surgeFee)} />}
           {!!pricingQuote?.firstOrderOffer && <PriceLine label="First order: service fee waived" value={`-${money(pricingQuote.waivedServiceFee)}`} discount />}
           {!!checkoutDiscount && <PriceLine label="Promotion" value={`-${money(checkoutDiscount)}`} discount />}
-          <PriceLine label="VAT (where applicable)" value={pricingQuote ? money(pricingQuote.vatAmount) : 'Calculated live'} />
+          <PriceLine label={pricingQuote?.vatRateBps ? `VAT (${pricingQuote.vatRateBps / 100}% of ${money(pricingQuote.taxableSubtotal)})` : 'VAT (not applicable)'} value={money(pricingQuote?.vatAmount || 0)} />
+          {!!pricingQuote?.amountToMinimum && <Text style={styles.breakdownNote}>Add {money(pricingQuote.amountToMinimum)} more to remove the {money(pricingQuote.smallOrderFee)} small-order fee. Delivery remains route-based so rider earnings are protected.</Text>}
           <View style={styles.totalLine}>
             <Text style={styles.totalLabel}>Total</Text>
             <Text style={styles.totalAmount}>{money(checkoutTotal)}</Text>
@@ -6420,6 +6448,13 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 22,
     fontWeight: '800',
+  },
+  breakdownNote: {
+    color: colors.onSurfaceVariant,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: -4,
+    marginBottom: 12,
   },
   discountText: {
     color: colors.secondary,

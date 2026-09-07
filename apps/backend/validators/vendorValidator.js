@@ -6,7 +6,7 @@ export const vendorSchema = Joi.object({
   status: Joi.string().valid('draft','review','active','paused').default('review'),
   prepMinutes: Joi.number().integer().min(5).max(120).default(25),
   deliveryFee: Joi.number().integer().min(0).default(150),
-  minimumOrder: Joi.number().integer().min(0).default(300),
+  minimumOrder: Joi.number().integer().min(300).default(300),
   address: Joi.string().allow('', null),
   paymentCollectionMode: Joi.string().valid('platform','direct').default('platform'),
   paymentProvider: Joi.string().valid('mpesa').default('mpesa'),
