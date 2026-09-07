@@ -6,9 +6,13 @@
     "dev": "next dev --hostname 127.0.0.1",
     "build": "next build",
     "start": "next start --hostname 0.0.0.0",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "cf:build": "opennextjs-cloudflare build",
+    "cf:deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview"
   },
   "dependencies": {
+    "@opennextjs/cloudflare": "^1.20.6",
     "@sokoeats/shared": "workspace:*",
     "lucide-react": "^0.541.0",
     "next": "16.3.4",
@@ -18,6 +22,7 @@
   "devDependencies": {
     "@types/react": "19.0.8",
     "@types/react-dom": "19.0.3",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "wrangler": "^4.129.1"
   }
 }

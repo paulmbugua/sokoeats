@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sokoeats-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-09-08",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "sokoeats-web"
+    }
+  ],
+  "observability": {
+    "enabled": true
+  }
+}

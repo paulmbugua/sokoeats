@@ -28,6 +28,7 @@ coverage/
 
 # Next.js
 .next/
+.open-next/
 out/
 apps/web-next/.next/
 apps/web-next/out/
@@ -76,6 +77,7 @@ packages/**/.env
 packages/**/.env.*
 !.env.example
 !apps/**/.env.example
+!apps/**/.env.cloudflare.example
 !packages/**/.env.example
 
 # --------------------------------

@@ -7,7 +7,9 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host 127.0.0.1",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "cf:build": "vite build",
+    "cf:deploy": "vite build && wrangler deploy --config wrangler.jsonc"
   },
   "dependencies": {
     "@sokoeats/shared": "workspace:*",
@@ -20,6 +22,7 @@
     "@types/react-dom": "19.0.3",
     "@vitejs/plugin-react": "4.3.1",
     "typescript": "^5.9.3",
-    "vite": "4.5.9"
+    "vite": "4.5.9",
+    "wrangler": "^4.129.1"
   }
 }

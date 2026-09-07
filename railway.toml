@@ -1,0 +1,8 @@
+[build]
+builder = "NIXPACKS"
+buildCommand = "corepack yarn install --immutable && corepack yarn workspace @sokoeats/backend build"
+
+[deploy]
+startCommand = "corepack yarn workspace @sokoeats/backend start"
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10
