@@ -1,5 +1,3 @@
-import type { OpenNextConfig } from '@opennextjs/cloudflare';
+import { defineCloudflareConfig } from '@opennextjs/cloudflare';
 
-const openNextConfig: OpenNextConfig = {};
-
-export default openNextConfig;
+export default defineCloudflareConfig({});
