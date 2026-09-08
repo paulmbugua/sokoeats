@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import {
-  Banknote, Bike, CheckCircle2, ChevronRight, CircleAlert, Clock3, Headphones,
+  Banknote, Bell, Bike, CheckCircle2, ChevronRight, CircleAlert, Clock3, Headphones,
   Eye, EyeOff, KeyRound, LayoutDashboard, LogOut, Map, Menu, PackageCheck, Search,
-  ShieldCheck, Store, TicketCheck, UsersRound, WalletCards, X,
+  Send, ShieldCheck, Store, TicketCheck, Trash2, UsersRound, WalletCards, X,
 } from 'lucide-react';
 import { api, clearAuthSession, readAuthSession, saveAuthSession, type StoredAuthSession } from '@sokoeats/shared/api';
 import type { DashboardMetric, Order, Ticket, Vendor } from '@sokoeats/shared/types';
@@ -12,7 +12,8 @@ import './password.css';
 import { CustomerCareInbox } from './CustomerCareInbox';
 
 type StaffRole = 'admin' | 'support';
-type View = 'overview' | 'dispatch' | 'tickets' | 'vendors' | 'settlements' | 'coverage' | 'care';
+type View = 'overview' | 'dispatch' | 'tickets' | 'vendors' | 'settlements' | 'coverage' | 'care' | 'notifications';
+type AdminNotification = { id: string; title: string; body: string; audience: string; channel: string; priority: string; actionLabel?: string | null; actionUrl?: string | null; pushAttempted: number; pushSent: number; pushFailed: number; createdAt: string };
 type ComplianceSubmission = { vendorId: string; vendorName: string; applicationReference?: string; ownerName?: string; ownerEmail?: string; legalBusinessName: string; registrationNumber: string; kraPinMasked: string; directorName: string; directorNationalIdMasked: string; settlementMethod: string; settlementAccountMasked: string; commissionRateBps: number; verificationStatus: string; payoutStatus: string; riskTier: string };
 type FinancePayout = { reference: string; beneficiary_type: string; vendor_name?: string; rider_name?: string; amount: number; status: string; scheduled_for: string; failure_reason?: string };
 type FinanceDashboard = { accounts: Array<{ code: string; name: string; balance: number }>; settlementSummary: Array<{ state: string; count: number; exposure: number }>; payoutSummary: Array<{ status: string; beneficiary_type: string; count: number; amount: number }>; vendorSubmissions: ComplianceSubmission[]; payouts: FinancePayout[]; payoutBatches: Array<FinancePayout & { payout_method: string; estimated_provider_fee: number }> };
@@ -60,6 +61,7 @@ const navItems: Array<{ id: View; label: string; icon: typeof LayoutDashboard; a
   { id: 'vendors', label: 'Vendor review', icon: Store },
   { id: 'settlements', label: 'Settlements', icon: WalletCards, adminOnly: true },
   { id: 'coverage', label: 'Coverage map', icon: Map },
+  { id: 'notifications', label: 'Notifications', icon: Bell, adminOnly: true },
 ];
 
 function Status({ children, tone = 'neutral' }: { children: React.ReactNode; tone?: 'neutral' | 'good' | 'warn' | 'danger' }) { return <span className={`status ${tone}`}>{children}</span>; }
@@ -110,6 +112,8 @@ function App() {
   const [finance, setFinance] = useState<FinanceDashboard | null>(null);
   const [maps, setMaps] = useState<MapsManifest | null>(null);
   const [coverage, setCoverage] = useState<CoverageCity[]>([]);
+  const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [notificationDraft, setNotificationDraft] = useState({ title: '', body: '', audience: 'all', channel: 'both', priority: 'normal', actionLabel: '', actionUrl: '' });
   const [notice, setNotice] = useState('');
   const [passwordOpen, setPasswordOpen] = useState(false);
   const role = session?.user.role as StaffRole | undefined;
@@ -133,7 +137,7 @@ function App() {
     const results = await Promise.allSettled([
       api<{ metrics: DashboardMetric[] }>('/api/admin/overview'), api<{ orders: Order[] }>('/api/orders'),
       api<{ tickets: Ticket[] }>('/api/tickets'), api<{ vendors: Vendor[] }>('/api/vendors'),
-      api<FinanceDashboard>('/api/admin/finance'), api<{ maps: MapsManifest }>('/api/maps/manifest'), api<{ cities: CoverageCity[] }>('/api/coverage'),
+      api<FinanceDashboard>('/api/admin/finance'), api<{ maps: MapsManifest }>('/api/maps/manifest'), api<{ cities: CoverageCity[] }>('/api/coverage'), api<{ notifications: AdminNotification[] }>('/api/admin/notifications'),
     ]);
     if (results[0].status === 'fulfilled') setMetrics(results[0].value.metrics);
     if (results[1].status === 'fulfilled') setOrders(results[1].value.orders);
@@ -142,6 +146,7 @@ function App() {
     if (results[4].status === 'fulfilled') setFinance(results[4].value);
     if (results[5].status === 'fulfilled') setMaps(results[5].value.maps);
     if (results[6].status === 'fulfilled') setCoverage(results[6].value.cities);
+    if (results[7].status === 'fulfilled') setNotifications(results[7].value.notifications);
   };
   useEffect(() => { void load(); }, [session?.user.id]);
   useEffect(() => { if (session?.user.profile?.mustChangePassword === true) setPasswordOpen(true); }, [session?.user.id, session?.user.profile?.mustChangePassword]);
@@ -154,6 +159,8 @@ function App() {
   const processDue = async () => { setNotice('Creating eligible payouts...'); try { const result = await api<{ created: number }>('/api/finance/process-due', { method: 'POST' }); await load(); setNotice(`${result.created} payout instruction(s) created.`); } catch (e) { setNotice(e instanceof Error ? e.message : 'Payout processing failed'); } };
   const executePayout = async (reference: string) => { setNotice('Submitting payout...'); try { await api(`/api/finance/payouts/${reference}/execute`, { method: 'POST' }); await load(); setNotice('Payout submitted to the provider.'); } catch (e) { setNotice(e instanceof Error ? e.message : 'Payout failed'); } };
   const setCityStatus = async (city: CoverageCity, status: CoverageCity['status']) => { setNotice(`Updating ${city.name}...`); try { await api(`/api/admin/coverage/cities/${city.id}`, { method: 'PATCH', body: JSON.stringify({ status, deliveryMode: city.delivery_mode }) }); await load(); setNotice(`${city.name} is now ${status.replaceAll('_', ' ')}.`); } catch (e) { setNotice(e instanceof Error ? e.message : 'Coverage update failed'); } };
+  const sendNotification = async (event: React.FormEvent) => { event.preventDefault(); setNotice('Sending notification...'); try { const result = await api<{ delivery: { attempted: number; sent: number; failed: number } }>('/api/admin/notifications', { method: 'POST', body: JSON.stringify(notificationDraft) }); setNotificationDraft({ title: '', body: '', audience: 'all', channel: 'both', priority: 'normal', actionLabel: '', actionUrl: '' }); await load(); setNotice(`Notification published. ${result.delivery.sent} of ${result.delivery.attempted} device push message(s) accepted.`); } catch (e) { setNotice(e instanceof Error ? e.message : 'Notification could not be sent.'); } };
+  const deleteNotification = async (id: string) => { setNotice('Removing notification...'); try { await api(`/api/admin/notifications/${id}`, { method: 'DELETE' }); await load(); setNotice('Notification removed from user inboxes.'); } catch (e) { setNotice(e instanceof Error ? e.message : 'Notification could not be removed.'); } };
 
   if (!session) return <AuthGate onAuthenticated={next=>{setSession(next);setView(next.user.role==='support'?'care':'overview');}}/>;
   if (!['admin','support'].includes(session.user.role)) return <main className="authPage"><section className="authForm"><p className="eyebrow">Access denied</p><h2>Platform staff account required</h2><p>This account belongs in its assigned SokoEats workspace.</p><button className="primaryAction" onClick={() => { clearAuthSession(); setSession(null); }}>Return to sign in</button></section></main>;
@@ -188,6 +195,17 @@ function App() {
       {view === 'settlements' && role === 'admin' && <div className="settlementGrid"><section className="panel full"><div className="panelHeader"><div><p>Settlement engine</p><h2>Lifecycle exposure</h2></div><button className="filled" onClick={processDue}><Banknote size={17}/>Create daily batches</button></div><div className="lifecycle">{finance?.settlementSummary.map((entry) => <article key={entry.state}><span>{entry.state.replaceAll('_', ' ')}</span><strong>{entry.count}</strong><small>{money(entry.exposure)}</small></article>)}</div></section><section className="panel full"><div className="panelHeader"><div><p>Paystack transfer queue</p><h2>Daily vendor and rider batches</h2></div></div><div className="dataTable"><div className="tableHead payout"><span>Reference</span><span>Beneficiary</span><span>Amount</span><span>Scheduled</span><span>Action</span></div>{finance?.payoutBatches.map((item) => <div className="tableRow payout" key={item.reference}><b>{item.reference}</b><div><strong>{item.vendor_name || item.rider_name || item.beneficiary_type}</strong><small>{item.payout_method} · est. fee {money(item.estimated_provider_fee)}</small></div><strong>{money(item.amount)}</strong><span>{new Date(item.scheduled_for).toLocaleString()}</span>{['scheduled','failed'].includes(item.status) ? <button className="positive" onClick={() => executePayout(item.reference)}>Pay batch</button> : <Status tone={item.status === 'paid' ? 'good' : 'warn'}>{item.status}</Status>}</div>)}</div></section></div>}
 
       {view === 'coverage' && <section className="panel full"><div className="panelHeader"><div><p>Kenya operations</p><h2>Activate delivery city by city</h2></div><a href={maps?.admin?.commandCenter?.dispatchUrl} target="_blank" rel="noreferrer">Open dispatch map</a></div><div className="dataTable"><div className="tableHead"><span>City</span><span>County</span><span>Mode</span><span>Status</span><span>Action</span></div>{coverage.map((city) => <div className="tableRow" key={city.id}><b>{city.name}</b><span>{city.county}</span><span>{city.delivery_mode}</span><Status tone={city.status === 'active' ? 'good' : city.status === 'paused' ? 'danger' : 'warn'}>{city.status.replaceAll('_', ' ')}</Status><div className="rowActions"><button onClick={() => setCityStatus(city, 'onboarding')}>Onboard</button>{city.status === 'active' ? <button className="danger" onClick={() => setCityStatus(city, 'paused')}>Pause</button> : <button className="positive" onClick={() => setCityStatus(city, 'active')}>Activate</button>}</div></div>)}</div></section>}
+      {view === 'notifications' && role === 'admin' && <div className="notificationWorkspace">
+        <form className="panel notificationComposer" onSubmit={sendNotification}>
+          <div className="panelHeader"><div><p>Audience broadcast</p><h2>Send a user notification</h2></div><Bell size={22}/></div>
+          <label>Title<input value={notificationDraft.title} maxLength={90} required onChange={event=>setNotificationDraft({...notificationDraft,title:event.target.value})} placeholder="Order, service or account update"/></label>
+          <label>Message<textarea value={notificationDraft.body} maxLength={500} required onChange={event=>setNotificationDraft({...notificationDraft,body:event.target.value})} placeholder="Write a concise message users can act on."/></label>
+          <div className="notificationFields"><label>Audience<select value={notificationDraft.audience} onChange={event=>setNotificationDraft({...notificationDraft,audience:event.target.value})}><option value="all">Everyone</option><option value="customers">Buyers</option><option value="riders">Riders</option><option value="partners">Vendors and merchants</option></select></label><label>Delivery<select value={notificationDraft.channel} onChange={event=>setNotificationDraft({...notificationDraft,channel:event.target.value})}><option value="both">Device push + inbox</option><option value="push">Device push only</option><option value="in_app">Inbox only</option></select></label><label>Priority<select value={notificationDraft.priority} onChange={event=>setNotificationDraft({...notificationDraft,priority:event.target.value})}><option value="normal">Normal</option><option value="high">Urgent</option></select></label></div>
+          <div className="notificationFields two"><label>Action label<input value={notificationDraft.actionLabel} maxLength={40} onChange={event=>setNotificationDraft({...notificationDraft,actionLabel:event.target.value})} placeholder="View order"/></label><label>App link<input value={notificationDraft.actionUrl} onChange={event=>setNotificationDraft({...notificationDraft,actionUrl:event.target.value})} placeholder="sokoeats://orders"/></label></div>
+          <button className="filled notificationSend"><Send size={17}/>Send notification</button>
+        </form>
+        <section className="panel notificationHistory"><div className="panelHeader"><div><p>Delivery history</p><h2>Recent broadcasts</h2></div><Status>{notifications.length} sent</Status></div>{notifications.map(item=><article className="notificationRow" key={item.id}><div className={`notificationPriority ${item.priority}`}/><div><div className="notificationMeta"><Status tone={item.priority==='high'?'warn':'neutral'}>{item.audience}</Status><span>{new Date(item.createdAt).toLocaleString()}</span></div><h3>{item.title}</h3><p>{item.body}</p><small>{item.channel} · push accepted {item.pushSent}/{item.pushAttempted}{item.pushFailed ? ` · ${item.pushFailed} failed` : ''}</small></div><button className="iconDanger" onClick={()=>deleteNotification(item.id)} title="Delete notification" aria-label="Delete notification"><Trash2 size={17}/></button></article>)}{!notifications.length&&<Empty icon={Bell} title="No notifications yet" body="Your sent broadcasts and delivery totals will appear here."/>}</section>
+      </div>}
       {notice && <div className="toast" role="status">{notice}<button onClick={() => setNotice('')} aria-label="Dismiss"><X size={16}/></button></div>}
     </section>
     {passwordOpen && <ChangePasswordDialog

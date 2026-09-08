@@ -17,6 +17,7 @@ import versionRoutes from './routes/versionRoutes.js';
 import financeRoutes from './routes/financeRoutes.js';
 import coverageRoutes from './routes/coverageRoutes.js';
 import customerCareRoutes from './routes/customerCareRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 import { startSettlementWorker } from './services/settlementWorker.js';
 import pool from './config/db.js';
 import { closeHttpServer, listenWithRetry } from './services/httpLifecycle.js';
@@ -41,6 +42,7 @@ app.use(express.json({ limit: '2mb', verify: (req, _res, buffer) => { req.rawBod
 app.get('/healthz', (_req, res) => res.json({ ok: true, app: 'sokoeats' }));
 app.use('/api', authRoutes);
 app.use('/api', customerCareRoutes);
+app.use('/api', notificationRoutes);
 app.use('/api', catalogRoutes);
 app.use('/api', orderRoutes);
 app.use('/api', paymentRoutes);

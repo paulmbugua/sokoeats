@@ -19,6 +19,7 @@ export default {
       ['expo-camera', { cameraPermission: 'Allow SokoEats to scan merchant payment QR codes.' }],
       ['expo-image-picker', { photosPermission: 'Allow SokoEats partners to choose a shop branding image.' }],
       ['expo-location', { locationWhenInUsePermission: 'Allow SokoEats to use your location for accurate delivery and rider navigation.' }],
+      ['expo-notifications', { icon: './assets/notification-icon.png', color: '#ff8a00', defaultChannel: 'orders' }],
     ],
     runtimeVersion: process.env.EXPO_RUNTIME_VERSION || '1.0.0',
     updates: { url: 'https://u.expo.dev/53ff8952-ff52-45f2-b580-73e42582bcbe' },
@@ -32,6 +33,7 @@ export default {
       package: 'com.paulmbugua2.sokoeats',
       config: { googleMaps: { apiKey: androidMapsKey } },
       googleServicesFile: process.env.GOOGLE_SERVICES_JSON || './google-services.json',
+      notification: { icon: './assets/notification-icon.png', color: '#ff8a00' },
       adaptiveIcon: {
         foregroundImage: './assets/adaptive-icon-foreground.png',
         monochromeImage: './assets/adaptive-icon-monochrome.png',

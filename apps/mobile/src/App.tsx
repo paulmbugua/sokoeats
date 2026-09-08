@@ -37,6 +37,7 @@ import { useMapDiagnostics } from './useMapDiagnostics';
 import { DeliveryTracker } from './DeliveryTracker';
 import { PartnerTerms, type TermsConsent } from './PartnerTerms';
 import { CustomerCareChat, ApplicationTracker } from './CustomerCareChat';
+import { getLastNotificationResponse, notificationReceivedListener, notificationResponseListener, registerForPushNotifications } from './notifications';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -2363,6 +2364,36 @@ function SokoEatsApp() {
   const screenHistory = useRef<Screen[]>([]);
   const pendingAfterAuth = useRef<Screen | null>(null);
   const basketHydrated = useRef(false);
+
+  useEffect(() => {
+    const openNotification = (data?: Record<string, unknown>) => {
+      const actionUrl = typeof data?.actionUrl === 'string' ? data.actionUrl : '';
+      if (actionUrl.includes('order')) transitionToScreen('orders');
+      else transitionToScreen('accountAccess');
+    };
+    const received = notificationReceivedListener(notification => {
+      console.info('[SokoEats][Push] received', { id: notification.request.identifier });
+    });
+    const responded = notificationResponseListener(response => {
+      console.info('[SokoEats][Push] opened', { id: response.notification.request.identifier });
+      openNotification(response.notification.request.content.data);
+    });
+    void getLastNotificationResponse().then(response => {
+      if (response) openNotification(response.notification.request.content.data);
+    }).catch(error => console.warn('[SokoEats][Push] cold-start-failed', { message: String(error) }));
+    return () => { received.remove(); responded.remove(); };
+  }, []);
+
+  useEffect(() => {
+    if (!authSession?.user.id) return;
+    void registerForPushNotifications()
+      .then(token => token ? sokoeatsApi('/api/push-tokens', {
+        method: 'POST',
+        body: JSON.stringify({ token, platform: Platform.OS, deviceLabel: `${Platform.OS} ${String(Platform.Version)}` }),
+      }) : null)
+      .then(result => { if (result) console.info('[SokoEats][Push] registration-synced'); })
+      .catch(error => console.warn('[SokoEats][Push] registration-failed', { message: error instanceof Error ? error.message : String(error) }));
+  }, [authSession?.user.id]);
 
   useEffect(() => {
     if (reduceMotion) {
