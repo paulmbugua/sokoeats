@@ -783,7 +783,7 @@ export default function SokoEatsApp() {
       <div>
         <h3>Legal</h3>
         <button onClick={() => setLegal('terms')}>Terms of service</button>
-        <button onClick={() => setLegal('privacy')}>Privacy policy</button>
+        <a href="/privacy-policy">Privacy policy</a>
         <a href="mailto:privacy@sokoeats.co.ke">Privacy requests</a>
       </div>
       <small>© {new Date().getFullYear()} SokoEats Kenya. All rights reserved.</small>
