@@ -82,7 +82,7 @@ Railway must provide at least `PORT`, `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGIN
 
 ## Post-deploy checks
 
-1. Confirm `https://api.sokoeats.co.ke/health` returns successfully.
+1. Confirm `https://server.sokoeats.co.ke/healthz` returns successfully.
 2. Confirm each frontend's API variable points to the Railway API, not localhost.
 3. Verify Google OAuth callback origins and redirect URIs for every production hostname.
 4. Verify Paystack webhook and callback URLs use the Railway API hostname.

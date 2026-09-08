@@ -10,7 +10,7 @@ SokoEats is the merchant of record for marketplace checkout. Both customer optio
 An order can only be created after a signed `charge.success` webhook or server-side transaction verification confirms the exact reference, KES currency, and amount. Configure this one Paystack webhook URL:
 
 ```text
-https://api.sokoeats.co.ke/api/payments/paystack/webhook
+https://server.sokoeats.co.ke/api/payments/paystack/webhook
 ```
 
 Do not configure the old Daraja callback. Refunds are submitted against the original Paystack transaction.
