@@ -328,6 +328,7 @@ function parseScanPaymentQr(raw: string): ScanPaymentDraft {
 }
 
 const defaultOrderItems: OrderItem[] = [];
+const emptyWallet: GenericPayload = { title: 'Soko Wallet', balance: 'KSh 0', balanceMinor: 0, vouchers: [], referral: null, activity: [], updatedAt: null };
 
 const money = (value: number) => `KSh ${value.toLocaleString('en-KE')}`;
 const API_BASE = (process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC_LAN_BACKEND_URL || 'http://10.0.2.2:4000').replace(/\/$/, '');
@@ -2343,7 +2344,7 @@ function SokoEatsApp() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('paystack');
   const [riderHome, setRiderHome] = useState<RiderHomePayload | null>(null);
   const [activeDelivery, setActiveDelivery] = useState<ActiveDeliveryPayload | null>(null);
-  const [riderBatch, setRiderBatch] = useState<Record<string, GenericPayload>>(fallbackRiderBatch);
+  const [riderBatch, setRiderBatch] = useState<Record<string, GenericPayload>>({ ...fallbackRiderBatch, sokoeats_wallet: emptyWallet, full_transaction_history: { title: 'Wallet activity', tabs: ['All'], ranges: ['Recent'], transactions: [], footer: '' } });
   const [maps, setMaps] = useState<MapsManifest>(fallbackMaps);
   const [selectedShopCategory, setSelectedShopCategory] = useState<ShopCategoryKey>('restaurants');
   const [shopRatings, setShopRatings] = useState<Record<string, number>>({});
@@ -2458,9 +2459,11 @@ function SokoEatsApp() {
     setRefreshing(true);
     try {
       let vendorPath = '/api/vendors';
+      let currentCoordinates: { latitude: number; longitude: number } | null = null;
       try {
         const coordinates = await marketplaceCoordinates();
         if (coordinates) {
+          currentCoordinates = coordinates;
           vendorPath += `?latitude=${encodeURIComponent(coordinates.latitude)}&longitude=${encodeURIComponent(coordinates.longitude)}`;
         }
       } catch (error) {
@@ -2472,7 +2475,14 @@ function SokoEatsApp() {
         sokoeatsApi<{ vendors: Array<Record<string, any>>; coverage?: { serviceable: boolean; message?: string } | null }>(vendorPath),
       ]);
       if (walletResult) setRiderBatch((prev) => ({ ...prev, ...walletResult.wallet }));
-      if (mapsResult) setMaps(mapsResult.maps);
+      if (mapsResult) {
+        if (currentCoordinates) {
+          const currentPoint = { label: 'Your current location', lat: currentCoordinates.latitude, lng: currentCoordinates.longitude };
+          mapsResult.maps.customer.nearbyVendors = { ...mapsResult.maps.customer.nearbyVendors, title: 'Shops near your current location', map: { center: currentPoint, markers: [currentPoint] } };
+          mapsResult.maps.customer.savedAddresses = [{ ...currentPoint, label: 'Current location', address: authSession?.user.defaultAddress || 'Location detected from this device', map: { center: currentPoint, markers: [currentPoint] } }];
+        }
+        setMaps(mapsResult.maps);
+      }
       const liveVendors = vendorResult.vendors;
       setAvailableShops(liveVendors.map((vendor) => ({
         id: vendor.slug || vendor.id,
@@ -2502,6 +2512,10 @@ function SokoEatsApp() {
   useEffect(() => {
     void refreshMarketplace();
   }, []);
+
+  useEffect(() => {
+    if (authSession?.user.id) void refreshMarketplace();
+  }, [authSession?.user.id]);
 
   const toggleFavouriteItem = (shop: ShopListing, item: ShopMenuItem) => {
     const key = `${shop.id}:${item.id}`;
@@ -2701,6 +2715,21 @@ function SokoEatsApp() {
     openScreen('checkout');
   };
 
+  const openAuthenticatedScreen = (destination: Screen) => {
+    if (!authSession) {
+      pendingAfterAuth.current = destination;
+      openScreen('accountAccess');
+      return;
+    }
+    openScreen(destination);
+  };
+
+  const leaveScanForCheckout = () => {
+    setScanPaymentDraft(null);
+    if (basketItems.length) openCheckout();
+    else openScreen('categories');
+  };
+
   const handleSignOut = async () => {
     setAuthSession(null);
     await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
@@ -2749,8 +2778,9 @@ function SokoEatsApp() {
             activeChip={activeChip}
             onChipChange={setActiveChip}
             onCheckout={openCheckout}
-            onWallet={() => openScreen('walletHome')}
-            onScan={() => openScreen('scanQr')}
+            onWallet={() => openAuthenticatedScreen('walletHome')}
+            onScan={() => openAuthenticatedScreen('scanQr')}
+            wallet={riderBatch.sokoeats_wallet || emptyWallet}
             onCategoryOpen={openShopCategory}
             shops={availableShops}
             onShopOpen={openShopDetail}
@@ -2763,11 +2793,11 @@ function SokoEatsApp() {
         {screen === 'orders' && <OrdersScreen shops={availableShops} basket={basketItems} checkoutShop={checkoutShop} onBack={() => openScreen('home')} onCheckout={openCheckout} onReorder={reorderShop} onRate={rateShop} ratings={shopRatings} onShopOpen={openShopDetail} refreshing={refreshing} onRefresh={refreshMarketplace} />}
         {screen === 'favourites' && <FavouritesScreen favourites={favouriteItems} onBack={() => openScreen('home')} onAddItem={addShopItemToBasket} onToggleFavourite={toggleFavouriteItem} onShopOpen={openShopDetail} refreshing={refreshing} onRefresh={refreshMarketplace} />}
         {screen === 'accountAccess' && <AccountAccessScreen authSession={authSession} onAuthenticated={handleAuthenticated} onSignOut={handleSignOut} onBack={() => openScreen('home')} onRider={() => openRiderWorkspace()} refreshing={refreshing} onRefresh={refreshMarketplace} />}
-        {screen === 'walletHome' && <WalletHomeScreen data={riderBatch.sokoeats_wallet} onBack={() => openScreen('home')} onTopUp={() => openScreen('walletTopUp')} onWithdraw={() => openScreen('walletWithdraw')} onScan={() => openScreen('scanQr')} onHistory={() => openScreen('transactionHistory')} />}
+        {screen === 'walletHome' && <WalletHomeScreen data={riderBatch.sokoeats_wallet || emptyWallet} onBack={() => openScreen('home')} onScan={() => openScreen('scanQr')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'walletTopUp' && <WalletTopUpScreen data={riderBatch.top_up_wallet} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ topUp: GenericPayload; history: GenericPayload }>('/api/wallet/top-ups', { method: 'POST', body: JSON.stringify({ amount, method: 'M-Pesa Express' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, top_up_wallet: next.topUp, full_transaction_history: next.history })); openScreen('walletHome'); }} />}
         {screen === 'walletWithdraw' && <WalletWithdrawScreen data={riderBatch.withdraw_to_m_pesa} onBack={() => openScreen('walletHome')} onSubmit={async (amount) => { const next = await sokoeatsApi<{ withdrawal: GenericPayload }>('/api/wallet/withdrawals', { method: 'POST', body: JSON.stringify({ amount, destination: 'M-Pesa Account' }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, withdraw_to_m_pesa: next.withdrawal })); openScreen('walletHome'); }} />}
-        {screen === 'scanQr' && <ScanQrScreen data={riderBatch.scan_qr_code} onBack={() => openScreen('walletHome')} onScanned={(draft) => { setScanPaymentDraft(draft); openScreen('confirmPayment'); }} />}
-        {screen === 'confirmPayment' && <ConfirmPaymentScreen data={riderBatch.confirm_payment} draft={scanPaymentDraft} onBack={() => openScreen('scanQr')} onSuccess={completeScanPayment} />}
+        {screen === 'scanQr' && <ScanQrScreen data={riderBatch.scan_qr_code} onBack={() => openScreen('walletHome')} onFallback={leaveScanForCheckout} onScanned={(draft) => { setScanPaymentDraft(draft); openScreen('confirmPayment'); }} />}
+        {screen === 'confirmPayment' && <ConfirmPaymentScreen data={riderBatch.confirm_payment} draft={scanPaymentDraft} onBack={() => openScreen('scanQr')} onFallback={leaveScanForCheckout} onSuccess={completeScanPayment} />}
         {screen === 'paymentSuccessful' && <PaymentSuccessfulScreen data={riderBatch.payment_successful} onBack={() => openScreen('walletHome')} onHistory={() => openScreen('transactionHistory')} />}
         {screen === 'transactionHistory' && <TransactionHistoryScreen data={riderBatch.full_transaction_history} onBack={() => openScreen('walletHome')} />}
         {(screen === 'riderHome' || screen === 'activeDelivery') && <RiderDeliveriesScreen onBack={() => openScreen('home')} onHelp={() => openScreen('riderHelpCenter')} onProfile={() => openScreen('riderProfile')} />}
@@ -2948,6 +2978,7 @@ function HomeScreen({
   onShopOpen,
   refreshing,
   onRefresh,
+  wallet,
 }: {
   user: AuthUser | null;
   activeChip: string;
@@ -2960,6 +2991,7 @@ function HomeScreen({
   onShopOpen: (shop: ShopListing) => void;
   refreshing: boolean;
   onRefresh: () => Promise<void>;
+  wallet: GenericPayload;
 }) {
   const maps = useContext(MapsContext) || fallbackMaps;
   return (
@@ -2993,11 +3025,11 @@ function HomeScreen({
         </MotionReveal>
 
         <MotionReveal delay={45} style={styles.riderQuickGrid}>
-          <MotionButton style={styles.riderQuickButton} onPress={onWallet}><Text style={styles.riderQuickTitle}>Soko Wallet</Text><Text style={styles.riderQuickText}>Balance, vouchers, referrals</Text></MotionButton>
-          <MotionButton style={styles.riderQuickButton} onPress={onScan}><Text style={styles.riderQuickTitle}>Scan to Pay</Text><Text style={styles.riderQuickText}>QR payments for local merchants</Text></MotionButton>
+          <MotionButton style={styles.riderQuickButton} onPress={onWallet}><Text style={styles.riderQuickTitle}>Soko Wallet</Text><Text style={styles.riderQuickText}>{user ? `${wallet.balance || 'KSh 0'} available` : 'Sign in to view your balance'}</Text></MotionButton>
+          <MotionButton style={styles.riderQuickButton} onPress={onScan}><Text style={styles.riderQuickTitle}>Scan to Pay</Text><Text style={styles.riderQuickText}>Pay verified shops with M-Pesa or card</Text></MotionButton>
         </MotionReveal>
 
-        <MotionReveal delay={90}><MapPanel title={maps.customer.nearbyVendors.title || 'Nearby vendors'} subtitle="Restaurants and riders around Nairobi CBD" map={maps.customer.nearbyVendors.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Open map" /></MotionReveal>
+        <MotionReveal delay={90}><MapPanel title={maps.customer.nearbyVendors.title || 'Nearby vendors'} subtitle={user?.city ? `Live shops around ${user.city}` : 'Use your location to find nearby shops'} map={maps.customer.nearbyVendors.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Open map" /></MotionReveal>
 
         <MotionReveal delay={120}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoScroller}>
           <PromoBanner
@@ -4186,8 +4218,22 @@ function ShopDetailScreen({ shop, sections, similarItems, loading, error, onBack
 }
 
 
-function WalletHomeScreen({ data, onBack, onTopUp, onWithdraw, onScan, onHistory }: { data: GenericPayload; onBack: () => void; onTopUp: () => void; onWithdraw: () => void; onScan: () => void; onHistory: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><ImageBackground source={{ uri: data.imageUrl }} style={styles.balanceCard} imageStyle={styles.riderMapImage}><Text style={styles.upperLabel}>Wallet Balance</Text><Text style={styles.balanceText}>{data.balance}</Text><Text style={styles.countdownText}>{data.points}</Text></ImageBackground><View style={styles.riderQuickGrid}><TouchableOpacity style={styles.riderQuickButton} onPress={onTopUp}><Text style={styles.riderQuickTitle}>Top Up</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onWithdraw}><Text style={styles.riderQuickTitle}>Withdraw</Text></TouchableOpacity><TouchableOpacity style={styles.riderQuickButton} onPress={onScan}><Text style={styles.riderQuickTitle}>Scan Pay</Text></TouchableOpacity></View><View style={styles.sectionHeadingRow}><Text style={styles.checkoutSectionTitle}>Active Vouchers</Text><Text style={styles.changeText}>View All</Text></View>{data.vouchers.map((voucher: GenericPayload) => <View style={styles.uploadCard} key={voucher.title}><View style={{ flex: 1 }}><Text style={styles.upperLabel}>{voucher.tag}</Text><Text style={styles.vendorName}>{voucher.title}</Text><Text style={styles.restaurantMeta}>{voucher.body}</Text><Text style={styles.secureText}>{voucher.expiry}</Text></View><Text style={styles.discountText}>Apply</Text></View>)}<TouchableOpacity style={styles.smsCard} onPress={onHistory}><Text style={styles.vendorName}>{data.referral.title}</Text><Text style={styles.smsBody}>{data.referral.body}</Text><Text style={styles.changeText}>See History</Text></TouchableOpacity><Text style={styles.checkoutSectionTitle}>Recent Activity</Text>{data.activity.map((tx: GenericPayload) => <View style={styles.priceLine} key={tx.label}><View><Text style={styles.vendorName}>{tx.label}</Text><Text style={styles.restaurantMeta}>{tx.time}</Text></View><Text style={tx.tone === 'credit' ? styles.discountText : styles.priceValue}>{tx.amount}</Text></View>)}</ScrollView><BottomNav active="Wallet" /><SourceLedger /></View>;
+function WalletHomeScreen({ data, onBack, onScan, onHistory }: { data: GenericPayload; onBack: () => void; onScan: () => void; onHistory: () => void }) {
+  const activity = Array.isArray(data.activity) ? data.activity : [];
+  return <View style={styles.riderShell}>
+    <RiderScreenHeader title={data.title || 'Soko Wallet'} onBack={onBack} />
+    <ScrollView contentContainerStyle={styles.riderContent}>
+      <View style={styles.walletBalanceCard}>
+        <View><Text style={styles.walletEyebrow}>AVAILABLE BALANCE</Text><Text style={styles.walletBalance}>{data.balance || 'KSh 0'}</Text></View>
+        <View style={styles.walletLiveBadge}><View style={styles.walletLiveDot}/><Text style={styles.walletLiveText}>Live</Text></View>
+        <Text style={styles.walletOwner}>{data.owner?.name || 'Your SokoEats account'}</Text>
+      </View>
+      <TouchableOpacity style={styles.scanPrimaryAction} onPress={onScan} activeOpacity={0.88}><View style={styles.scanActionIcon}><AppIcon name="qr" size={22} color={colors.onTertiaryFixed}/></View><View style={{flex:1}}><Text style={styles.scanPrimaryTitle}>Scan to Pay</Text><Text style={styles.scanPrimaryBody}>Pay a verified merchant with M-Pesa or card</Text></View><AppIcon name="chevron" size={18} color={colors.onTertiaryFixed}/></TouchableOpacity>
+      <View style={styles.sectionHeadingRow}><Text style={styles.checkoutSectionTitle}>Recent activity</Text>{activity.length > 0 && <TouchableOpacity onPress={onHistory}><Text style={styles.changeText}>See all</Text></TouchableOpacity>}</View>
+      {activity.length ? activity.slice(0, 5).map((tx: GenericPayload) => <View style={styles.walletActivityRow} key={tx.id}><View style={styles.walletActivityIcon}><AppIcon name="receipt" size={17} color={colors.primary}/></View><View style={{flex:1}}><Text style={styles.vendorName}>{tx.label}</Text><Text style={styles.restaurantMeta}>{new Date(tx.time).toLocaleString()} · {tx.status}</Text></View><Text style={tx.tone === 'credit' ? styles.discountText : styles.priceValue}>{tx.amount}</Text></View>) : <View style={styles.walletEmpty}><AppIcon name="receipt" size={28} color={colors.outline}/><Text style={styles.vendorName}>No wallet activity yet</Text><Text style={styles.restaurantMeta}>Your verified payments will appear here automatically.</Text></View>}
+      <Text style={styles.secureText}>Balance and activity are calculated from your authenticated SokoEats ledger.</Text>
+    </ScrollView><BottomNav active="Wallet" /><SourceLedger />
+  </View>;
 }
 
 function WalletTopUpScreen({ data, onBack, onSubmit }: { data: GenericPayload; onBack: () => void; onSubmit: (amount: number) => void }) {
@@ -4200,10 +4246,17 @@ function WalletWithdrawScreen({ data, onBack, onSubmit }: { data: GenericPayload
   return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.balanceCard}><Text style={styles.upperLabel}>Current Balance</Text><Text style={styles.balanceText}>{data.currentBalance}</Text></View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>Withdrawal Amount</Text><TextInput style={styles.formFieldInput} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="KES" placeholderTextColor={colors.outline} /></View><View style={styles.tabsRow}>{data.presets.map((preset: string) => <Text style={styles.tabPillActive} onPress={() => setAmount(preset.replace(/\D/g, ''))} key={preset}>{preset}</Text>)}</View><View style={styles.deliveryRequestCard}><Text style={styles.upperLabel}>Withdraw To</Text><Text style={styles.vendorName}>{data.destination.title}</Text><Text style={styles.restaurantMeta}>{data.destination.phone}</Text><Text style={styles.changeText}>Change</Text></View><View style={styles.breakdownCard}>{Object.entries(data.summary).map(([label, value]) => <View style={styles.priceLine} key={label}><Text style={styles.priceLabel}>{label}</Text><Text style={styles.priceValue}>{String(value)}</Text></View>)}</View><Text style={styles.secureText}>{data.assurance}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={() => onSubmit(Number(amount) || 500)}><Text style={styles.placeOrderText}>Confirm Withdrawal</Text></TouchableOpacity></ScrollView><SourceLedger /></View>;
 }
 
-function ScanQrScreen({ data, onBack, onScanned }: { data: GenericPayload; onBack: () => void; onScanned: (draft: ScanPaymentDraft) => void }) {
+function ScanQrScreen({ data, onBack, onScanned, onFallback }: { data: GenericPayload; onBack: () => void; onScanned: (draft: ScanPaymentDraft) => void; onFallback: () => void }) {
   const [permission, requestPermission] = useCameraPermissions();
   const [locked, setLocked] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => {
+    if (permission && !permission.granted && !permission.canAskAgain) {
+      const timer = setTimeout(onFallback, 1600);
+      return () => clearTimeout(timer);
+    }
+    return undefined;
+  }, [permission?.granted, permission?.canAskAgain, onFallback]);
   const onBarcodeScanned = ({ data: raw }: BarcodeScanningResult) => {
     if (locked) return;
     setLocked(true);
@@ -4211,13 +4264,15 @@ function ScanQrScreen({ data, onBack, onScanned }: { data: GenericPayload; onBac
       onScanned(parseScanPaymentQr(raw));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to read this merchant QR.');
-      setTimeout(() => setLocked(false), 1200);
+      setTimeout(onFallback, 1800);
     }
   };
   return (
     <View style={styles.riderShell}>
       <RiderScreenHeader title={data.title || 'Scan to Pay'} onBack={onBack} />
-      <ScrollView contentContainerStyle={styles.riderContent}>
+      <ScrollView contentContainerStyle={styles.scanContent}>
+        <Text style={styles.scanHeading}>Scan merchant QR</Text>
+        <Text style={styles.scanSubheading}>Hold the code inside the frame. Payment opens securely after verification.</Text>
         <View style={styles.scanFrame}>
           {permission?.granted ? (
             <CameraView style={styles.scanCamera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={locked ? undefined : onBarcodeScanned}>
@@ -4226,23 +4281,14 @@ function ScanQrScreen({ data, onBack, onScanned }: { data: GenericPayload; onBac
           ) : (
             <View style={styles.scanPermissionCard}>
               <AppIcon name="qr" size={42} color={colors.primary} />
-              <Text style={styles.checkoutTitle}>Camera access required</Text>
-              <Text style={styles.checkoutSubtitle}>SokoEats needs your camera to scan the vendor or merchant payment QR.</Text>
-              <TouchableOpacity style={styles.placeOrderButton} onPress={() => { void requestPermission(); }}>
-                <Text style={styles.placeOrderText}>Allow Camera</Text>
-              </TouchableOpacity>
+              <Text style={styles.scanPermissionTitle}>Allow camera access</Text>
+              <Text style={styles.scanPermissionBody}>Use the camera once to read a verified SokoEats merchant code.</Text>
+              <TouchableOpacity style={styles.scanCompactButton} onPress={() => { void requestPermission(); }}><Text style={styles.scanCompactButtonText}>Allow camera</Text></TouchableOpacity>
             </View>
           )}
         </View>
-        <View style={styles.smsCard}>
-          <Text style={styles.vendorName}>{data.frameLabel || 'Scan merchant QR'}</Text>
-          <Text style={styles.smsBody}>{data.subtitle || 'Only SokoEats merchant QR codes can continue to payment.'}</Text>
-          {!!error && <Text style={styles.mpesaModalError}>{error}</Text>}
-        </View>
-        <View style={styles.deliveryRequestCard}>
-          <Text style={styles.upperLabel}>Accepted QR payload</Text>
-          <Text style={styles.smsBody}>Merchant ID or slug, merchant name, optional amount, and shortcode. No manual fallback merchant can be used.</Text>
-        </View>
+        {!!error && <View style={styles.scanErrorCard}><Text style={styles.mpesaModalError}>{error}</Text><Text style={styles.restaurantMeta}>Opening normal checkout...</Text></View>}
+        <TouchableOpacity style={styles.scanFallbackButton} onPress={onFallback}><Text style={styles.scanFallbackText}>Use normal checkout instead</Text><AppIcon name="chevron" size={16} color={colors.primary}/></TouchableOpacity>
       </ScrollView>
       <BottomNav active="Wallet" />
       <SourceLedger />
@@ -4250,19 +4296,17 @@ function ScanQrScreen({ data, onBack, onScanned }: { data: GenericPayload; onBac
   );
 }
 
-function ConfirmPaymentScreen({ data, draft, onBack, onSuccess }: { data: GenericPayload; draft: ScanPaymentDraft | null; onBack: () => void; onSuccess: (success: GenericPayload, history: GenericPayload) => void }) {
+function ConfirmPaymentScreen({ data, draft, onBack, onFallback, onSuccess }: { data: GenericPayload; draft: ScanPaymentDraft | null; onBack: () => void; onFallback: () => void; onSuccess: (success: GenericPayload, history: GenericPayload) => void }) {
   const [amount, setAmount] = useState(draft?.amount ? String(draft.amount) : '');
-  const [phone, setPhone] = useState(draft?.phone || '');
+  const phone = draft?.phone || '';
   const [notes, setNotes] = useState(draft?.notes || '');
-  const [method, setMethod] = useState<PaymentMethod>(draft?.paymentMethod || 'mpesa');
+  const method: PaymentMethod = 'paystack';
   const [pendingPayment, setPendingPayment] = useState<CheckoutPayment | null>(null);
   const [status, setStatus] = useState('Payment will start only after you confirm the scanned merchant details.');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
     setAmount(draft?.amount ? String(draft.amount) : '');
-    setPhone(draft?.phone || '');
     setNotes(draft?.notes || '');
-    setMethod(draft?.paymentMethod || 'mpesa');
     setPendingPayment(null);
     setStatus('Payment will start only after you confirm the scanned merchant details.');
   }, [draft?.merchantQr]);
@@ -4274,10 +4318,6 @@ function ConfirmPaymentScreen({ data, draft, onBack, onSuccess }: { data: Generi
     const numericAmount = Number(amount);
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
       setStatus('Enter the amount shown by the merchant.');
-      return;
-    }
-    if (method === 'mpesa' && !phone.trim()) {
-      setStatus('Enter the Safaricom number that should receive the STK push.');
       return;
     }
     setBusy(true);
@@ -4294,8 +4334,11 @@ function ConfirmPaymentScreen({ data, draft, onBack, onSuccess }: { data: Generi
       });
       setPendingPayment(next.payment);
       setStatus(next.payment.promptMessage || next.payment.providerMessage || 'Payment prompt sent. Complete payment, then verify.');
-      if (method === 'card' && next.payment.actionUrl) {
-        void Linking.openURL(next.payment.actionUrl).catch(() => setStatus('Unable to open Paystack checkout. Try again.'));
+      if (next.payment.actionUrl) {
+        void Linking.openURL(next.payment.actionUrl).catch(() => {
+          setStatus('Unable to open secure checkout. Opening your basket checkout...');
+          setTimeout(onFallback, 1200);
+        });
       }
     } catch (err) {
       setStatus(err instanceof Error ? err.message : 'Unable to complete scan payment.');
@@ -4310,23 +4353,18 @@ function ConfirmPaymentScreen({ data, draft, onBack, onSuccess }: { data: Generi
     <View style={styles.riderShell}>
       <RiderScreenHeader title={data.title || 'Confirm Payment'} onBack={onBack} />
       <ScrollView contentContainerStyle={styles.riderContent}>
-        <Image source={{ uri: data.images?.[0] || images.mpesaBanner }} style={styles.successImage} />
-        <Text style={styles.checkoutTitle}>{draft.vendorName}</Text>
-        <Text style={styles.restaurantMeta}>{draft.location || 'Verified SokoEats merchant'}{draft.shortcode ? ' - Paybill ' + draft.shortcode : ''}</Text>
-        <View style={styles.balanceCard}>
+        <View style={styles.scanMerchantHeader}><View style={styles.scanActionIcon}><AppIcon name="store" size={21} color={colors.onTertiaryFixed}/></View><View style={{flex:1}}><Text style={styles.scanMerchantName}>{draft.vendorName}</Text><Text style={styles.restaurantMeta}>{draft.location || 'Verified SokoEats merchant'}</Text></View><View style={styles.verifiedPill}><Text style={styles.verifiedPillText}>Verified</Text></View></View>
+        <View style={styles.scanAmountCard}>
           <Text style={styles.upperLabel}>Amount to Pay</Text>
           <TextInput style={styles.scanAmountInput} value={amount} onChangeText={setAmount} keyboardType="numeric" placeholder="KES amount" placeholderTextColor={colors.outline} />
         </View>
-        <Text style={styles.paymentTitle}>Payment method</Text>
-        <PaymentOption active={method === 'mpesa'} title="M-Pesa STK Push" subtitle="Safaricom will prompt for your PIN" icon="M" mpesa onPress={() => { setMethod('mpesa'); setPendingPayment(null); }} />
-        <PaymentOption active={method === 'card'} title="Pay with card" subtitle="Paystack card checkout only" icon="card" onPress={() => { setMethod('card'); setPendingPayment(null); }} />
-        {method === 'mpesa' && <View style={styles.formFieldCard}><Text style={styles.upperLabel}>Safaricom number</Text><TextInput style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="7XX XXX XXX" placeholderTextColor={colors.outline} /></View>}
-        <View style={styles.formFieldCard}><Text style={styles.upperLabel}>{data.noteLabel || 'Payment note'}</Text><TextInput style={styles.formFieldInput} value={notes} onChangeText={setNotes} placeholder="Receipt note" placeholderTextColor={colors.outline} /></View>
-        <View style={styles.smsCard}><Text style={styles.vendorName}>Payment status</Text><Text style={styles.smsBody}>{status}</Text>{pendingPayment && <Text style={styles.secureText}>Reference: {pendingPayment.reference}</Text>}</View>
-        <Text style={styles.secureText}>{data.secure || 'Encrypted SokoPay confirmation. Payment must be verified before a receipt is issued.'}</Text>
+        <View style={styles.scanMethodCard}><AppIcon name="lock" size={19} color={colors.primary}/><View style={{flex:1}}><Text style={styles.vendorName}>M-Pesa or card</Text><Text style={styles.restaurantMeta}>Choose your method on secure Paystack checkout</Text></View></View>
+        <View style={styles.scanNoteField}><TextInput style={styles.formFieldInput} value={notes} onChangeText={setNotes} placeholder="Add an optional payment note" placeholderTextColor={colors.outline} /></View>
+        <View style={styles.scanStatusCard}><Text style={styles.smsBody}>{status}</Text>{pendingPayment && <Text style={styles.secureText}>Reference: {pendingPayment.reference}</Text>}</View>
         <TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={startOrVerify}>
-          <Text style={styles.placeOrderText}>{busy ? 'Processing...' : pendingPayment ? 'Verify Payment' : method === 'mpesa' ? 'Send M-Pesa Prompt' : 'Open Paystack Card'}</Text>
+          <Text style={styles.placeOrderText}>{busy ? 'Processing...' : pendingPayment ? 'Check payment status' : 'Pay with M-Pesa / Card'}</Text>
         </TouchableOpacity>
+        <Text style={styles.scanSecurityNote}>Secure checkout · Receipt issued only after provider verification</Text>
       </ScrollView>
       <SourceLedger />
     </View>
@@ -6773,6 +6811,39 @@ const styles = StyleSheet.create({
   scanReticleText: { color: colors.onPrimary, fontWeight: '900', backgroundColor: 'rgba(0,0,0,0.48)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 999, overflow: 'hidden' },
   scanPermissionCard: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 22, gap: 12 },
   scanAmountInput: { color: colors.primary, fontSize: 34, lineHeight: 40, fontWeight: '900', marginVertical: 8, padding: 0 },
+  scanContent: { paddingHorizontal: 18, paddingTop: 18, paddingBottom: 150 },
+  scanHeading: { color: colors.onSurface, fontSize: 24, lineHeight: 30, fontWeight: '900', marginBottom: 5 },
+  scanSubheading: { color: colors.onSurfaceVariant, fontSize: 14, lineHeight: 20, marginBottom: 18 },
+  scanPermissionTitle: { color: colors.onPrimary, fontSize: 19, fontWeight: '900', textAlign: 'center' },
+  scanPermissionBody: { color: colors.outlineVariant, fontSize: 13, lineHeight: 19, textAlign: 'center' },
+  scanCompactButton: { minHeight: 44, borderRadius: 10, backgroundColor: colors.primaryContainer, paddingHorizontal: 18, alignItems: 'center', justifyContent: 'center' },
+  scanCompactButtonText: { color: colors.onPrimaryContainer, fontWeight: '900' },
+  scanErrorCard: { borderLeftWidth: 3, borderLeftColor: colors.error, backgroundColor: colors.errorContainer, padding: 12, marginBottom: 12 },
+  scanFallbackButton: { minHeight: 48, borderRadius: 12, borderWidth: 1, borderColor: colors.outlineVariant, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  scanFallbackText: { color: colors.primary, fontSize: 14, fontWeight: '900' },
+  walletBalanceCard: { borderRadius: 18, backgroundColor: colors.inverseSurface, padding: 20, marginVertical: 14 },
+  walletEyebrow: { color: colors.outlineVariant, fontSize: 11, fontWeight: '900' },
+  walletBalance: { color: colors.primaryContainer, fontSize: 36, lineHeight: 44, fontWeight: '900', marginVertical: 7 },
+  walletOwner: { color: colors.onPrimary, fontSize: 13 },
+  walletLiveBadge: { position: 'absolute', top: 18, right: 18, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  walletLiveDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colors.secondary },
+  walletLiveText: { color: colors.onPrimary, fontSize: 11, fontWeight: '800' },
+  scanPrimaryAction: { minHeight: 74, borderRadius: 16, backgroundColor: colors.primary, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 16 },
+  scanActionIcon: { width: 42, height: 42, borderRadius: 12, backgroundColor: colors.tertiary, alignItems: 'center', justifyContent: 'center' },
+  scanPrimaryTitle: { color: colors.onPrimary, fontSize: 16, fontWeight: '900' },
+  scanPrimaryBody: { color: colors.primaryContainer, fontSize: 12, marginTop: 3 },
+  walletActivityRow: { minHeight: 68, borderBottomWidth: 1, borderBottomColor: colors.outlineVariant, flexDirection: 'row', alignItems: 'center', gap: 11, paddingVertical: 10 },
+  walletActivityIcon: { width: 38, height: 38, borderRadius: 10, backgroundColor: colors.surfaceContainerHigh, alignItems: 'center', justifyContent: 'center' },
+  walletEmpty: { alignItems: 'center', gap: 7, paddingVertical: 28, paddingHorizontal: 18 },
+  scanMerchantHeader: { borderRadius: 16, backgroundColor: colors.surfaceContainerLowest, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 12 },
+  scanMerchantName: { color: colors.onSurface, fontSize: 18, fontWeight: '900' },
+  verifiedPill: { borderRadius: 999, backgroundColor: colors.secondaryContainer, paddingHorizontal: 9, paddingVertical: 5 },
+  verifiedPillText: { color: colors.onSecondaryContainer, fontSize: 10, fontWeight: '900' },
+  scanAmountCard: { borderRadius: 16, backgroundColor: colors.surfaceContainerLowest, padding: 16, marginBottom: 12 },
+  scanMethodCard: { borderRadius: 14, borderWidth: 1, borderColor: colors.outlineVariant, backgroundColor: colors.surfaceContainerLowest, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 12 },
+  scanNoteField: { borderRadius: 14, backgroundColor: colors.surfaceContainerLowest, paddingHorizontal: 14, marginBottom: 12 },
+  scanStatusCard: { borderLeftWidth: 3, borderLeftColor: colors.primaryContainer, padding: 12, marginBottom: 12 },
+  scanSecurityNote: { color: colors.onSurfaceVariant, textAlign: 'center', fontSize: 11, marginTop: 10 },
   ratingLine: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 10 },
   avatarInitial: { width: 38, height: 38, borderRadius: 19, backgroundColor: colors.primaryContainer, color: colors.onPrimaryContainer, textAlign: 'center', textAlignVertical: 'center', fontWeight: '900' },
   emergencyCard: { borderRadius: 16, backgroundColor: colors.errorContainer, padding: 16, marginBottom: 16 },

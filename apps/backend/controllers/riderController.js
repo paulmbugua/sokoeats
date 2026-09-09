@@ -301,10 +301,62 @@ export async function resolvedTicketDetails(_req, res, next) {
 }
 
 
-export async function walletPaymentSuite(_req, res, next) {
+const walletMoney = amount => `KSh ${Number(amount || 0).toLocaleString('en-KE')}`;
+
+async function currentWallet(req) {
+  const [balanceResult, activityResult] = await Promise.all([
+    pool.query(
+      `SELECT COALESCE(SUM(CASE WHEN l.direction='credit' THEN l.amount ELSE -l.amount END),0)::bigint AS balance
+         FROM sokoeats_ledger_accounts a
+         LEFT JOIN sokoeats_ledger_lines l ON l.account_id=a.id
+        WHERE a.owner_type IN ('customer','rider') AND a.owner_id=$1`,
+      [req.authUser.id],
+    ),
+    pool.query(
+      `SELECT * FROM (
+         SELECT pi.reference AS id,
+                CASE WHEN sp.id IS NOT NULL THEN 'Scan payment · ' || sp.vendor_name ELSE 'Secure payment' END AS label,
+                pi.amount,
+                'debit' AS tone,
+                pi.status,
+                pi.created_at
+           FROM sokoeats_payment_intents pi
+           LEFT JOIN sokoeats_scan_payments sp ON sp.payment_reference=pi.reference
+          WHERE pi.user_id=$1
+         UNION ALL
+         SELECT o.code AS id,'Order · ' || v.name AS label,o.total AS amount,'debit' AS tone,o.payment_status AS status,o.created_at
+           FROM sokoeats_orders o JOIN sokoeats_vendors v ON v.id=o.vendor_id
+          WHERE o.customer_user_id=$1 AND o.payment_reference IS NOT NULL
+       ) activity ORDER BY created_at DESC LIMIT 12`,
+      [req.authUser.id],
+    ),
+  ]);
+  const balance = Number(balanceResult.rows[0]?.balance || 0);
+  return {
+    title: 'Soko Wallet',
+    owner: { id: req.authUser.id, name: req.authUser.name, role: req.authUser.role },
+    balance: walletMoney(balance),
+    balanceMinor: balance,
+    vouchers: [],
+    referral: null,
+    activity: activityResult.rows.map(row => ({
+      id: row.id,
+      label: row.label,
+      time: new Date(row.created_at).toISOString(),
+      amount: `${row.tone === 'credit' ? '+' : '-'} ${walletMoney(row.amount)}`,
+      tone: row.tone,
+      status: row.status,
+    })),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+export async function walletPaymentSuite(req, res, next) {
   try {
     const screens = {};
-    for (const key of ["sokoeats_wallet","top_up_wallet","withdraw_to_m_pesa","scan_qr_code","confirm_payment","payment_successful","full_transaction_history"]) screens[key] = await getScreenPayload(key);
+    screens.sokoeats_wallet = await currentWallet(req);
+    for (const key of ["scan_qr_code","confirm_payment","payment_successful"]) screens[key] = await getScreenPayload(key);
+    screens.full_transaction_history = { title: 'Wallet activity', tabs: ['All'], ranges: ['Recent'], transactions: screens.sokoeats_wallet.activity, footer: `Updated ${screens.sokoeats_wallet.updatedAt}` };
     res.json({ wallet: screens });
   } catch (err) { next(err); }
 }
@@ -334,16 +386,17 @@ export async function confirmScanPayment(req, res, next) {
   try {
     const { vendor, qr } = await resolveScanVendor(req.body);
     const amount = Math.round(Number(req.body.amount));
-    const method = req.body.paymentMethod;
-    const phone = normalizeKenyanPhone(req.body.phone);
+    const method = 'paystack';
+    const phoneValue = req.body.phone || req.authUser.phone || '';
+    const phone = phoneValue ? normalizeKenyanPhone(phoneValue) : null;
     const currency = req.body.currency || 'KES';
     const provider = method === 'mpesa' ? 'mpesa' : 'paystack';
 
     await pool.query(
       `INSERT INTO sokoeats_payment_intents
-        (reference, method, provider, amount, currency, status, phone, customer_email, provider_payload)
-       VALUES ($1,$2,$3,$4,$5,'requires_action',$6,$7,$8)`,
-      [reference, method, provider, amount, currency, phone, req.body.email || null, { scanPayment: { merchantQr: req.body.merchantQr, qr, vendorId: vendor.id, vendorSlug: vendor.slug, notes: req.body.notes || null } }],
+        (reference, method, provider, amount, currency, status, phone, customer_email, provider_payload, user_id)
+       VALUES ($1,$2,$3,$4,$5,'requires_action',$6,$7,$8,$9)`,
+      [reference, method, provider, amount, currency, phone || '', req.body.email || req.authUser.email, { scanPayment: { merchantQr: req.body.merchantQr, qr, vendorId: vendor.id, vendorSlug: vendor.slug, notes: req.body.notes || null } }, req.authUser.id],
     );
 
     const prompt = await createPaymentPrompt({
@@ -351,8 +404,8 @@ export async function confirmScanPayment(req, res, next) {
       amount,
       currency,
       phone,
-      email: req.body.email,
-      customerName: req.body.customerName,
+      email: req.body.email || req.authUser.email,
+      customerName: req.body.customerName || req.authUser.name,
       reference,
       callbackUrl: req.body.callbackUrl,
     });
@@ -389,9 +442,9 @@ export async function confirmScanPaymentStatus(req, res, next) {
       `SELECT pi.*, sp.id AS scan_id, sp.vendor_name, sp.notes
          FROM sokoeats_payment_intents pi
          JOIN sokoeats_scan_payments sp ON sp.payment_reference = pi.reference
-        WHERE pi.reference = $1
+        WHERE pi.reference = $1 AND pi.user_id = $2
         LIMIT 1`,
-      [req.params.reference],
+      [req.params.reference, req.authUser.id],
     );
     if (!existing.rows[0]) return res.status(404).json({ message: 'Scan payment reference not found' });
     let intent = existing.rows[0];

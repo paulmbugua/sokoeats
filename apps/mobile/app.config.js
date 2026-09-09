@@ -10,6 +10,7 @@ export default {
     slug: 'sokoeats',
     scheme: 'sokoeats',
     version: '1.0.0',
+    platforms: ['android', 'ios'],
     orientation: 'portrait',
     icon: './assets/icon.png',
     userInterfaceStyle: 'light',

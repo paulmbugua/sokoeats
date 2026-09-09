@@ -7,6 +7,7 @@ import { requireAuth, requireRole } from '../middleware/auth.js';
 const router = Router();
 router.use('/rider', requireAuth, requireRole('rider', 'courier'));
 router.get('/rider/home', riderHome);
+router.use('/wallet', requireAuth);
 router.get('/wallet/payment-suite', walletPaymentSuite);
 router.post('/wallet/top-ups', validate(walletTopUpSchema), topUpWallet);
 router.post('/wallet/withdrawals', validate(walletWithdrawSchema), withdrawWallet);
