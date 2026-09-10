@@ -171,6 +171,7 @@ function googleClientIds() {
   return [
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_ID_WEB,
+    process.env.FIREBASE_GOOGLE_WEB_CLIENT_ID,
     process.env.GOOGLE_CLIENT_ID_ANDROID,
     process.env.GOOGLE_CLIENT_ID_IOS,
   ].filter(Boolean);
