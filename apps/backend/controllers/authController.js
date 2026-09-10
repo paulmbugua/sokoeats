@@ -375,7 +375,7 @@ export async function googleAuth(req, res, next) {
     if (!['customer', 'rider'].includes(role)) {
       return res.status(403).json({ message: 'Google sign-in is available for buyers and riders. Store partners must submit a business application.' });
     }
-    const googleProfile = await verifyFirebaseIdToken(req.body.idToken);
+    const googleProfile = await verifyGoogleIdToken(req.body.idToken);
     const existing = await pool.query(`SELECT * FROM sokoeats_users WHERE email = $1 OR google_sub = $2 ORDER BY created_at ASC LIMIT 1`, [googleProfile.email, googleProfile.sub]);
     if (existing.rows[0]?.deleted_at || existing.rows[0]?.status === 'disabled') return res.status(403).json({ message: 'This SokoEats account is no longer active' });
     if (existing.rows[0] && !roleMatches(existing.rows[0].role, role)) {

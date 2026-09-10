@@ -335,9 +335,7 @@ const API_BASE = (process.env.EXPO_PUBLIC_BACKEND_URL || process.env.EXPO_PUBLIC
 const GOOGLE_WEB_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID || '';
 const GOOGLE_IOS_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID || '';
 const GOOGLE_ANDROID_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID || '';
-const FIREBASE_API_KEY = process.env.EXPO_PUBLIC_FIREBASE_API_KEY || '';
 const FIREBASE_PROJECT_ID = process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || '';
-const FIREBASE_AUTH_DOMAIN = process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || '';
 
 type MapPoint = { id?: string; label: string; address?: string; lat: number; lng: number; kind?: string };
 type MapViewport = { center?: MapPoint; markers: MapPoint[]; path?: MapPoint[]; staticUrlTemplate?: string };
@@ -1937,26 +1935,6 @@ function openExternalUrl(url?: string) {
   Linking.openURL(url).catch(() => {});
 }
 
-async function exchangeGoogleTokenForFirebaseIdToken(googleIdToken: string) {
-  if (!FIREBASE_API_KEY) throw new Error('Firebase API key is not configured for Google sign-in.');
-  const response = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=${encodeURIComponent(FIREBASE_API_KEY)}`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      postBody: `id_token=${encodeURIComponent(googleIdToken)}&providerId=google.com`,
-      requestUri: `https://${FIREBASE_AUTH_DOMAIN || `${FIREBASE_PROJECT_ID}.firebaseapp.com`}`,
-      returnIdpCredential: true,
-      returnSecureToken: true,
-    }),
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload.idToken) {
-    const detail = payload?.error?.message ? ` Firebase said: ${payload.error.message}` : '';
-    throw new Error(`Firebase Google sign-in failed.${detail}`);
-  }
-  return String(payload.idToken);
-}
-
 function profileTextValue(profile: Record<string, unknown> | undefined, key: string) {
   const value = profile?.[key];
   return typeof value === 'string' ? value : '';
@@ -3436,10 +3414,9 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     setBusy(true);
     setMessage('');
     try {
-      const firebaseIdToken = await exchangeGoogleTokenForFirebaseIdToken(idToken);
       const session = await sokoeatsApi<AuthSession>('/api/auth/google', {
         method: 'POST',
-        body: JSON.stringify({ role, idToken: firebaseIdToken, preferredLanguage: 'English' }),
+        body: JSON.stringify({ role, idToken, preferredLanguage: 'English' }),
       });
       await finishAuth(session);
     } catch (err) {
@@ -3469,8 +3446,8 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
       setMessage('Vendors and merchants must submit a business application for verification.');
       return;
     }
-    if (!GOOGLE_WEB_CLIENT_ID || !FIREBASE_API_KEY) {
-      Alert.alert('Google sign-in not configured', 'The Firebase web client ID and API key are required.');
+    if (!GOOGLE_WEB_CLIENT_ID) {
+      Alert.alert('Google sign-in not configured', 'The Google web client ID is required.');
       return;
     }
     console.info('[SokoEats][Auth] google:native-start', { packageName: 'com.paulmbugua2.sokoeats', hasWebClient: true, firebaseProjectId: FIREBASE_PROJECT_ID || null });
