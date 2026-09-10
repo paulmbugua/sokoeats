@@ -22,7 +22,7 @@ export default {
       ['expo-location', { locationWhenInUsePermission: 'Allow SokoEats to use your location for accurate delivery and rider navigation.' }],
       ['expo-notifications', { icon: './assets/notification-icon.png', color: '#ff8a00', defaultChannel: 'orders' }],
     ],
-    runtimeVersion: process.env.EXPO_RUNTIME_VERSION || '1.0.0',
+    runtimeVersion: { policy: 'appVersion' },
     updates: { url: 'https://u.expo.dev/53ff8952-ff52-45f2-b580-73e42582bcbe' },
     splash: {
       image: './assets/logo.png',
