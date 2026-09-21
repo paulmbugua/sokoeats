@@ -2936,6 +2936,13 @@ function SokoEatsApp() {
   const handleSignOut = async () => {
     setAuthSession(null);
     await AsyncStorage.removeItem(AUTH_STORAGE_KEY);
+    try {
+      await GoogleSignin.signOut();
+    } catch (error) {
+      console.warn('[SokoEats][Auth] google:sign-out-failed', {
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
     openScreen('home');
   };
 
@@ -3576,6 +3583,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [deleteVisible, setDeleteVisible] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [deletePassword, setDeletePassword] = useState('');
   const [deleteReason, setDeleteReason] = useState('');
@@ -3736,8 +3744,12 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     try {
       GoogleSignin.configure({ webClientId: GOOGLE_WEB_CLIENT_ID, offlineAccess: false });
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      // Clear Google's local account hint so an explicit login always presents
+      // the account chooser instead of silently reusing the previous account.
+      await GoogleSignin.signOut();
       const response = await GoogleSignin.signIn();
-      if (!isSuccessResponse(response) || !response.data.idToken) throw new Error('Google did not return an ID token. Confirm the Firebase Android package and SHA-1 certificate.');
+      if (!isSuccessResponse(response)) return;
+      if (!response.data.idToken) throw new Error('Google did not return an ID token. Confirm the Firebase Android package and SHA-1 certificate.');
       console.info('[SokoEats][Auth] google:native-token', { hasIdToken: true });
       await submitGoogleAuth(response.data.idToken);
     } catch (err) {
@@ -3844,23 +3856,24 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   };
 
   const deleteAccount = async () => {
-    if (deleteConfirmation !== 'DELETE') {
+    const confirmation = deleteConfirmation.trim().toUpperCase();
+    if (confirmation !== 'DELETE') {
       setMessage('Type DELETE exactly to confirm account deletion.');
       return;
     }
-    setBusy(true);
+    setDeleteBusy(true);
     setMessage('');
     try {
       await sokoeatsApi('/api/auth/account', {
         method: 'DELETE',
-        body: JSON.stringify({ confirmation: deleteConfirmation, password: deletePassword || null, reason: deleteReason || null }),
+        body: JSON.stringify({ confirmation, password: deletePassword || null, reason: deleteReason.trim() || null }),
       });
       setDeleteVisible(false);
       await onSignOut();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Your account could not be deleted.');
     } finally {
-      setBusy(false);
+      setDeleteBusy(false);
     }
   };
 
@@ -3869,6 +3882,16 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     const signedInRole = user.role;
     const isRider = signedInRole === 'rider';
     const isPartner = signedInRole === 'vendor' || signedInRole === 'merchant';
+    const deleteConfirmationValid = deleteConfirmation.trim().toUpperCase() === 'DELETE';
+    const deletePasswordRequired = user.authProvider !== 'google';
+    const deleteEnabled = deleteConfirmationValid && (!deletePasswordRequired || deletePassword.trim().length > 0) && !deleteBusy;
+    const openDeleteModal = () => {
+      setDeleteReason('');
+      setDeleteConfirmation('');
+      setDeletePassword('');
+      setMessage('');
+      setDeleteVisible(true);
+    };
     const needsCompletion = user.profileComplete === false || (['rider', 'vendor', 'merchant'].includes(user.role) && !user.termsAccepted);
     if (needsCompletion) {
       return (
@@ -3954,22 +3977,23 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
           <View style={[styles.signedInCard, { borderColor: colors.error, marginTop: 18 }]}>
             <View style={styles.sectionHeadingRow}><AppIcon name="receipt" size={20} color={colors.error} /><Text style={[styles.vendorName, { color: colors.error }]}>Delete account</Text></View>
             <Text style={styles.smsBody}>Permanently remove your personal profile and disable access. Required order and financial records remain anonymised.</Text>
-            <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.error }]} onPress={() => setDeleteVisible(true)}><Text style={styles.primaryButtonText}>Delete my account</Text></TouchableOpacity>
+            <TouchableOpacity style={[styles.primaryButton, { backgroundColor: colors.error }]} onPress={openDeleteModal}><Text style={styles.primaryButtonText}>Delete my account</Text></TouchableOpacity>
           </View>
         </ScrollView>
         <BottomNav active="Account" />
         <SourceLedger />
-        <Modal visible={deleteVisible} transparent animationType="slide" onRequestClose={() => !busy && setDeleteVisible(false)}>
+        <Modal visible={deleteVisible} transparent animationType="slide" onRequestClose={() => !deleteBusy && setDeleteVisible(false)}>
           <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: '#07130e99' }}>
             <View style={{ backgroundColor: '#17211d', paddingHorizontal: 22, paddingTop: 24, paddingBottom: 38, borderTopLeftRadius: 22, borderTopRightRadius: 22 }}>
               <View style={styles.sectionHeadingRow}><AppIcon name="receipt" size={24} color="#ffb4ab" /><Text style={[styles.checkoutTitle, { color: '#ffffff', marginBottom: 0 }]}>Delete SokoEats account?</Text></View>
               <Text style={[styles.smsBody, { color: '#d7e4de', marginVertical: 12 }]}>This cannot be undone. Type DELETE below to confirm.</Text>
               <View style={styles.formFieldCard}><TextInput style={styles.formFieldInput} value={deleteReason} onChangeText={setDeleteReason} placeholder="Reason (optional)" placeholderTextColor={colors.outline} /></View>
               <View style={styles.formFieldCard}><TextInput style={styles.formFieldInput} value={deleteConfirmation} onChangeText={(value) => setDeleteConfirmation(value.toUpperCase())} autoCapitalize="characters" placeholder="Type DELETE" placeholderTextColor={colors.outline} /></View>
-              <View style={styles.formFieldCard}><TextInput style={styles.formFieldInput} value={deletePassword} onChangeText={setDeletePassword} secureTextEntry placeholder="Password (email accounts only)" placeholderTextColor={colors.outline} /></View>
+              {deletePasswordRequired && <View style={styles.formFieldCard}><TextInput style={styles.formFieldInput} value={deletePassword} onChangeText={setDeletePassword} secureTextEntry placeholder="Current password (required)" placeholderTextColor={colors.outline} /></View>}
+              {deleteConfirmationValid && deletePasswordRequired && !deletePassword.trim() && <Text style={[styles.smsBody, { color: '#ffb4ab', marginBottom: 10 }]}>Enter your current password to enable permanent deletion.</Text>}
               {!!message && <Text style={styles.authMessage}>{message}</Text>}
-              <TouchableOpacity style={[styles.placeOrderButton, { backgroundColor: colors.error }, (busy || deleteConfirmation !== 'DELETE') && styles.disabledButton]} disabled={busy || deleteConfirmation !== 'DELETE'} onPress={deleteAccount}><Text style={styles.placeOrderText}>{busy ? 'Deleting...' : 'Permanently delete account'}</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.primaryButton} disabled={busy} onPress={() => setDeleteVisible(false)}><Text style={styles.primaryButtonText}>Keep my account</Text></TouchableOpacity>
+              <TouchableOpacity style={[styles.placeOrderButton, { backgroundColor: colors.error }, !deleteEnabled && styles.disabledButton]} disabled={!deleteEnabled} onPress={deleteAccount}><Text style={styles.placeOrderText}>{deleteBusy ? 'Deleting...' : 'Permanently delete account'}</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.primaryButton} disabled={deleteBusy} onPress={() => setDeleteVisible(false)}><Text style={styles.primaryButtonText}>Keep my account</Text></TouchableOpacity>
             </View>
           </View>
         </Modal>
