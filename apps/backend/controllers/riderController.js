@@ -193,9 +193,62 @@ export async function riderLeaderboard(_req, res, next) {
   } catch (err) { next(err); }
 }
 
-export async function riderProfileRatings(_req, res, next) {
+export async function riderProfileRatings(req, res, next) {
   try {
-    res.json({ profile: await getScreenPayload('rider_profile_ratings') });
+    const { rows } = await pool.query(
+      `SELECT u.id,u.name,u.email,u.phone,u.city,u.status,u.avatar_url,u.created_at,u.profile,
+              COUNT(o.id)::int AS assigned_deliveries,
+              COUNT(o.id) FILTER (WHERE o.status='delivered')::int AS completed_deliveries
+         FROM sokoeats_users u
+         LEFT JOIN sokoeats_orders o ON o.rider_user_id=u.id
+        WHERE u.id=$1 AND u.role IN ('rider','courier') AND u.deleted_at IS NULL
+        GROUP BY u.id
+        LIMIT 1`,
+      [req.auth.sub],
+    );
+    const user = rows[0];
+    if (!user) return res.status(404).json({ message: 'Rider profile not found' });
+
+    const profile = user.profile || {};
+    const assigned = Number(user.assigned_deliveries || 0);
+    const completed = Number(user.completed_deliveries || 0);
+    const completionRate = assigned ? Math.round((completed / assigned) * 100) : 0;
+    const rating = Number(profile.rating || profile.averageRating || 0);
+    const reviewCount = Number(profile.ratingCount || profile.reviewCount || 0);
+    const breakdown = profile.ratingBreakdown && typeof profile.ratingBreakdown === 'object' ? profile.ratingBreakdown : {};
+    const breakdownValue = (stars) => Array.isArray(breakdown)
+      ? Number(breakdown.find((entry) => Number(entry?.stars) === stars)?.value || 0)
+      : Number(breakdown[stars] || 0);
+    const vehicleType = String(profile.vehicleType || '').trim();
+    const registrationNumber = String(profile.registrationNumber || '').trim();
+    const vehicle = [vehicleType, registrationNumber && `(${registrationNumber})`].filter(Boolean).join(' ');
+
+    res.json({
+      profile: {
+        rider: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          phone: user.phone || null,
+          city: user.city || profile.city || null,
+          status: user.status === 'active' ? 'ONLINE' : String(user.status || 'review').replaceAll('_', ' ').toUpperCase(),
+          since: `Member since ${new Intl.DateTimeFormat('en-KE', { month: 'short', year: 'numeric', timeZone: 'Africa/Nairobi' }).format(new Date(user.created_at))}`,
+          vehicle: vehicle || 'Vehicle details not added',
+          rating: reviewCount ? rating.toFixed(2) : 'New',
+          reviews: reviewCount ? `${reviewCount.toLocaleString('en-KE')} ${reviewCount === 1 ? 'review' : 'reviews'}` : 'No rider reviews yet',
+          avatarUrl: user.avatar_url || profile.profilePictureUrl || profile.avatarUrl || null,
+          initials: String(user.name || 'Rider').split(/\s+/).slice(0, 2).map((part) => part[0]).join('').toUpperCase(),
+        },
+        stats: [
+          { label: 'Completion rate', value: `${completionRate}%` },
+          { label: 'Deliveries', value: completed.toLocaleString('en-KE') },
+        ],
+        ratingBreakdown: [5, 4, 3, 2, 1].map((stars) => ({ stars, value: breakdownValue(stars) })),
+        qualities: Array.isArray(profile.qualities) ? profile.qualities : [],
+        achievements: Array.isArray(profile.achievements) ? profile.achievements : [],
+        feedback: Array.isArray(profile.feedback) ? profile.feedback : [],
+      },
+    });
   } catch (err) { next(err); }
 }
 
