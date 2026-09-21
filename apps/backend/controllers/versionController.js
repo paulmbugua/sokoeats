@@ -25,7 +25,7 @@ function boolEnv(name) {
 function platformConfig(platform) {
   const isIos = platform === 'ios';
   const prefix = isIos ? 'IOS' : 'ANDROID';
-  const latestVersion = process.env[`SOKOEATS_${prefix}_LATEST_VERSION`] || process.env.SOKOEATS_LATEST_VERSION || '1.0.0';
+  const latestVersion = process.env[`SOKOEATS_${prefix}_LATEST_VERSION`] || process.env.SOKOEATS_LATEST_VERSION || '1.0.1';
   const minimumVersion = process.env[`SOKOEATS_${prefix}_MIN_VERSION`] || process.env.SOKOEATS_MIN_VERSION || '1.0.0';
   const forced = boolEnv(`SOKOEATS_${prefix}_FORCE_UPDATE`) || boolEnv('SOKOEATS_FORCE_NATIVE_UPDATE');
   const storeUrl =

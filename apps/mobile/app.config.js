@@ -9,7 +9,7 @@ export default {
     name: 'Sokoeats',
     slug: 'sokoeats',
     scheme: 'sokoeats',
-    version: '1.0.1',
+    version: '1.0.2',
     platforms: ['android', 'ios'],
     orientation: 'portrait',
     icon: './assets/icon.png',
@@ -23,7 +23,11 @@ export default {
       ['expo-notifications', { icon: './assets/notification-icon.png', color: '#ff8a00', defaultChannel: 'orders' }],
     ],
     runtimeVersion: { policy: 'appVersion' },
-    updates: { url: 'https://u.expo.dev/53ff8952-ff52-45f2-b580-73e42582bcbe' },
+    updates: {
+      url: 'https://u.expo.dev/53ff8952-ff52-45f2-b580-73e42582bcbe',
+      fallbackToCacheTimeout: 0,
+      checkAutomatically: 'ON_LOAD',
+    },
     splash: {
       image: './assets/logo.png',
       resizeMode: 'contain',

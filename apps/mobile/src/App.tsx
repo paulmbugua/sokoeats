@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
-  Alert,
+  AppState,
   Animated,
   BackHandler,
   Easing,
@@ -22,6 +22,7 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
 import * as WebBrowser from 'expo-web-browser';
 import { GoogleSignin, isSuccessResponse } from '@react-native-google-signin/google-signin';
 import { CameraView, useCameraPermissions, type BarcodeScanningResult } from 'expo-camera';
@@ -82,10 +83,16 @@ type ShopMenuResponse = { vendor?: Partial<ShopListing> & { slug?: string }; sec
 type OrderItem = { menuItemId?: string; quantity: string; name: string; note: string; price: number; imageUrl?: string | null };
 type FavouriteItem = { key: string; shop: ShopListing; item: ShopMenuItem };
 type PartnerOperations = { vendor: { name:string;imageUrl?:string;address?:string;acceptingOrders?:boolean;rating:number;ratingCount:number }; metrics:Record<'today'|'week'|'month',{sales:number;orders:number;delivered:number}>; orders:Array<{id:string;code:string;status:string;paymentStatus:string;deliveryAddress:string;subtotal:number;items:Array<{name:string;quantity:number}>}>; ratings:{average:number;count:number;breakdown:Array<{stars:number;count:number}>}; catalogue:{total:number;available:number;unavailable:number} };
+type DialogTone = 'info' | 'success' | 'warning' | 'error';
+type DialogState = { title: string; message: string; tone: DialogTone; buttonLabel: string };
+type DelightTone = 'warm' | 'success' | 'love' | 'celebrate';
+type DelightState = { title: string; message: string; tone: DelightTone };
+type MarketplaceOffer = { id: string; tag: string; title: string; body: string; details: string; tone: 'primary' | 'secondary' };
 const AUTH_STORAGE_KEY = 'sokoeats.auth';
 const BASKET_STORAGE_KEY = 'sokoeats.basket.v1';
 const FAVOURITES_STORAGE_KEY = 'sokoeats.favourite-items.v1';
-const MOBILE_APP_VERSION = '1.0.0';
+const ONBOARDING_STORAGE_KEY = 'sokoeats.onboarding.seen.v1';
+const UPDATE_CHECK_INTERVAL_MS = 15 * 60 * 1000;
 const authRoleOptions: { role: UserRole; label: string; subtitle: string; icon: IconName }[] = [
   { role: 'customer', label: 'Buyer', subtitle: 'Order meals, groceries, medicine, gas, and essentials', icon: 'bag' },
   { role: 'rider', label: 'Rider', subtitle: 'Accept deliveries, earnings, training, and safety tools', icon: 'bike' },
@@ -103,6 +110,31 @@ const partnerRoleDetails = {
 } as const;
 const BottomNavNavigationContext = createContext<((screen: Screen) => void) | null>(null);
 const ReduceMotionContext = createContext(false);
+const AppDialogContext = createContext<{ showDialog: (title: string, message: string, tone?: DialogTone, buttonLabel?: string) => void } | null>(null);
+const AppDelightContext = createContext<{ showDelight: (title: string, message: string, tone?: DelightTone) => void } | null>(null);
+
+function useAppDialog() {
+  const context = useContext(AppDialogContext);
+  if (!context) throw new Error('useAppDialog must be used within AppDialogProvider');
+  return context;
+}
+
+function useAppDelight() {
+  const context = useContext(AppDelightContext);
+  if (!context) throw new Error('useAppDelight must be used within AppDelightProvider');
+  return context;
+}
+
+function firstName(name?: string | null) {
+  return String(name || '').trim().split(/\s+/)[0] || 'friend';
+}
+
+function timeGreeting(date = new Date()) {
+  const hour = date.getHours();
+  if (hour < 12) return 'Good morning';
+  if (hour < 17) return 'Good afternoon';
+  return 'Good evening';
+}
 
 export async function checkForAppUpdate() {
   console.info('[SokoEats][Update] root sheet manages update checks.');
@@ -1951,9 +1983,13 @@ function AppUpdateSheet() {
   const insets = useSafeAreaInsets();
   const [sheet, setSheet] = useState<UpdateSheetState | null>(null);
   const updatesModule = useRef<typeof import('expo-updates') | null>(null);
+  const mountedRef = useRef(true);
+  const checkingRef = useRef(false);
+  const lastCheckAtRef = useRef(0);
+  const appStateRef = useRef(AppState.currentState);
 
   const dismiss = () => {
-    setSheet((current) => current && !current.required ? { ...current, visible: false } : current);
+    setSheet((current) => current && !current.required ? null : current);
   };
 
   const loadUpdatesModule = async () => {
@@ -1964,8 +2000,9 @@ function AppUpdateSheet() {
   };
 
   const checkNativeVersion = async () => {
-    console.info('[SokoEats][Update] native:check', { platform: Platform.OS, version: MOBILE_APP_VERSION });
-    const query = '?platform=' + encodeURIComponent(Platform.OS) + '&version=' + encodeURIComponent(MOBILE_APP_VERSION);
+    const currentVersion = Constants.expoConfig?.version || '0.0.0';
+    console.info('[SokoEats][Update] native:check', { platform: Platform.OS, version: currentVersion });
+    const query = '?platform=' + encodeURIComponent(Platform.OS) + '&version=' + encodeURIComponent(currentVersion);
     const payload = await sokoeatsApi<NativeVersionResponse>('/api/mobile/version' + query);
     const update = payload.update;
     console.info('[SokoEats][Update] native:result', {
@@ -1973,8 +2010,8 @@ function AppUpdateSheet() {
       required: Boolean(update?.required),
       latestVersion: update?.latestVersion,
     });
-    if (!update?.available) return false;
-    setSheet({
+    if (!update?.available) return null;
+    return {
       visible: true,
       kind: 'native',
       phase: 'available',
@@ -1983,66 +2020,85 @@ function AppUpdateSheet() {
       message: update.message || 'Install the latest SokoEats version from the store.',
       storeUrl: update.storeUrl,
       latestVersion: update.latestVersion,
-    });
-    return true;
+    } satisfies UpdateSheetState;
   };
-
-  const checkOtaUpdate = async () => {
-    console.info('[SokoEats][Update] ota:check', { dev: __DEV__ });
-    if (__DEV__) return;
-    const Updates = await loadUpdatesModule();
-    const update = await Updates.checkForUpdateAsync();
-    console.info('[SokoEats][Update] ota:result', { isAvailable: update.isAvailable });
-    if (!update.isAvailable) return;
-    setSheet({
-      visible: true,
-      kind: 'ota',
-      phase: 'available',
-      required: false,
-      title: 'SokoEats update available',
-      message: 'A fresh app update is ready to download. You can keep using SokoEats while it downloads.',
-    });
-  };
-
-  useEffect(() => {
-    let mounted = true;
-    const runChecks = async () => {
-      let nativeShown = false;
-      try {
-        nativeShown = await checkNativeVersion();
-      } catch (error) {
-        console.info('[SokoEats][Update] native:check-failed', { message: error instanceof Error ? error.message : 'unknown' });
-      }
-      if (!mounted || nativeShown) return;
-      try {
-        await checkOtaUpdate();
-      } catch (error) {
-        console.info('[SokoEats][Update] ota:check-failed', { message: error instanceof Error ? error.message : 'unknown' });
-      }
-    };
-    void runChecks();
-    return () => { mounted = false; };
-  }, []);
 
   const downloadOtaUpdate = async () => {
-    if (!sheet || sheet.kind !== 'ota' || sheet.phase === 'downloading') return;
-    setSheet((current) => current ? { ...current, visible: false, phase: 'downloading', title: 'Downloading update', message: 'The update is downloading in the background. You can keep using SokoEats.' } : current);
+    const Updates = await loadUpdatesModule();
+    console.info('[SokoEats][Update] ota:check', {
+      dev: __DEV__,
+      enabled: Updates.isEnabled,
+      channel: Updates.channel,
+      runtimeVersion: Updates.runtimeVersion,
+      currentUpdateId: Updates.updateId,
+    });
+    if (__DEV__ || !Updates.isEnabled) return null;
+    const update = await Updates.checkForUpdateAsync();
+    console.info('[SokoEats][Update] ota:result', { isAvailable: update.isAvailable });
+    if (!update.isAvailable) return null;
     console.info('[SokoEats][Update] ota:download-start');
+    const result = await Updates.fetchUpdateAsync();
+    console.info('[SokoEats][Update] ota:download-success', { isNew: result.isNew });
+    if (!result.isNew) return null;
+    return {
+      visible: true,
+      kind: 'ota',
+      phase: 'ready',
+      required: false,
+      title: 'Fresh update ready',
+      message: 'The update downloaded quietly. Restart now to use it, or choose Later and it will apply the next time SokoEats starts.',
+    } satisfies UpdateSheetState;
+  };
+
+  const runChecks = async (force = false) => {
+    const now = Date.now();
+    if (checkingRef.current || (!force && now - lastCheckAtRef.current < UPDATE_CHECK_INTERVAL_MS)) return;
+    checkingRef.current = true;
+    lastCheckAtRef.current = now;
     try {
-      const Updates = await loadUpdatesModule();
-      await Updates.fetchUpdateAsync();
-      console.info('[SokoEats][Update] ota:download-success');
-      setSheet((current) => current ? { ...current, visible: true, phase: 'ready', title: 'Update ready', message: 'Restart SokoEats when you are ready to apply the new update.' } : current);
-    } catch (error) {
-      console.info('[SokoEats][Update] ota:download-failure', { message: error instanceof Error ? error.message : 'unknown' });
-      setSheet((current) => current ? { ...current, visible: true, phase: 'failed', title: 'Download failed', message: 'We could not download the update. Check your connection and try again.', error: error instanceof Error ? error.message : 'unknown' } : current);
+      const nativeUpdate = await checkNativeVersion().catch((error) => {
+        console.info('[SokoEats][Update] native:check-failed', { message: error instanceof Error ? error.message : 'unknown' });
+        return null;
+      });
+      if (!mountedRef.current) return;
+      if (nativeUpdate) {
+        setSheet(nativeUpdate);
+        return;
+      }
+      try {
+        const otaUpdate = await downloadOtaUpdate();
+        if (mountedRef.current && otaUpdate) setSheet(otaUpdate);
+      } catch (error) {
+        console.info('[SokoEats][Update] ota:background-update-failed', { message: error instanceof Error ? error.message : 'unknown' });
+      }
+    } finally {
+      checkingRef.current = false;
     }
   };
 
+  useEffect(() => {
+    mountedRef.current = true;
+    const initialCheck = setTimeout(() => { void runChecks(true); }, 1200);
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      const returningToForeground = nextState === 'active' && appStateRef.current !== 'active';
+      appStateRef.current = nextState;
+      if (returningToForeground) void runChecks(false);
+    });
+    return () => {
+      mountedRef.current = false;
+      clearTimeout(initialCheck);
+      subscription.remove();
+    };
+  }, []);
+
   const restartNow = async () => {
     console.info('[SokoEats][Update] ota:reload-action');
-    const Updates = await loadUpdatesModule();
-    await Updates.reloadAsync();
+    try {
+      const Updates = await loadUpdatesModule();
+      await Updates.reloadAsync();
+    } catch (error) {
+      setSheet((current) => current ? { ...current, phase: 'failed', title: 'Restart needed', message: 'Close and reopen SokoEats to finish applying the downloaded update.', error: error instanceof Error ? error.message : 'unknown' } : current);
+    }
   };
 
   const openStore = async () => {
@@ -2057,19 +2113,11 @@ function AppUpdateSheet() {
 
   const primaryLabel = sheet.kind === 'native'
     ? 'Update in store'
-    : sheet.phase === 'ready'
-      ? 'Restart now'
-      : sheet.phase === 'downloading'
-        ? 'Downloading...'
-        : sheet.phase === 'failed'
-          ? 'Try again'
-          : 'Download update';
-  const primaryDisabled = sheet.kind === 'ota' && sheet.phase === 'downloading';
+    : sheet.phase === 'failed' ? 'Try restart' : 'Restart now';
+  const primaryDisabled = false;
   const primaryAction = sheet.kind === 'native'
     ? openStore
-    : sheet.phase === 'ready'
-      ? restartNow
-      : downloadOtaUpdate;
+    : restartNow;
   const canDismiss = !sheet.required;
 
   return (
@@ -2296,6 +2344,163 @@ function AnimatedNavItem({ tab, selected, onPress }: { tab: BottomNavItem; selec
   );
 }
 
+function AppDialogProvider({ children }: { children: React.ReactNode }) {
+  const reduceMotion = useContext(ReduceMotionContext);
+  const [dialog, setDialog] = useState<DialogState | null>(null);
+  const backdropOpacity = useRef(new Animated.Value(0)).current;
+  const cardProgress = useRef(new Animated.Value(0)).current;
+
+  const showDialog = (title: string, message: string, tone: DialogTone = 'info', buttonLabel = 'Got it') => {
+    setDialog({ title, message, tone, buttonLabel });
+    backdropOpacity.setValue(reduceMotion ? 1 : 0);
+    cardProgress.setValue(reduceMotion ? 1 : 0);
+    if (!reduceMotion) {
+      requestAnimationFrame(() => {
+        Animated.parallel([
+          Animated.timing(backdropOpacity, { toValue: 1, duration: 180, easing: Easing.out(Easing.quad), useNativeDriver: true }),
+          Animated.spring(cardProgress, { toValue: 1, speed: 20, bounciness: 4, useNativeDriver: true }),
+        ]).start();
+      });
+    }
+  };
+
+  const dismissDialog = () => {
+    if (reduceMotion) {
+      setDialog(null);
+      return;
+    }
+    Animated.parallel([
+      Animated.timing(backdropOpacity, { toValue: 0, duration: 140, useNativeDriver: true }),
+      Animated.timing(cardProgress, { toValue: 0, duration: 140, easing: Easing.in(Easing.quad), useNativeDriver: true }),
+    ]).start(() => setDialog(null));
+  };
+
+  const toneColor = dialog?.tone === 'error'
+    ? colors.error
+    : dialog?.tone === 'warning'
+      ? colors.primary
+      : dialog?.tone === 'success'
+        ? colors.secondary
+        : colors.tertiary;
+  const toneIcon: IconName = dialog?.tone === 'success' ? 'check' : dialog?.tone === 'error' ? 'lock' : 'bell';
+
+  return (
+    <AppDialogContext.Provider value={{ showDialog }}>
+      {children}
+      <Modal visible={Boolean(dialog)} transparent animationType="none" statusBarTranslucent onRequestClose={dismissDialog}>
+        <Animated.View style={[styles.dialogBackdrop, { opacity: backdropOpacity }]}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={dismissDialog} accessibilityLabel="Close message" />
+          <Animated.View
+            accessibilityRole="alert"
+            accessibilityViewIsModal
+            style={[
+              styles.dialogCard,
+              {
+                opacity: cardProgress,
+                transform: [
+                  { translateY: cardProgress.interpolate({ inputRange: [0, 1], outputRange: [24, 0] }) },
+                  { scale: cardProgress.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+                ],
+              },
+            ]}
+          >
+            <View style={[styles.dialogIcon, { backgroundColor: `${toneColor}18` }]}><AppIcon name={toneIcon} size={24} color={toneColor} /></View>
+            <Text style={styles.dialogTitle}>{dialog?.title}</Text>
+            <ScrollView style={styles.dialogMessageScroll} contentContainerStyle={styles.dialogMessageContent} showsVerticalScrollIndicator={false}>
+              <Text style={styles.dialogMessage}>{dialog?.message}</Text>
+            </ScrollView>
+            <TouchableOpacity style={[styles.dialogButton, { backgroundColor: toneColor }]} onPress={dismissDialog} activeOpacity={0.88}>
+              <Text style={styles.dialogButtonText}>{dialog?.buttonLabel}</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        </Animated.View>
+      </Modal>
+    </AppDialogContext.Provider>
+  );
+}
+
+function AppDelightProvider({ children }: { children: React.ReactNode }) {
+  const insets = useSafeAreaInsets();
+  const reduceMotion = useContext(ReduceMotionContext);
+  const [delight, setDelight] = useState<DelightState | null>(null);
+  const progress = useRef(new Animated.Value(0)).current;
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const hideDelight = () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    hideTimer.current = null;
+    if (reduceMotion) {
+      setDelight(null);
+      return;
+    }
+    Animated.timing(progress, { toValue: 0, duration: 180, easing: Easing.in(Easing.cubic), useNativeDriver: true })
+      .start(() => setDelight(null));
+  };
+
+  const showDelight = (title: string, message: string, tone: DelightTone = 'warm') => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+    setDelight({ title, message, tone });
+    progress.stopAnimation();
+    progress.setValue(reduceMotion ? 1 : 0);
+    if (!reduceMotion) {
+      requestAnimationFrame(() => {
+        Animated.spring(progress, { toValue: 1, speed: 21, bounciness: 7, useNativeDriver: true }).start();
+      });
+    }
+    AccessibilityInfo.announceForAccessibility(`${title}. ${message}`);
+    hideTimer.current = setTimeout(hideDelight, tone === 'celebrate' ? 3600 : 2600);
+  };
+
+  useEffect(() => () => {
+    if (hideTimer.current) clearTimeout(hideTimer.current);
+  }, []);
+
+  const toneColor = delight?.tone === 'love'
+    ? colors.error
+    : delight?.tone === 'success' || delight?.tone === 'celebrate'
+      ? colors.secondary
+      : colors.primary;
+  const toneIcon: IconName = delight?.tone === 'love' ? 'heart' : delight?.tone === 'warm' ? 'bolt' : 'check';
+
+  return (
+    <AppDelightContext.Provider value={{ showDelight }}>
+      <View style={styles.delightRoot}>
+        {children}
+        {!!delight && (
+          <Animated.View
+            pointerEvents="box-none"
+            accessibilityRole="alert"
+            style={[
+              styles.delightWrap,
+              {
+                top: Math.max(insets.top, 10) + 8,
+                opacity: progress,
+                transform: [
+                  { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [-28, 0] }) },
+                  { scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) },
+                ],
+              },
+            ]}
+          >
+            {delight.tone === 'celebrate' && (
+              <View style={styles.delightConfetti} pointerEvents="none">
+                {['#ff8a00', '#006d37', '#eec209', '#ba1a1a', '#5c6bc0', '#ff8a00'].map((color, index) => (
+                  <View key={`${color}-${index}`} style={[styles.delightConfettiDot, { backgroundColor: color, transform: [{ translateY: index % 2 ? 5 : -3 }, { rotate: `${index * 24}deg` }] }]} />
+                ))}
+              </View>
+            )}
+            <Pressable style={styles.delightCard} onPress={hideDelight}>
+              <View style={[styles.delightIcon, { backgroundColor: `${toneColor}18` }]}><AppIcon name={toneIcon} size={20} color={toneColor} /></View>
+              <View style={styles.delightCopy}><Text style={styles.delightTitle}>{delight.title}</Text><Text style={styles.delightMessage}>{delight.message}</Text></View>
+              <AppIcon name="check" size={18} color={toneColor} />
+            </Pressable>
+          </Animated.View>
+        )}
+      </View>
+    </AppDelightContext.Provider>
+  );
+}
+
 export default function App() {
   const [reduceMotion, setReduceMotion] = useState(false);
 
@@ -2308,7 +2513,11 @@ export default function App() {
   return (
     <SafeAreaProvider>
       <ReduceMotionContext.Provider value={reduceMotion}>
-        <SokoEatsApp />
+        <AppDialogProvider>
+          <AppDelightProvider>
+            <SokoEatsApp />
+          </AppDelightProvider>
+        </AppDialogProvider>
       </ReduceMotionContext.Provider>
     </SafeAreaProvider>
   );
@@ -2317,7 +2526,10 @@ export default function App() {
 function SokoEatsApp() {
   const insets = useSafeAreaInsets();
   const reduceMotion = useContext(ReduceMotionContext);
+  const { showDialog } = useAppDialog();
+  const { showDelight } = useAppDelight();
   const [screen, setScreen] = useState<Screen>('splash');
+  const [hasSeenOnboarding, setHasSeenOnboarding] = useState<boolean | null>(null);
   const [activeChip, setActiveChip] = useState(chips[0]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('paystack');
   const [riderHome, setRiderHome] = useState<RiderHomePayload | null>(null);
@@ -2327,6 +2539,7 @@ function SokoEatsApp() {
   const [selectedShopCategory, setSelectedShopCategory] = useState<ShopCategoryKey>('restaurants');
   const [shopRatings, setShopRatings] = useState<Record<string, number>>({});
   const [availableShops, setAvailableShops] = useState<ShopListing[]>([]);
+  const [marketplaceOffers, setMarketplaceOffers] = useState<MarketplaceOffer[]>([]);
   const [selectedShop, setSelectedShop] = useState<ShopListing | null>(null);
   const [shopMenuSections, setShopMenuSections] = useState<ShopMenuSection[]>([]);
   const [shopMenuLoading, setShopMenuLoading] = useState(false);
@@ -2397,8 +2610,9 @@ function SokoEatsApp() {
   }, [fade, reduceMotion, screenLift]);
 
   useEffect(() => {
-    Promise.all([AsyncStorage.getItem(AUTH_STORAGE_KEY), AsyncStorage.getItem(BASKET_STORAGE_KEY), AsyncStorage.getItem(FAVOURITES_STORAGE_KEY)])
-      .then(([authRaw, basketRaw, favouritesRaw]) => {
+    Promise.all([AsyncStorage.getItem(AUTH_STORAGE_KEY), AsyncStorage.getItem(BASKET_STORAGE_KEY), AsyncStorage.getItem(FAVOURITES_STORAGE_KEY), AsyncStorage.getItem(ONBOARDING_STORAGE_KEY)])
+      .then(([authRaw, basketRaw, favouritesRaw, onboardingRaw]) => {
+        setHasSeenOnboarding(onboardingRaw === 'true');
         if (authRaw) {
           const savedSession = JSON.parse(authRaw) as AuthSession;
           setAuthSession(savedSession);
@@ -2419,7 +2633,7 @@ function SokoEatsApp() {
           if (Array.isArray(savedFavourites)) setFavouriteItems(savedFavourites);
         }
       })
-      .catch(() => {})
+      .catch(() => { setHasSeenOnboarding(false); })
       .finally(() => { basketHydrated.current = true; });
   }, []);
 
@@ -2447,12 +2661,14 @@ function SokoEatsApp() {
       } catch (error) {
         console.warn('[SokoEats][Coverage] location-check-failed', { message: error instanceof Error ? error.message : String(error) });
       }
-      const [walletResult, mapsResult, vendorResult] = await Promise.all([
+      const [walletResult, mapsResult, vendorResult, offersResult] = await Promise.all([
         sokoeatsApi<{ wallet: Record<string, GenericPayload> }>('/api/wallet/payment-suite').catch(() => null),
         sokoeatsApi<{ maps: MapsManifest }>('/api/maps/manifest').catch(() => null),
         sokoeatsApi<{ vendors: Array<Record<string, any>>; coverage?: { serviceable: boolean; message?: string } | null }>(vendorPath),
+        sokoeatsApi<{ offers: MarketplaceOffer[] }>('/api/marketplace/offers').catch(() => null),
       ]);
       if (walletResult) setRiderBatch((prev) => ({ ...prev, ...walletResult.wallet }));
+      if (offersResult) setMarketplaceOffers(offersResult.offers || []);
       if (mapsResult) {
         if (currentCoordinates) {
           const currentPoint = { label: 'Your current location', lat: currentCoordinates.latitude, lng: currentCoordinates.longitude };
@@ -2497,9 +2713,15 @@ function SokoEatsApp() {
 
   const toggleFavouriteItem = (shop: ShopListing, item: ShopMenuItem) => {
     const key = `${shop.id}:${item.id}`;
+    const alreadySaved = favouriteItems.some((entry) => entry.key === key);
     setFavouriteItems((current) => current.some((entry) => entry.key === key)
       ? current.filter((entry) => entry.key !== key)
       : [...current, { key, shop, item }]);
+    showDelight(
+      alreadySaved ? 'Saved list updated' : 'A little joy for later',
+      alreadySaved ? `${item.name} was removed from your favourites.` : `${item.name} is waiting in your favourites.`,
+      alreadySaved ? 'warm' : 'love',
+    );
   };
 
   const transitionToScreen = (next: Screen) => {
@@ -2582,6 +2804,7 @@ function SokoEatsApp() {
 
   const rateShop = (shopId: string, rating: number) => {
     setShopRatings((prev) => ({ ...prev, [shopId]: rating }));
+    showDelight('Thanks for sharing the love', `${rating} star${rating === 1 ? '' : 's'} helps your neighbourhood choose well.`, rating >= 4 ? 'love' : 'warm');
     if (!authSession || authSession.user.role !== 'customer') return;
     void sokoeatsApi(`/api/vendors/${encodeURIComponent(shopId)}/reviews`, {
       method: 'POST',
@@ -2594,7 +2817,7 @@ function SokoEatsApp() {
   const reorderShop = async (shop?: ShopListing) => {
     const nextShop = shop || checkoutShop;
     if (!nextShop) {
-      Alert.alert('Shop unavailable', 'Open a live shop before reordering.');
+      showDialog('Shop unavailable', 'Open a live shop before reordering.', 'warning');
       return;
     }
     try {
@@ -2603,6 +2826,7 @@ function SokoEatsApp() {
       if (!liveItems.length) throw new Error('This shop has no available products to reorder.');
       setCheckoutShop(nextShop);
       setBasketItems(liveItems.map((item) => ({ menuItemId: item.id, quantity: '1x', name: item.name, note: item.description || item.category, price: Math.round(item.price), imageUrl: menuItemImage(item) })));
+      showDelight('Your favourite is back', `${nextShop.name} is ready for another order.`, 'success');
       if (!authSession || authSession.user.role !== 'customer' || authSession.user.profileComplete === false) {
         pendingAfterAuth.current = 'checkout';
         openScreen('accountAccess');
@@ -2610,7 +2834,7 @@ function SokoEatsApp() {
         openScreen('checkout');
       }
     } catch (error) {
-      Alert.alert('Unable to reorder', error instanceof Error ? error.message : 'The shop catalogue could not be loaded.');
+      showDialog('Unable to reorder', error instanceof Error ? error.message : 'The shop catalogue could not be loaded.', 'error');
     }
   };
 
@@ -2670,6 +2894,7 @@ function SokoEatsApp() {
   const handleAuthenticated = async (session: AuthSession) => {
     setAuthSession(session);
     await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+    showDelight(`Welcome, ${firstName(session.user.name)}`, 'Your SokoEats favourites, wallet and delivery details are ready.', 'success');
     if (session.user.profileComplete === false) {
       openScreen('accountAccess');
       return;
@@ -2682,7 +2907,7 @@ function SokoEatsApp() {
 
   const openCheckout = () => {
     if (!basketItems.length) {
-      Alert.alert('Your basket is empty', 'Add at least one item from a shop before checkout.');
+      showDialog('Your basket is empty', 'Add at least one item from a shop before checkout.', 'warning');
       return;
     }
     if (!authSession || authSession.user.role !== 'customer' || authSession.user.profileComplete === false) {
@@ -2714,6 +2939,17 @@ function SokoEatsApp() {
     openScreen('home');
   };
 
+  const completeOnboarding = () => {
+    setHasSeenOnboarding(true);
+    void AsyncStorage.setItem(ONBOARDING_STORAGE_KEY, 'true');
+    transitionToScreen('home');
+  };
+
+  const continueFromSplash = () => {
+    if (hasSeenOnboarding === null) return;
+    transitionToScreen(hasSeenOnboarding ? 'home' : 'onboarding');
+  };
+
   const goBack = () => {
     const previous = screenHistory.current.pop();
     if (previous) {
@@ -2743,13 +2979,13 @@ function SokoEatsApp() {
 
   return (
     <View style={[styles.safe, { paddingTop: topSystemInset }]}>
-      <StatusBar barStyle={screen === 'splash' ? 'light-content' : 'dark-content'} backgroundColor={colors.surface} />
+      <StatusBar barStyle="dark-content" backgroundColor={colors.surface} />
       <Animated.View style={[styles.root, { opacity: fade, transform: [{ translateY: screenLift }] }]}>
         <BottomNavNavigationContext.Provider value={openScreen}>
           <MapsContext.Provider value={maps}>
           <DeliverySessionContext.Provider value={authSession}>
-        {screen === 'splash' && <SplashScreen onContinue={() => openScreen('onboarding')} />}
-        {screen === 'onboarding' && <OnboardingScreen onNext={() => openScreen('home')} onSkip={() => openScreen('home')} />}
+        {screen === 'splash' && <SplashScreen ready={hasSeenOnboarding !== null} onContinue={continueFromSplash} />}
+        {screen === 'onboarding' && <OnboardingScreen onNext={completeOnboarding} onSkip={completeOnboarding} />}
         {screen === 'home' && (
           <HomeScreen
             user={authSession?.user || null}
@@ -2759,6 +2995,7 @@ function SokoEatsApp() {
             onWallet={() => openAuthenticatedScreen('walletHome')}
             onScan={() => openAuthenticatedScreen('scanQr')}
             wallet={riderBatch.sokoeats_wallet || emptyWallet}
+            offers={marketplaceOffers}
             onCategoryOpen={openShopCategory}
             shops={availableShops}
             onShopOpen={openShopDetail}
@@ -2817,7 +3054,12 @@ function SokoEatsApp() {
             onPaymentChange={setPaymentMethod}
             authSession={authSession}
             onAuthRequired={() => { pendingAfterAuth.current = 'checkout'; openScreen('accountAccess'); }}
-            onOrderPlaced={() => { setBasketItems([]); openScreen('orders'); }}
+            onOrderPlaced={() => {
+              const shopName = checkoutShop?.name || 'The shop';
+              setBasketItems([]);
+              showDelight('Order placed!', `${shopName} is getting everything ready. We will keep you posted.`, 'celebrate');
+              openScreen('orders');
+            }}
             onBack={() => openScreen('home')}
           />
         )}
@@ -2831,15 +3073,36 @@ function SokoEatsApp() {
   );
 
 }
-function SplashScreen({ onContinue }: { onContinue: () => void }) {
+function SplashScreen({ onContinue, ready }: { onContinue: () => void; ready: boolean }) {
   const insets = useSafeAreaInsets();
   const reduceMotion = useContext(ReduceMotionContext);
+  const [loadingMoment, setLoadingMoment] = useState(0);
+  const continued = useRef(false);
   const splashFooterLiftStyle = useMemo(
     () => ({ paddingBottom: Math.max(insets.bottom + 64, 104) }),
     [insets.bottom]
   );
   const float = useRef(new Animated.Value(0)).current;
   const spin = useRef(new Animated.Value(0)).current;
+  const loadingMoments = ['Finding nearby favourites...', 'Warming up your neighbourhood...', 'Almost ready to eat...'];
+
+  const continueOnce = () => {
+    if (!ready || continued.current) return;
+    continued.current = true;
+    onContinue();
+  };
+
+  useEffect(() => {
+    if (!ready) return undefined;
+    const timer = setTimeout(continueOnce, reduceMotion ? 900 : 2200);
+    return () => clearTimeout(timer);
+  }, [ready, reduceMotion]);
+
+  useEffect(() => {
+    if (reduceMotion) return undefined;
+    const timer = setInterval(() => setLoadingMoment((value) => (value + 1) % loadingMoments.length), 760);
+    return () => clearInterval(timer);
+  }, [reduceMotion]);
 
   useEffect(() => {
     if (reduceMotion) return;
@@ -2862,15 +3125,16 @@ function SplashScreen({ onContinue }: { onContinue: () => void }) {
 
   const translateY = float.interpolate({ inputRange: [0, 1], outputRange: [0, -15] });
   const rotate = spin.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] });
+  const logoScale = float.interpolate({ inputRange: [0, 1], outputRange: [1, 1.045] });
 
   return (
     <View style={[styles.splashPage, splashFooterLiftStyle]}>
       <View style={styles.brandStack}>
-        <View style={styles.logoTile}>
+        <Animated.View style={[styles.logoTile, { transform: [{ rotate: '6deg' }, { scale: logoScale }] }]}>
           <AppIcon name="bag" size={42} color={colors.onPrimaryContainer} />
-        </View>
+        </Animated.View>
         <Text style={styles.splashBrand}>SokoEats</Text>
-        <Text style={styles.splashTagline}>Everything You Need, Delivered.</Text>
+        <Text style={styles.splashTagline}>Good things from nearby, on their way to you.</Text>
       </View>
 
       <View style={styles.splashHeroWrap}>
@@ -2896,9 +3160,9 @@ function SplashScreen({ onContinue }: { onContinue: () => void }) {
         <View style={styles.spinnerOuter}>
           <Animated.View style={[styles.spinnerInner, { transform: [{ rotate }] }]} />
         </View>
-        <Text style={styles.loadingText}>Sourcing Freshness...</Text>
-        <TouchableOpacity style={styles.softAction} onPress={onContinue} activeOpacity={0.85}>
-          <Text style={styles.softActionText}>Launch SokoEats</Text>
+        <Text style={styles.loadingText}>{ready ? loadingMoments[loadingMoment] : 'Preparing your experience...'}</Text>
+        <TouchableOpacity style={[styles.softAction, !ready && styles.disabledButton]} disabled={!ready} onPress={continueOnce} activeOpacity={0.85}>
+          <Text style={styles.softActionText}>Let's eat</Text>
         </TouchableOpacity>
         <View style={styles.kenyaTag}>
           <Text style={styles.kenyaText}>MADE WITH PRIDE IN KENYA</Text>
@@ -2919,9 +3183,9 @@ function OnboardingScreen({ onNext, onSkip }: { onNext: () => void; onSkip: () =
   const insets = useSafeAreaInsets();
   const [step, setStep] = useState(0);
   const pages = [
-    { title: 'Discover shops around you', subtitle: 'Browse restaurants, groceries, pharmacies, gas, and electronics before creating an account.', image: images.pilau, icon: 'search' as IconName },
-    { title: 'Build your basket freely', subtitle: 'Open a shop, compare its full catalogue, and keep your selected items while you sign in.', image: images.groceries, icon: 'bag' as IconName },
-    { title: 'Pay securely and track delivery', subtitle: 'Use M-Pesa or card after login, then receive verified order and delivery updates.', image: images.deliveryBanner, icon: 'bike' as IconName },
+    { title: 'Your neighbourhood, ready when you are', subtitle: 'Discover trusted restaurants, groceries, pharmacies and everyday essentials nearby.', image: images.pilau, icon: 'search' as IconName },
+    { title: 'A basket that remembers', subtitle: 'Take your time choosing. Your picks stay with you while you browse and sign in.', image: images.groceries, icon: 'bag' as IconName },
+    { title: 'The happy part: it is on the way', subtitle: 'Pay securely with M-Pesa or card and follow every meaningful delivery update.', image: images.deliveryBanner, icon: 'bike' as IconName },
   ];
   const page = pages[step];
   const finish = () => step === pages.length - 1 ? onNext() : setStep((value) => value + 1);
@@ -2937,7 +3201,7 @@ function OnboardingScreen({ onNext, onSkip }: { onNext: () => void; onSkip: () =
       <MotionReveal key={`copy-${step}`} delay={70} distance={10} style={styles.onboardingCopy}><Text style={styles.onboardingTitle}>{page.title}</Text><Text style={styles.onboardingSubtitle}>{page.subtitle}</Text></MotionReveal>
       <View style={styles.onboardingControls}>
         <View style={styles.dots}>{pages.map((_, index) => <TouchableOpacity key={index} onPress={() => setStep(index)} style={index === step ? styles.dotActive : styles.dot} />)}</View>
-        <MotionButton style={styles.primaryButton} onPress={finish} activeOpacity={0.9}><Text style={styles.primaryButtonText}>{step === pages.length - 1 ? 'Start shopping' : 'Next'}</Text><Image source={nextArrowIcon} style={styles.buttonArrowImage} /></MotionButton>
+        <MotionButton style={styles.primaryButton} onPress={finish} activeOpacity={0.9}><Text style={styles.primaryButtonText}>{step === pages.length - 1 ? 'Find something lovely' : 'Show me more'}</Text><Image source={nextArrowIcon} style={styles.buttonArrowImage} /></MotionButton>
       </View>
       <SourceLedger />
     </View>
@@ -2957,6 +3221,7 @@ function HomeScreen({
   refreshing,
   onRefresh,
   wallet,
+  offers,
 }: {
   user: AuthUser | null;
   activeChip: string;
@@ -2970,15 +3235,24 @@ function HomeScreen({
   refreshing: boolean;
   onRefresh: () => Promise<void>;
   wallet: GenericPayload;
+  offers: MarketplaceOffer[];
 }) {
   const maps = useContext(MapsContext) || fallbackMaps;
+  const { showDialog } = useAppDialog();
+  const { showDelight } = useAppDelight();
+  const liveShopCount = shops.filter((shop) => shop.acceptingOrders !== false && shop.deliveryAvailable !== false).length;
+  const greeting = `${timeGreeting()}, ${user ? firstName(user.name) : 'neighbour'}`;
+  const refreshWithDelight = async () => {
+    await onRefresh();
+    showDelight('Fresh picks are ready', liveShopCount ? `${liveShopCount} nearby shop${liveShopCount === 1 ? '' : 's'} checked in.` : 'We checked your neighbourhood for new shops.', 'success');
+  };
   return (
     <View style={styles.shell}>
       <View style={styles.homeHeader}>
         <View style={styles.headerProfileRow}>
           {user?.avatarUrl ? <Image source={{ uri: user.avatarUrl }} style={styles.avatar} /> : <View style={styles.iconCircle}><AppIcon name="person" size={20} color={colors.primary} /></View>}
           <View>
-            <Text style={styles.caption}>{user ? `Welcome back, ${user.name}` : 'Browse as guest'}</Text>
+            <Text style={styles.caption}>{greeting}</Text>
             <View style={styles.locationRow}>
               <AppIcon name="pin" size={15} color={colors.primary} style={styles.inlineIcon} />
               <Text style={styles.locationText}>{user?.city || 'Choose your delivery area at checkout'}</Text>
@@ -2990,7 +3264,7 @@ function HomeScreen({
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} colors={[colors.primary]} />}>
+      <ScrollView contentContainerStyle={styles.homeContent} showsVerticalScrollIndicator={false} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshWithDelight} tintColor={colors.primary} colors={[colors.primary]} />}>
         <MotionReveal style={styles.searchCard}>
           <AppIcon name="search" size={19} color={colors.outline} style={styles.searchIcon} />
           <TextInput
@@ -3002,29 +3276,32 @@ function HomeScreen({
           <TouchableOpacity onPress={onScan} style={styles.searchActionButton}><AppIcon name="qr" size={19} color={colors.primary} /></TouchableOpacity>
         </MotionReveal>
 
-        <MotionReveal delay={45} style={styles.riderQuickGrid}>
+        <MotionReveal delay={30} distance={8} style={styles.homeMomentCard}>
+          <View style={styles.homeMomentIcon}><AppIcon name="heart" size={18} color={colors.error} /></View>
+          <View style={styles.homeMomentCopy}>
+            <Text style={styles.homeMomentTitle}>{liveShopCount ? 'Your neighbourhood is ready' : 'Good things are getting closer'}</Text>
+            <Text style={styles.homeMomentText}>{liveShopCount ? `${liveShopCount} live shop${liveShopCount === 1 ? '' : 's'} nearby, with clear prices before you pay.` : 'Pull down to check for newly opened local shops.'}</Text>
+          </View>
+        </MotionReveal>
+
+        <MotionReveal delay={70} style={styles.riderQuickGrid}>
           <MotionButton style={styles.riderQuickButton} onPress={onWallet}><Text style={styles.riderQuickTitle}>Soko Wallet</Text><Text style={styles.riderQuickText}>{user ? `${wallet.balance || 'KSh 0'} available` : 'Sign in to view your balance'}</Text></MotionButton>
           <MotionButton style={styles.riderQuickButton} onPress={onScan}><Text style={styles.riderQuickTitle}>Scan to Pay</Text><Text style={styles.riderQuickText}>Pay verified shops with M-Pesa or card</Text></MotionButton>
         </MotionReveal>
 
         <MotionReveal delay={90}><MapPanel title={maps.customer.nearbyVendors.title || 'Nearby vendors'} subtitle={user?.city ? `Live shops around ${user.city}` : 'Use your location to find nearby shops'} map={maps.customer.nearbyVendors.map} actionUrl={maps.customer.nearbyVendors.actionUrl} actionLabel="Open map" /></MotionReveal>
 
-        <MotionReveal delay={120}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoScroller}>
-          <PromoBanner
-            image={images.deliveryBanner}
-            tone="primary"
-            tag="WEEKEND SPECIAL"
-            title="Free delivery this weekend"
-            body="Order from any top restaurant and pay zero delivery fees."
-          />
-          <PromoBanner
-            image={images.mpesaBanner}
-            tone="secondary"
-            tag="PARTNER OFFER"
-            title="M-Pesa cashback offers"
-            body="Get up to KES 500 back on your first 3 M-Pesa payments."
-          />
-        </ScrollView></MotionReveal>
+        {!!offers.length && <MotionReveal delay={120}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.promoScroller}>
+          {offers.map((offer) => <PromoBanner
+            key={offer.id}
+            image={offer.id === 'smart-basket' ? images.deliveryBanner : images.mpesaBanner}
+            tone={offer.tone}
+            tag={offer.tag}
+            title={offer.title}
+            body={offer.body}
+            onPress={() => showDialog(offer.title, offer.details, 'success')}
+          />)}
+        </ScrollView></MotionReveal>}
 
         <MotionReveal delay={165} style={styles.categoryGrid}>
           {categories.map((category) => (
@@ -3041,15 +3318,16 @@ function HomeScreen({
           <Text style={styles.sectionTitle}>Kenyan Favourites</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipsRow}>
             {chips.map((chip) => (
-              <Pressable
+              <MotionButton
                 key={chip}
                 onPress={() => onChipChange(chip)}
                 style={[styles.chip, activeChip === chip ? styles.chipActive : styles.chipIdle]}
+                pressedScale={0.94}
               >
                 <Text style={[styles.chipText, activeChip === chip ? styles.chipTextActive : styles.chipTextIdle]}>
                   {chip}
                 </Text>
-              </Pressable>
+              </MotionButton>
             ))}
           </ScrollView>
         </View>
@@ -3255,6 +3533,7 @@ function PartnerMobilePanel() {
       await load();
     }catch(reason){setError(reason instanceof Error?reason.message:'Shop image could not be uploaded.');setBusy(false);}
   };
+
   if(!data)return <View style={styles.signedInCard}><Text style={styles.vendorName}>Partner operations</Text><Text style={styles.smsBody}>{busy?'Loading live shop data...':error||'No shop operations available.'}</Text>{!busy&&<TouchableOpacity style={styles.primaryButton} onPress={load}><Text style={styles.primaryButtonText}>Try again</Text></TouchableOpacity>}</View>;
   return <>
     <View style={styles.signedInCard}>{data.vendor.imageUrl?<Image source={{uri:data.vendor.imageUrl}} style={styles.partnerShopImage}/>:<AppIcon name="grid" size={44} color={colors.primary}/>}<View style={styles.sectionHeadingRow}><Text style={styles.vendorName}>{data.vendor.name}</Text><Text style={styles.discountText}>{data.vendor.acceptingOrders===false?'Paused':'Open'}</Text></View><Text style={styles.smsBody}>{data.vendor.address}</Text><Text style={styles.secureText}>Rating {data.ratings.average.toFixed(1)} / 5 from {data.ratings.count} delivered orders</Text><TouchableOpacity disabled={busy} style={styles.favouriteAddButton} onPress={uploadBrandImage}><AppIcon name="image" size={18} color={colors.primary}/><Text style={styles.openShopText}>{busy?'Uploading...':'Change shop image'}</Text></TouchableOpacity></View>
@@ -3269,6 +3548,7 @@ function PartnerMobilePanel() {
 }
 
 function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, onRider, refreshing, onRefresh }: { authSession: AuthSession | null; onAuthenticated: (session: AuthSession) => Promise<void>; onSignOut: () => Promise<void>; onBack: () => void; onRider: () => Promise<void>; refreshing: boolean; onRefresh: () => Promise<void> }) {
+  const { showDialog } = useAppDialog();
   const maps = useContext(MapsContext) || fallbackMaps;
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [role, setRole] = useState<UserRole>('customer');
@@ -3447,7 +3727,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
       return;
     }
     if (!GOOGLE_WEB_CLIENT_ID) {
-      Alert.alert('Google sign-in not configured', 'The Google web client ID is required.');
+      showDialog('Google sign-in not configured', 'The Google web client ID is required.', 'error');
       return;
     }
     console.info('[SokoEats][Auth] google:native-start', { packageName: 'com.paulmbugua2.sokoeats', hasWebClient: true, firebaseProjectId: FIREBASE_PROJECT_ID || null });
@@ -3975,23 +4255,26 @@ function PromoBanner({
   tag,
   title,
   body,
+  onPress,
 }: {
   image: string;
   tone: 'primary' | 'secondary';
   tag: string;
   title: string;
   body: string;
+  onPress: () => void;
 }) {
   return (
-    <ImageBackground source={{ uri: image }} style={styles.promoCard} imageStyle={styles.promoImage}>
-      <View style={[styles.promoOverlay, tone === 'primary' ? styles.primaryOverlay : styles.secondaryOverlay]}>
-        <Text style={[styles.promoTag, tone === 'primary' ? styles.primaryPromoTag : styles.secondaryPromoTag]}>
-          {tag}
-        </Text>
-        <Text style={styles.promoTitle}>{title}</Text>
-        <Text style={styles.promoBody}>{body}</Text>
-      </View>
-    </ImageBackground>
+    <MotionButton style={styles.promoCard} onPress={onPress} activeOpacity={0.92} pressedScale={0.985}>
+      <ImageBackground source={{ uri: image }} style={styles.promoCardFill} imageStyle={styles.promoImage}>
+        <View style={[styles.promoOverlay, tone === 'primary' ? styles.primaryOverlay : styles.secondaryOverlay]}>
+          <Text style={[styles.promoTag, tone === 'primary' ? styles.primaryPromoTag : styles.secondaryPromoTag]}>{tag}</Text>
+          <Text style={styles.promoTitle}>{title}</Text>
+          <Text style={styles.promoBody}>{body}</Text>
+          <View style={styles.promoAction}><Text style={styles.promoActionText}>View offer</Text><AppIcon name="chevron" size={14} color="#fff" /></View>
+        </View>
+      </ImageBackground>
+    </MotionButton>
   );
 }
 
@@ -4083,6 +4366,8 @@ function ShopCard({ shop, rating, onRate, onReorder, onOpen }: { shop: ShopListi
 
 
 function ShopDetailScreen({ shop, sections, similarItems, loading, error, onBack, onAddItem, onCheckout, favourites, onToggleFavourite, refreshing, onRefresh }: { shop: ShopListing; sections: ShopMenuSection[]; similarItems: ShopMenuItem[]; loading: boolean; error: string; onBack: () => void; onAddItem: (shop: ShopListing, item: ShopMenuItem, quantity: number) => void; onCheckout: () => void; favourites: FavouriteItem[]; onToggleFavourite: (shop: ShopListing, item: ShopMenuItem) => void; refreshing: boolean; onRefresh: () => Promise<void> }) {
+  const { showDialog } = useAppDialog();
+  const reduceMotion = useContext(ReduceMotionContext);
   const [activeSection, setActiveSection] = useState('All');
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [addedCount, setAddedCount] = useState(0);
@@ -4096,9 +4381,17 @@ function ShopDetailScreen({ shop, sections, similarItems, loading, error, onBack
     const quantity = quantities[item.id] || 1;
     onAddItem(shop, item, quantity);
     setAddedCount((prev) => prev + quantity);
-    setAddedMessage(`${quantity}x ${item.name} added`);
+    setAddedMessage(`Lovely choice - ${quantity}x ${item.name} is in your basket`);
     basketFeedback.stopAnimation();
     basketFeedback.setValue(0);
+    if (reduceMotion) {
+      basketFeedback.setValue(1);
+      Animated.sequence([
+        Animated.delay(1300),
+        Animated.timing(basketFeedback, { toValue: 0, duration: 0, useNativeDriver: true }),
+      ]).start();
+      return;
+    }
     Animated.sequence([
       Animated.spring(basketFeedback, { toValue: 1, speed: 24, bounciness: 7, useNativeDriver: true }),
       Animated.delay(1300),
@@ -4184,7 +4477,7 @@ function ShopDetailScreen({ shop, sections, similarItems, loading, error, onBack
         </Animated.View>
       )}
       <View style={styles.shopBasketBar}>
-        <MotionButton style={styles.placeOrderButton} onPress={selectedCount ? onCheckout : () => Alert.alert('Choose products', 'Add at least one product before reviewing your basket.')} activeOpacity={0.9}>
+        <MotionButton style={styles.placeOrderButton} onPress={selectedCount ? onCheckout : () => showDialog('Choose products', 'Add at least one product before reviewing your basket.', 'warning')} activeOpacity={0.9}>
           <AppIcon name="bag" size={18} color={colors.onPrimaryContainer} />
           <Text style={styles.placeOrderText}>Review basket{selectedCount ? ` (${selectedCount})` : ''}</Text>
         </MotionButton>
@@ -4274,6 +4567,7 @@ function ScanQrScreen({ data, onBack, onScanned, onFallback }: { data: GenericPa
 }
 
 function ConfirmPaymentScreen({ data, draft, onBack, onFallback, onSuccess }: { data: GenericPayload; draft: ScanPaymentDraft | null; onBack: () => void; onFallback: () => void; onSuccess: (success: GenericPayload, history: GenericPayload) => void }) {
+  const { showDialog } = useAppDialog();
   const [amount, setAmount] = useState(draft?.amount ? String(draft.amount) : '');
   const phone = draft?.phone || '';
   const [notes, setNotes] = useState(draft?.notes || '');
@@ -4289,7 +4583,7 @@ function ConfirmPaymentScreen({ data, draft, onBack, onFallback, onSuccess }: { 
   }, [draft?.merchantQr]);
   const startOrVerify = async () => {
     if (!draft) {
-      Alert.alert('Scan required', 'Scan a valid SokoEats merchant QR before confirming payment.');
+      showDialog('Scan required', 'Scan a valid SokoEats merchant QR before confirming payment.', 'warning');
       return;
     }
     const numericAmount = Number(amount);
@@ -4426,6 +4720,7 @@ function CheckoutScreen({
   onBack: () => void;
 }) {
   const maps = useContext(MapsContext) || fallbackMaps;
+  const { showDialog } = useAppDialog();
   const insets = useSafeAreaInsets();
   const checkoutFooterSafeStyle = useMemo(() => ({ paddingBottom: Math.max(insets.bottom + 48, 84) }), [insets.bottom]);
   const [phone, setPhone] = useState('');
@@ -4489,7 +4784,7 @@ function CheckoutScreen({
   const createOrderAfterPayment = async (reference: string) => {
     const mobile = normalizeCheckoutPhone(phone);
     if (!mobile) {
-      Alert.alert('Mobile number required', 'Enter a valid Kenyan mobile number for payment and order updates.');
+      showDialog('Mobile number required', 'Enter a valid Kenyan mobile number for payment and order updates.', 'warning');
       return;
     }
     setPlacing(true);
@@ -4499,7 +4794,7 @@ function CheckoutScreen({
         const providerMessage = confirmed.payment.providerMessage || confirmed.payment.promptMessage || 'Payment is still pending. Complete the prompt before SokoEats places the order.';
         setPendingPayment(confirmed.payment);
         setCheckoutStatus(providerMessage);
-        Alert.alert(confirmed.payment.status === 'failed' ? 'Payment failed' : 'Payment pending', providerMessage);
+        showDialog(confirmed.payment.status === 'failed' ? 'Payment failed' : 'Payment pending', providerMessage, confirmed.payment.status === 'failed' ? 'error' : 'warning');
         return;
       }
       const result = await sokoeatsApi<CheckoutOrderResult>('/api/orders', {
@@ -4524,7 +4819,7 @@ function CheckoutScreen({
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Checkout failed';
       setCheckoutStatus(message);
-      Alert.alert('Checkout blocked', message);
+      showDialog('Checkout blocked', message, 'error');
     } finally {
       setPlacing(false);
     }
@@ -4534,7 +4829,7 @@ function CheckoutScreen({
     const mobile = normalizeCheckoutPhone(paymentPhone !== undefined ? paymentPhone : phone);
     if (!mobile) {
       const message = 'Enter a valid Kenyan mobile number for payment verification and order updates.';
-      Alert.alert('Mobile number required', message);
+      showDialog('Mobile number required', message, 'warning');
       return;
     }
     if (!pricingQuote) { setCheckoutStatus('Wait for live delivery pricing before paying.'); return; }
@@ -4565,7 +4860,7 @@ function CheckoutScreen({
       const message = err instanceof Error ? err.message : 'Unable to start payment';
       console.warn('[SokoEats][Paystack][mobile] checkout-error', { method: paymentMethod, phone: maskCheckoutPhone(paymentPhone !== undefined ? paymentPhone : phone), message });
       setCheckoutStatus(message);
-      Alert.alert('Payment required', message);
+      showDialog('Payment required', message, 'error');
     } finally {
       setPlacing(false);
     }
@@ -4594,7 +4889,7 @@ function CheckoutScreen({
       setCheckoutStatus('Complete Paystack payment using M-Pesa or card, then return to SokoEats and confirm payment to place your order.');
       void WebBrowser.openBrowserAsync(pendingPayment.actionUrl).catch(() => {
         setCardCheckoutOpened(false);
-        Alert.alert('Paystack unavailable', 'Unable to open Paystack checkout. Try again.');
+        showDialog('Paystack unavailable', 'Unable to open Paystack checkout. Try again.', 'error');
       });
       return;
     }
@@ -5403,19 +5698,20 @@ const styles = StyleSheet.create({
   },
   promoCard: {
     width: 322,
-    height: 176,
+    height: 196,
     borderRadius: 20,
     overflow: 'hidden',
     marginRight: 16,
     backgroundColor: colors.surfaceContainerHigh,
   },
+  promoCardFill: { flex: 1 },
   promoImage: {
     borderRadius: 20,
   },
   promoOverlay: {
     flex: 1,
     justifyContent: 'center',
-    padding: 22,
+    padding: 18,
   },
   primaryOverlay: {
     backgroundColor: 'rgba(144,77,0,0.82)',
@@ -5444,18 +5740,20 @@ const styles = StyleSheet.create({
   },
   promoTitle: {
     color: '#fff',
-    fontSize: 24,
-    lineHeight: 30,
+    fontSize: 22,
+    lineHeight: 27,
     fontWeight: '800',
-    maxWidth: 240,
+    maxWidth: 270,
   },
   promoBody: {
     marginTop: 6,
     color: 'rgba(255,255,255,0.92)',
-    fontSize: 14,
-    lineHeight: 20,
-    maxWidth: 220,
+    fontSize: 13,
+    lineHeight: 18,
+    maxWidth: 270,
   },
+  promoAction: { marginTop: 8, flexDirection: 'row', alignItems: 'center', gap: 5 },
+  promoActionText: { color: '#fff', fontSize: 12, lineHeight: 16, fontWeight: '900' },
   categoryGrid: {
     marginTop: 26,
     flexDirection: 'row',
@@ -7024,4 +7322,27 @@ const styles = StyleSheet.create({
   partnerMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   partnerMetricCard: { width: '48%', minHeight: 118, borderRadius: 15, padding: 14, backgroundColor: colors.surfaceContainerLowest, borderWidth: 1, borderColor: colors.outlineVariant, justifyContent: 'space-between' },
   partnerMetricValue: { color: colors.onSurface, fontSize: 19, fontWeight: '900' },
+  delightRoot: { flex: 1 },
+  delightWrap: { position: 'absolute', left: 16, right: 16, zIndex: 200, elevation: 30 },
+  delightCard: { minHeight: 68, borderRadius: 18, paddingHorizontal: 14, paddingVertical: 12, backgroundColor: colors.surfaceContainerLowest, borderWidth: 1, borderColor: colors.outlineVariant, flexDirection: 'row', alignItems: 'center', gap: 12, shadowColor: '#000', shadowOpacity: 0.16, shadowRadius: 18, shadowOffset: { width: 0, height: 8 }, elevation: 18 },
+  delightIcon: { width: 42, height: 42, borderRadius: 21, alignItems: 'center', justifyContent: 'center' },
+  delightCopy: { flex: 1 },
+  delightTitle: { color: colors.onSurface, fontSize: 15, lineHeight: 20, fontWeight: '900' },
+  delightMessage: { marginTop: 2, color: colors.onSurfaceVariant, fontSize: 12, lineHeight: 17, fontWeight: '600' },
+  delightConfetti: { height: 16, paddingHorizontal: 18, flexDirection: 'row', justifyContent: 'space-around', alignItems: 'center' },
+  delightConfettiDot: { width: 7, height: 11, borderRadius: 3 },
+  homeMomentCard: { minHeight: 76, marginTop: 12, borderRadius: 16, padding: 14, backgroundColor: '#fff7ef', borderWidth: 1, borderColor: '#f6d8be', flexDirection: 'row', alignItems: 'center' },
+  homeMomentIcon: { width: 42, height: 42, borderRadius: 21, backgroundColor: colors.errorContainer, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  homeMomentCopy: { flex: 1 },
+  homeMomentTitle: { color: colors.onSurface, fontSize: 14, lineHeight: 19, fontWeight: '900' },
+  homeMomentText: { marginTop: 2, color: colors.onSurfaceVariant, fontSize: 12, lineHeight: 17, fontWeight: '600' },
+  dialogBackdrop: { flex: 1, backgroundColor: 'rgba(12,22,18,0.62)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 },
+  dialogCard: { width: '100%', maxWidth: 420, maxHeight: '82%', borderRadius: 20, backgroundColor: colors.surfaceContainerLowest, padding: 22, alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 24, shadowOffset: { width: 0, height: 12 }, elevation: 16 },
+  dialogIcon: { width: 52, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginBottom: 16 },
+  dialogTitle: { color: colors.onSurface, fontSize: 21, lineHeight: 27, fontWeight: '900', textAlign: 'center' },
+  dialogMessageScroll: { width: '100%', flexShrink: 1, marginTop: 8 },
+  dialogMessageContent: { flexGrow: 1, justifyContent: 'center' },
+  dialogMessage: { color: colors.onSurfaceVariant, fontSize: 15, lineHeight: 22, textAlign: 'center' },
+  dialogButton: { width: '100%', minHeight: 50, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginTop: 22 },
+  dialogButtonText: { color: '#fff', fontSize: 15, fontWeight: '900' },
 });

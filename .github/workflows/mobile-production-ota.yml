@@ -1,0 +1,52 @@
+name: Publish mobile production OTA
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - apps/mobile/**
+      - packages/shared/**
+      - package.json
+      - yarn.lock
+      - .github/workflows/mobile-production-ota.yml
+  workflow_dispatch:
+
+concurrency:
+  group: sokoeats-mobile-production-ota
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: corepack enable
+      - run: yarn install --immutable
+      - uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+      - name: Type-check mobile
+        run: yarn workspace @sokoeats/mobile type-check
+      - name: Guard the native compatibility boundary
+        id: compatibility
+        shell: bash
+        run: |
+          changed="$(git diff --name-only HEAD^ HEAD)"
+          if echo "$changed" | grep -Eq '^(apps/mobile/(android/|ios/|app\.config\.|eas\.json|package\.json)|yarn\.lock$)'; then
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            echo "Native configuration or dependencies changed. Use an EAS Build instead of OTA."
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Publish Android update
+        if: steps.compatibility.outputs.publish == 'true'
+        working-directory: apps/mobile
+        run: eas update --channel production --platform android --environment production --non-interactive --message "main@${GITHUB_SHA::7}"

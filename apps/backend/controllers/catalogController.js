@@ -5,6 +5,41 @@ import { itemPricing } from '../services/commercePricing.js';
 
 const shopTypes = new Set(['restaurants', 'groceries', 'pharmacy', 'gas', 'electronics']);
 
+const nonNegativeEnvNumber = (name, fallback) => {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+};
+
+export function buildMarketplaceOffers() {
+  const serviceFeeBps = nonNegativeEnvNumber('SOKOEATS_SERVICE_FEE_BPS', 400);
+  const minimumOrder = nonNegativeEnvNumber('SOKOEATS_MINIMUM_ORDER', 300);
+  const smallOrderFee = nonNegativeEnvNumber('SOKOEATS_SMALL_ORDER_FEE', 50);
+  const serviceFeePercent = Number((serviceFeeBps / 100).toFixed(2));
+
+  return [
+    {
+      id: 'first-order-service-fee',
+      tag: 'FIRST ORDER',
+      title: `${serviceFeePercent}% service fee on us`,
+      body: 'A customer\'s first completed order gets its service fee waived automatically.',
+      details: 'The saving is applied at checkout when the account has no previous paid order. Delivery, small-order fees and VAT remain payable where applicable.',
+      tone: 'secondary',
+    },
+    {
+      id: 'smart-basket',
+      tag: 'SMART BASKET',
+      title: `Spend KSh ${minimumOrder}, save KSh ${smallOrderFee}`,
+      body: `Reach KSh ${minimumOrder} in items and the small-order fee disappears.`,
+      details: `Add items from one shop until the item subtotal reaches KSh ${minimumOrder}. The KSh ${smallOrderFee} small-order fee is then removed automatically. Delivery remains route-priced so rider earnings are protected.`,
+      tone: 'primary',
+    },
+  ];
+}
+
+export function marketplaceOffers(_req, res) {
+  res.json({ offers: buildMarketplaceOffers() });
+}
+
 function normalizeShopType(value) {
   const key = String(value || '').trim().toLowerCase();
   return shopTypes.has(key) ? key : '';
