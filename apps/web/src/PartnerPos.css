@@ -1,0 +1,143 @@
+.partnerPos {
+  max-width: 1200px;
+  margin: 0 auto 24px;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+.posHeading {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 18px;
+  padding: 18px 0 12px;
+  border-bottom: 1px solid #ccd8d1;
+}
+
+.posHeading > div:first-child > span {
+  color: #a04e00;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.posHeading h2 { margin: 3px 0 2px; font-size: 28px; }
+.posHeading p { margin: 0; color: #68756e; }
+.posCounter { min-width: 78px; text-align: right; }
+.posCounter strong { display: block; color: #173f2f; font-size: 29px; line-height: 1; }
+.posCounter span { color: #68756e; font-size: 12px; font-weight: 800; text-transform: uppercase; }
+
+.posWorkspace {
+  display: grid;
+  grid-template-columns: minmax(300px, .8fr) minmax(0, 1.35fr);
+  min-height: 520px;
+  overflow: hidden;
+  background: #fff;
+  border: 1px solid #ccd8d1;
+  border-radius: 7px;
+}
+
+.scannerPanel { padding: 18px; background: #f6f8f7; border-right: 1px solid #dce4df; }
+.scannerViewport {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #13231d;
+  color: #fff;
+}
+
+.scannerViewport video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0; }
+.scannerViewport.active video { opacity: 1; }
+.scannerIdle { position: relative; z-index: 2; display: grid; justify-items: center; gap: 6px; color: #dce9e3; }
+.scannerIdle svg { width: 38px; height: 38px; color: #58d597; }
+.scannerIdle span { color: #9eb1a8; font-size: 12px; }
+.scannerReticle { position: absolute; z-index: 3; inset: 17%; pointer-events: none; }
+.scannerReticle i { position: absolute; width: 26px; height: 26px; border-color: #65eea8; border-style: solid; }
+.scannerReticle i:nth-child(1) { top: 0; left: 0; border-width: 3px 0 0 3px; }
+.scannerReticle i:nth-child(2) { top: 0; right: 0; border-width: 3px 3px 0 0; }
+.scannerReticle i:nth-child(3) { bottom: 0; left: 0; border-width: 0 0 3px 3px; }
+.scannerReticle i:nth-child(4) { right: 0; bottom: 0; border-width: 0 3px 3px 0; }
+.scannerReticle > svg { position: absolute; top: calc(50% - 13px); left: calc(50% - 13px); width: 26px; height: 26px; color: #65eea8; opacity: .8; }
+.scannerClose { position: absolute; z-index: 5; top: 9px; right: 9px; width: 38px; height: 38px; display: grid; place-items: center; border: 0; border-radius: 5px; background: #101b17d9; color: #fff; cursor: pointer; }
+.scannerClose svg { width: 18px; }
+.cameraAction { width: 100%; min-height: 44px; margin-top: 10px; display: flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 6px; background: #173f2f; color: #fff; font-weight: 850; cursor: pointer; }
+.cameraAction svg { width: 19px; }
+
+.manualScan { display: grid; gap: 6px; margin-top: 17px; }
+.manualScan label { display: flex; align-items: center; gap: 6px; color: #46564e; font-size: 12px; font-weight: 850; }
+.manualScan label svg { width: 16px; }
+.manualScan > div { display: grid; grid-template-columns: minmax(0, 1fr) 44px; }
+.manualScan input { min-width: 0; height: 44px; box-sizing: border-box; padding: 0 11px; border: 1px solid #bdcac3; border-right: 0; border-radius: 6px 0 0 6px; background: #fff; color: #17211d; }
+.manualScan button { height: 44px; display: grid; place-items: center; border: 0; border-radius: 0 6px 6px 0; background: #ff9100; color: #17211d; cursor: pointer; }
+.manualScan button svg { width: 19px; }
+
+.scanNotice { min-height: 36px; margin-top: 9px; padding: 7px 10px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; border-radius: 5px; background: #e8eeeb; color: #4b5b53; font-size: 12px; font-weight: 750; overflow-wrap: anywhere; }
+.scanNotice > span { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: #8da198; }
+.scanNotice.success { background: #dff3e8; color: #155c39; }
+.scanNotice.success > span { background: #168255; }
+.scanNotice.error { background: #fff0ee; color: #942b20; }
+.scanNotice.error > span { background: #bd372b; }
+
+.posQuickPicks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 14px; }
+.posQuickPicks button { min-width: 0; min-height: 88px; padding: 7px; display: grid; grid-template-columns: 34px minmax(0, 1fr); grid-template-rows: 1fr auto; align-items: center; gap: 3px 7px; border: 1px solid #d6dfda; border-radius: 6px; background: #fff; color: #17211d; text-align: left; cursor: pointer; }
+.posQuickPicks img, .posQuickPicks svg { grid-row: 1 / 3; width: 34px; height: 34px; object-fit: cover; border-radius: 4px; background: #edf2ef; }
+.posQuickPicks span { overflow: hidden; font-size: 11px; font-weight: 850; text-overflow: ellipsis; white-space: nowrap; }
+.posQuickPicks b { color: #a04e00; font-size: 10px; white-space: nowrap; }
+
+.salePanel { min-width: 0; display: flex; flex-direction: column; background: #fff; }
+.saleTitle { min-height: 69px; padding: 14px 18px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; gap: 10px; border-bottom: 1px solid #e1e8e4; }
+.saleTitle span { color: #68756e; font-size: 11px; font-weight: 850; text-transform: uppercase; }
+.saleTitle h3 { margin: 2px 0 0; font-size: 20px; }
+.saleTitle > button { min-height: 38px; padding: 8px 10px; display: flex; align-items: center; gap: 6px; border: 1px solid #d3ddd8; border-radius: 5px; background: #fff; color: #5d6b64; font-weight: 750; cursor: pointer; }
+.saleTitle > button svg { width: 16px; }
+.saleLines { flex: 1; min-height: 320px; max-height: 500px; overflow: auto; }
+.saleLines article { padding: 12px 18px; display: grid; grid-template-columns: 54px minmax(130px, 1fr) auto auto 38px; gap: 11px; align-items: center; border-bottom: 1px solid #edf1ef; }
+.saleLines article > img, .saleImageFallback { width: 54px; height: 54px; display: grid; place-items: center; border-radius: 5px; object-fit: cover; background: #eef3f0; }
+.saleImageFallback svg { width: 23px; color: #788a80; }
+.saleProduct { min-width: 0; display: grid; gap: 2px; }
+.saleProduct b, .saleProduct span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.saleProduct span { color: #708078; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 10px; }
+.saleProduct small { color: #68756e; }
+.quantityStepper { height: 36px; display: grid; grid-template-columns: 34px 30px 34px; align-items: center; overflow: hidden; border: 1px solid #d5dfda; border-radius: 5px; }
+.quantityStepper button { height: 100%; display: grid; place-items: center; border: 0; background: #f3f6f4; color: #173f2f; cursor: pointer; }
+.quantityStepper button svg { width: 14px; }
+.quantityStepper strong { font-size: 13px; text-align: center; }
+.lineTotal { min-width: 82px; font-size: 13px; text-align: right; }
+.removeLine { width: 36px; height: 36px; display: grid; place-items: center; border: 0; border-radius: 5px; background: #fff0ee; color: #a3271e; cursor: pointer; }
+.removeLine svg { width: 16px; }
+.emptySale { min-height: 320px; height: 100%; padding: 24px; display: grid; place-content: center; justify-items: center; color: #68756e; text-align: center; }
+.emptySale svg { width: 42px; height: 42px; color: #9bada3; }
+.emptySale h3 { margin: 10px 0 3px; color: #27352e; }
+.emptySale p { margin: 0; }
+.saleSummary { min-height: 77px; padding: 14px 18px; box-sizing: border-box; display: flex; justify-content: space-between; align-items: center; gap: 18px; background: #13231d; color: #fff; }
+.saleSummary > div { display: grid; gap: 2px; }
+.saleSummary span { color: #b5c5bd; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.saleGrandTotal { text-align: right; }
+.saleGrandTotal strong { color: #ffad3f; font-size: 25px; }
+
+@media (max-width: 900px) {
+  .posWorkspace { grid-template-columns: 1fr; }
+  .scannerPanel { border-right: 0; border-bottom: 1px solid #dce4df; }
+  .saleLines { max-height: none; }
+}
+
+@media (max-width: 600px) {
+  .partnerPos { padding: 0 16px; }
+  .posHeading { align-items: center; }
+  .posHeading h2 { font-size: 24px; }
+  .posHeading p { font-size: 13px; }
+  .posWorkspace { min-height: 0; }
+  .scannerPanel { padding: 14px; }
+  .posQuickPicks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .saleLines article { padding: 11px 13px; grid-template-columns: 46px minmax(0, 1fr) 36px; gap: 9px; }
+  .saleLines article > img, .saleImageFallback { width: 46px; height: 46px; }
+  .quantityStepper { grid-column: 2; width: 98px; height: 34px; }
+  .lineTotal { grid-column: 2; min-width: 0; text-align: left; }
+  .removeLine { grid-column: 3; grid-row: 1; }
+  .saleSummary { position: sticky; bottom: 0; }
+  .saleGrandTotal strong { font-size: 22px; }
+}

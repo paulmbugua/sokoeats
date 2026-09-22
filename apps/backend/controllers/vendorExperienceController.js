@@ -24,6 +24,7 @@ function menuItemJson(row) {
     available: Boolean(row.available),
     imageUrl: row.image_url,
     unitLabel: row.unit_label,
+    barcode: row.barcode || undefined,
     sortOrder: Number(row.sort_order || 0),
   };
 }
@@ -367,14 +368,20 @@ export async function createMerchantMenuItem(req, res, next) {
     );
     const section = sections[0];
     const { rows } = await pool.query(
-      `INSERT INTO sokoeats_menu_items (vendor_id, section_id, name, description, price, category, popular, available, image_url, unit_label, sort_order)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `INSERT INTO sokoeats_menu_items (vendor_id, section_id, name, description, price, category, popular, available, image_url, unit_label, barcode, sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
        RETURNING *`,
-      [vendor.id, section.id, req.body.name, req.body.description || '', Math.round(price), section.title, req.body.popular === true, req.body.available !== false, req.body.imageUrl || null, req.body.unitLabel || null, req.body.sortOrder || 0],
+      [vendor.id, section.id, req.body.name, req.body.description || '', Math.round(price), section.title, req.body.popular === true, req.body.available !== false, req.body.imageUrl || null, req.body.unitLabel || null, req.body.barcode || null, req.body.sortOrder || 0],
     );
     const menu = await loadVendorMenu(vendor.slug);
     res.status(201).json({ item: menuItemJson({ ...rows[0], commission_rate_bps: vendor.commission_rate_bps, vat_registered: vendor.vat_registered }), menu, categorization: { category: sectionTitle, source: suppliedCategory ? 'partner' : 'sokoeats-auto' } });
-  } catch (err) { next(err); }
+  } catch (err) {
+    if (err?.code === '23505') {
+      err.status = 409;
+      err.message = 'This barcode or QR number is already assigned to another product in your catalogue';
+    }
+    next(err);
+  }
 }
 
 export async function createMerchantMenuCategory(req, res, next) {
@@ -410,16 +417,20 @@ export async function updateMerchantMenuItem(req, res, next) {
     );
     const { rows } = await client.query(
       `UPDATE sokoeats_menu_items SET section_id=$1, category=$2, name=$3, description=$4, price=$5,
-       image_url=$6, unit_label=$7, available=$8, popular=$9, sort_order=$10, updated_at=NOW()
-       WHERE id::text=$11 AND vendor_id=$12 RETURNING *`,
+       image_url=$6, unit_label=$7, barcode=$8, available=$9, popular=$10, sort_order=$11, updated_at=NOW()
+       WHERE id::text=$12 AND vendor_id=$13 RETURNING *`,
       [sections[0].id, title, req.body.name, req.body.description || '', req.body.price,
-        req.body.imageUrl || null, req.body.unitLabel || null, req.body.available, req.body.popular,
+        req.body.imageUrl || null, req.body.unitLabel || null, req.body.barcode || null, req.body.available, req.body.popular,
         req.body.sortOrder, req.params.id, vendor.id],
     );
     await client.query('COMMIT');
     res.json({ item: menuItemJson({ ...rows[0], commission_rate_bps: vendor.commission_rate_bps, vat_registered: vendor.vat_registered }), categorization: { category: title, source: suppliedCategory ? 'partner' : 'sokoeats-auto' } });
   } catch (err) {
     if (client) await client.query('ROLLBACK');
+    if (err?.code === '23505') {
+      err.status = 409;
+      err.message = 'This barcode or QR number is already assigned to another product in your catalogue';
+    }
     next(err);
   } finally { client?.release(); }
 }

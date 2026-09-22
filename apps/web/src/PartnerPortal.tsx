@@ -27,6 +27,7 @@ import type { MenuItem } from '@sokoeats/shared/types';
 import { DeliveryBoard } from './DeliveryBoard';
 import { ApplicationTracker } from './CustomerCareChat';
 import { PartnerTerms, type TermsConsent } from './PartnerTerms';
+import { PartnerPos } from './PartnerPos';
 
 type Session = StoredAuthSession;
 type StoreProfile = {
@@ -102,6 +103,7 @@ export function PartnerPortal({ session, onSignOut }: { session: Session; onSign
     price: '',
     sectionTitle: '',
     unitLabel: '',
+    barcode: '',
   });
   const [file, setFile] = useState<File | null>(null);
   const [busy, setBusy] = useState(false);
@@ -184,7 +186,7 @@ export function PartnerPortal({ session, onSignOut }: { session: Session; onSign
 
   const resetEditor = () => {
     setEditing(null);
-    setItem({ name: '', description: '', price: '', sectionTitle: '', unitLabel: '' });
+    setItem({ name: '', description: '', price: '', sectionTitle: '', unitLabel: '', barcode: '' });
     setFile(null);
     if (fileInput.current) fileInput.current.value = '';
   };
@@ -200,6 +202,7 @@ export function PartnerPortal({ session, onSignOut }: { session: Session; onSign
       price: String(entry.price),
       sectionTitle: entry.category,
       unitLabel: entry.unitLabel || '',
+      barcode: entry.barcode || '',
     });
     editor.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     nameInput.current?.focus({ preventScroll: true });
@@ -388,6 +391,9 @@ export function PartnerPortal({ session, onSignOut }: { session: Session; onSign
     if (item.description.length > 500)
       return setMessage('Product description must be 500 characters or fewer.');
     if (item.unitLabel.length > 40) return setMessage('Unit must be 40 characters or fewer.');
+    const barcode = item.barcode.trim();
+    if (barcode && (barcode.length < 3 || barcode.length > 120 || !/^[A-Za-z0-9._:/+-]+$/.test(barcode)))
+      return setMessage('Barcode or QR number must be 3 to 120 letters, numbers or standard code symbols.');
     if (sectionTitle && (sectionTitle.length < 2 || sectionTitle.length > 80))
       return setMessage('Category name must contain 2 to 80 characters.');
     setBusy(true);
@@ -406,6 +412,7 @@ export function PartnerPortal({ session, onSignOut }: { session: Session; onSign
           name,
           description: item.description,
           unitLabel: item.unitLabel,
+          barcode: barcode || null,
           sectionTitle,
           price,
           imageUrl,
@@ -836,6 +843,7 @@ export function PartnerPortal({ session, onSignOut }: { session: Session; onSign
           </div>
         </section>
       )}
+      {menu && <PartnerPos vendorId={menu.vendor.id || session.user.id} items={menu.items} />}
       <DeliveryBoard partner />
       <section className="partnerWorkspace">
         <aside>
@@ -920,6 +928,16 @@ export function PartnerPortal({ session, onSignOut }: { session: Session; onSign
                   />
                 </label>
               </div>
+              <label>
+                Barcode or QR number
+                <input
+                  maxLength={120}
+                  value={item.barcode}
+                  onChange={(e) => setItem({ ...item, barcode: e.target.value })}
+                  placeholder="6161101234567"
+                  autoComplete="off"
+                />
+              </label>
               <div className="pricePreview">
                 <span>You receive before statutory deductions</span>
                 <strong>{money(partnerPrice)}</strong>
@@ -993,6 +1011,7 @@ export function PartnerPortal({ session, onSignOut }: { session: Session; onSign
                         {money(entry.customerPrice ?? Math.round(entry.price * 1.1))} customer price
                       </strong>
                       <small>{money(entry.price)} partner amount</small>
+                      {entry.barcode && <small>Code {entry.barcode}</small>}
                     </div>
                     <div className="productActions">
                       <button

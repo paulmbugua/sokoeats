@@ -25,7 +25,7 @@ test('product mutations require ownership and perform transactional updates', as
     if (sql.includes('UPDATE sokoeats_menu_items')) {
       assert.deepEqual(values.slice(-2), ['item-id', 'owned-vendor']);
       if (failUpdate) throw new Error('Database write failed');
-      return { rows: [{ id: 'item-id', vendor_id: 'owned-vendor', section_id: 'section-id', name: values[2], price: values[4], image_url: values[5], available: values[7] }] };
+      return { rows: [{ id: 'item-id', vendor_id: 'owned-vendor', section_id: 'section-id', name: values[2], price: values[4], image_url: values[5], barcode: values[7], available: values[8] }] };
     }
     if (sql.startsWith('DELETE FROM sokoeats_menu_items')) {
       assert.deepEqual(values, ['item-id', 'owned-vendor']);
@@ -37,7 +37,7 @@ test('product mutations require ownership and perform transactional updates', as
   pool.connect = async () => ({ query, release() { released++; } });
   async function call(handler) {
     let status = 200, data, error;
-    const body = merchantMenuItemUpdateSchema.validate({ name: 'Fresh Juice', price: 250, sectionTitle: 'Drinks', imageUrl: 'https://example.invalid/juice.jpg', available: false }).value;
+    const body = merchantMenuItemUpdateSchema.validate({ name: 'Fresh Juice', price: 250, sectionTitle: 'Drinks', imageUrl: 'https://example.invalid/juice.jpg', barcode: '6161101234567', available: false }).value;
     await handler({ auth: { sub: 'authenticated-owner' }, params: { id: 'item-id' }, body }, { status(code) { status = code; return this; }, json(value) { data = value; } }, err => { error = err; });
     return { status, data, error };
   }
@@ -46,6 +46,7 @@ test('product mutations require ownership and perform transactional updates', as
     assert.equal(result.error, undefined);
     assert.equal(result.data.item.name, 'Fresh Juice');
     assert.equal(result.data.item.price, 250);
+    assert.equal(result.data.item.barcode, '6161101234567');
     assert.equal(result.data.item.available, false);
     assert.ok(queries.some(entry => entry.sql === 'COMMIT'));
     assert.equal(released, 1);
@@ -74,4 +75,6 @@ test('update validator rejects invalid prices and accepts automatic categories',
     assert.ok(merchantMenuItemUpdateSchema.validate({ name: 'Meal', price }).error);
   }
   assert.equal(merchantMenuItemUpdateSchema.validate({ name: 'Meal', price: 100, sectionTitle: '' }).error, undefined);
+  assert.equal(merchantMenuItemUpdateSchema.validate({ name: 'Meal', price: 100, barcode: ' 6161101234567 ' }).value.barcode, '6161101234567');
+  assert.ok(merchantMenuItemUpdateSchema.validate({ name: 'Meal', price: 100, barcode: 'bad code!' }).error);
 });
