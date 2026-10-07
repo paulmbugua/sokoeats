@@ -1,10 +1,12 @@
 import { Router } from 'express';
-import { createTicket, listTickets, updateTicket } from '../controllers/ticketController.js';
+import { createTicket, getMyTicket, listMyTickets, listTickets, updateTicket } from '../controllers/ticketController.js';
 import { validate } from '../validators/validate.js';
 import { requireAuth, requireRole } from '../middleware/auth.js';
 import { createTicketSchema, updateTicketSchema } from '../validators/ticketValidator.js';
 const router = Router();
 router.get('/tickets', requireAuth, requireRole('admin', 'support'), listTickets);
-router.post('/tickets', validate(createTicketSchema), createTicket);
+router.get('/tickets/mine', requireAuth, listMyTickets);
+router.get('/tickets/mine/:id', requireAuth, getMyTicket);
+router.post('/tickets', requireAuth, validate(createTicketSchema), createTicket);
 router.patch('/tickets/:id', requireAuth, requireRole('admin', 'support'), validate(updateTicketSchema), updateTicket);
 export default router;

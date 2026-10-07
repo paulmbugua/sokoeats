@@ -13,6 +13,8 @@ export const registerSchema = Joi.object({
   termsAcceptance,
   role,
   fullName: Joi.string().min(2).max(120),
+  firstName: Joi.string().trim().min(1).max(60),
+  lastName: Joi.string().trim().min(1).max(60),
   name: Joi.string().min(2).max(120),
   email: Joi.string().email().required(),
   phone,
@@ -61,6 +63,8 @@ export const changePasswordSchema = Joi.object({
 
 export const googleAuthSchema = Joi.object({
   role,
+  firstName: Joi.string().trim().min(1).max(60),
+  lastName: Joi.string().trim().min(1).max(60),
   idToken: Joi.string().min(100).required(),
   phone,
   city: Joi.string().max(80),
@@ -91,6 +95,8 @@ export const deleteAccountSchema = Joi.object({
 export const updateProfileSchema = Joi.object({
   termsAcceptance,
   fullName: Joi.string().min(2).max(120),
+  firstName: Joi.string().trim().min(1).max(60),
+  lastName: Joi.string().trim().min(1).max(60),
   name: Joi.string().min(2).max(120),
   phone,
   city: Joi.string().max(80),

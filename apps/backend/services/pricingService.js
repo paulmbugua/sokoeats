@@ -14,7 +14,7 @@ export function distanceKm(a, b) {
 }
 
 async function geocode(address, city) {
-  const key = process.env.GOOGLE_MAPS_SERVER_API_KEY || process.env.GOOGLE_MAPS_API_KEY;
+  const key = process.env.GOOGLE_MAPS_SERVER_API_KEY;
   if (!key) throw Object.assign(new Error('Google Maps pricing is not configured'), { status: 503 });
   const cleanAddress = String(address || '').trim();
   const cleanCity = String(city || '').trim();
@@ -65,22 +65,16 @@ export function developmentRouteEstimate(origin, destination) {
 }
 
 async function route(origin, destination) {
-  const serverKey = process.env.GOOGLE_MAPS_SERVER_API_KEY;
-  const key = serverKey || process.env.GOOGLE_MAPS_API_KEY;
-  const globalTestLocations = process.env.NODE_ENV !== 'production' && process.env.SOKOEATS_ALLOW_GLOBAL_TEST_LOCATIONS === 'true';
-  if (!key) {
-    if (globalTestLocations) return developmentRouteEstimate(origin, destination);
-    throw Object.assign(new Error('Google Maps routing is not configured'), { status: 503 });
-  }
+  const key = process.env.GOOGLE_MAPS_SERVER_API_KEY;
+  if (!key) throw Object.assign(new Error('Google Maps routing is not configured'), { status: 503 });
   const straightDistanceKm = distanceKm(origin, destination);
   console.info('[SokoEats][Pricing] route-request', {
-    keyType: serverKey ? 'server' : 'android-fallback',
+    keyType: 'server',
     straightDistanceKm: Number(straightDistanceKm.toFixed(3)),
-    globalTestLocations,
   });
   const response = await fetch('https://routes.googleapis.com/directions/v2:computeRoutes', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline' },
+    headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': key, 'X-Goog-FieldMask': 'routes.distanceMeters,routes.duration,routes.staticDuration,routes.polyline.encodedPolyline' },
     body: JSON.stringify({ origin: { location: { latLng: { latitude: origin.lat, longitude: origin.lng } } }, destination: { location: { latLng: { latitude: destination.lat, longitude: destination.lng } } }, travelMode: 'DRIVE', routingPreference: 'TRAFFIC_AWARE' }),
   });
   const payload = await response.json().catch(() => ({}));
@@ -90,34 +84,39 @@ async function route(origin, destination) {
       httpStatus: response.status,
       providerStatus: payload.error?.status || null,
       providerMessage: payload.error?.message || null,
-      keyType: serverKey ? 'server' : 'android-fallback',
+      keyType: 'server',
       straightDistanceKm: Number(straightDistanceKm.toFixed(3)),
     });
-    if (globalTestLocations) {
-      const estimate = developmentRouteEstimate(origin, destination);
-      console.info('[SokoEats][Pricing] development-route-estimate', { distanceKm: estimate.distanceKm, durationMin: estimate.durationMin });
-      return estimate;
-    }
     if ([401, 403].includes(response.status)) {
       throw Object.assign(new Error('Google Routes is not authorized for the backend server key. Configure GOOGLE_MAPS_SERVER_API_KEY with Routes API access.'), { status: 503, code: 'GOOGLE_ROUTES_NOT_AUTHORIZED' });
     }
     throw Object.assign(new Error('A delivery route could not be calculated for this address'), { status: 422 });
   }
-  return { distanceKm: Number(first.distanceMeters) / 1000, durationMin: Math.max(1, Math.ceil(Number(String(first.duration || '0s').replace('s', '')) / 60)), polyline: first.polyline?.encodedPolyline || null, source: 'google_routes' };
+  const durationMin = Math.max(1, Math.ceil(Number(String(first.duration || '0s').replace('s', '')) / 60));
+  const staticDurationMin = Math.max(1, Math.ceil(Number(String(first.staticDuration || first.duration || '0s').replace('s', '')) / 60));
+  return { distanceKm: Number(first.distanceMeters) / 1000, durationMin, staticDurationMin, trafficRatio: Number((durationMin / staticDurationMin).toFixed(2)), polyline: first.polyline?.encodedPolyline || null, source: 'google_routes' };
 }
 
-async function activeSurge(client, vendor, origin) {
+async function activeSurge(client, vendor, origin, routeData) {
   const demand = await client.query(`SELECT
     (SELECT COUNT(*)::int FROM sokoeats_orders WHERE vendor_id=$1 AND status IN ('placed','accepted','preparing','ready') AND created_at > NOW()-INTERVAL '30 minutes') AS open_orders,
-    (SELECT COUNT(DISTINCT rider_user_id)::int FROM sokoeats_rider_locations WHERE captured_at > NOW()-INTERVAL '10 minutes') AS active_riders`, [vendor.id]);
+    (SELECT COUNT(DISTINCT rider_user_id)::int FROM sokoeats_rider_locations
+      WHERE captured_at > NOW()-INTERVAL '10 minutes'
+        AND 6371 * acos(LEAST(1,GREATEST(-1,
+          cos(radians($2)) * cos(radians(latitude::double precision)) * cos(radians(longitude::double precision)-radians($3))
+          + sin(radians($2)) * sin(radians(latitude::double precision))
+        ))) <= $4) AS active_riders`, [vendor.id, origin.lat, origin.lng, Math.max(5, Number(vendor.service_radius_km || 20))]);
   const openOrders = Number(demand.rows[0].open_orders || 0);
   const activeRiders = Number(demand.rows[0].active_riders || 0);
   const pressure = openOrders / Math.max(activeRiders, 1);
-  const demandMultiplier = pressure >= 6 ? 1.5 : pressure >= 4 ? 1.3 : pressure >= 2 ? 1.15 : 1;
+  const demandAdjustment = pressure >= 6 ? 0.5 : pressure >= 4 ? 0.35 : pressure >= 2 ? 0.2 : pressure >= 1 ? 0.1 : 0;
+  const trafficRatio = Number(routeData.trafficRatio || 1);
+  const trafficAdjustment = trafficRatio >= 1.75 ? 0.2 : trafficRatio >= 1.5 ? 0.15 : trafficRatio >= 1.25 ? 0.1 : trafficRatio >= 1.1 ? 0.05 : 0;
   const zones = await client.query(`SELECT * FROM sokoeats_surge_zones WHERE active=true AND (starts_at IS NULL OR starts_at<=NOW()) AND (ends_at IS NULL OR ends_at>=NOW())`);
   const zone = zones.rows.filter((item) => distanceKm(origin, { lat: Number(item.center_latitude), lng: Number(item.center_longitude) }) <= Number(item.radius_km)).sort((a, b) => Number(b.multiplier) - Number(a.multiplier))[0];
-  const multiplier = Math.min(1.75, Math.max(demandMultiplier, Number(zone?.multiplier || 1)));
-  return { multiplier, openOrders, activeRiders, pressure: Number(pressure.toFixed(2)), zone: zone?.name || null };
+  const computedMultiplier = 1 + demandAdjustment + trafficAdjustment;
+  const multiplier = Number(Math.min(1.75, Math.max(computedMultiplier, Number(zone?.multiplier || 1))).toFixed(2));
+  return { multiplier, openOrders, activeRiders, pressure: Number(pressure.toFixed(2)), trafficRatio, trafficDelayMinutes: Math.max(0, routeData.durationMin - routeData.staticDurationMin), zone: zone?.name || null, source: 'google_routes_and_live_supply' };
 }
 
 async function menuLines(client, vendor, items) {
@@ -188,19 +187,15 @@ export async function createPricingQuote(client, { userId, vendorId, vendorSlug,
   const destination = hasDeliveryPin
     ? { lat: Number(latitude), lng: Number(longitude) }
     : await geocode(deliveryAddress, city);
-  const globalTestLocations = process.env.NODE_ENV !== 'production' && process.env.SOKOEATS_ALLOW_GLOBAL_TEST_LOCATIONS === 'true';
   const coverage = await resolveCoverage(client, destination.lat, destination.lng);
-  if (!coverage.serviceable && !globalTestLocations) throw Object.assign(new Error(coverage.message), { status: 422, code: 'DELIVERY_AREA_COMING_SOON' });
+  if (!coverage.serviceable) throw Object.assign(new Error(coverage.message), { status: 422, code: 'DELIVERY_AREA_COMING_SOON' });
   if (coverage.serviceable) {
     const vendorZone = await client.query(`SELECT 1 FROM sokoeats_vendor_delivery_zones WHERE vendor_id=$1 AND zone_id=$2 AND active=true`, [vendor.id, coverage.zone.id]);
     if (!vendorZone.rows[0]) throw Object.assign(new Error(`${vendor.name} does not currently deliver to this zone`), { status: 422, code: 'VENDOR_OUTSIDE_DELIVERY_ZONE' });
-  } else {
-    console.info('[SokoEats][Pricing] global-test-route', { vendorId: vendor.id, coverageBypassed: true });
   }
   const routeData = await route(origin, destination);
   if (routeData.distanceKm > Number(vendor.service_radius_km || 20)) {
-    if (!globalTestLocations) throw Object.assign(new Error(`This address is outside ${vendor.name}'s ${vendor.service_radius_km} km delivery area`), { status: 422 });
-    console.info('[SokoEats][Pricing] global-test-radius-bypass', { vendorId: vendor.id, routeDistanceKm: routeData.distanceKm, configuredRadiusKm: Number(vendor.service_radius_km || 20) });
+    throw Object.assign(new Error(`This address is outside ${vendor.name}'s ${vendor.service_radius_km} km delivery area`), { status: 422 });
   }
   const lines = await menuLines(client, vendor, items);
   const subtotal = lines.reduce((sum, line) => sum + line.lineTotal, 0);
@@ -219,7 +214,7 @@ export async function createPricingQuote(client, { userId, vendorId, vendorSlug,
   const firstOrderOffer = !previousOrder.rows[0].has_order;
   const waivedServiceFee = firstOrderOffer ? standardServiceFee : 0;
   const serviceFee = standardServiceFee - waivedServiceFee;
-  const demand = await activeSurge(client, vendor, origin);
+  const demand = await activeSurge(client, vendor, origin, routeData);
   const surgeFee = Math.round(deliveryFee * (demand.multiplier - 1));
   const riderSurgeBonus = Math.round(surgeFee * 0.7);
   const vendorSurgeBonus = Math.round(surgeFee * 0.1);
@@ -236,7 +231,9 @@ export async function createPricingQuote(client, { userId, vendorId, vendorSlug,
 }
 
 export function publicQuote(row) {
-  return { id: row.id, subtotal: Number(row.subtotal), taxableSubtotal: Number(row.taxable_subtotal || 0), vatRateBps: Number(row.vat_rate_bps || 0), vatAmount: Number(row.vat_amount || 0), smallOrderFee: Number(row.small_order_fee || 0), minimumOrder: Number(row.minimum_order || DEFAULT_MINIMUM_ORDER), amountToMinimum: Number(row.amount_to_minimum || 0), deliveryFee: Number(row.delivery_fee), deliveryBreakdown: row.delivery_breakdown || {}, serviceFee: Number(row.service_fee), waivedServiceFee: Number(row.waived_service_fee || 0), firstOrderOffer: Boolean(row.first_order_offer), surgeFee: Number(row.surge_fee), discountAmount: Number(row.discount_amount), total: Number(row.total), distanceKm: Number(row.distance_km), durationMin: Number(row.duration_min), surgeMultiplier: Number(row.surge_multiplier), expiresAt: row.expires_at, route: { encodedPolyline: row.route_polyline, destination: { lat: Number(row.dropoff_latitude), lng: Number(row.dropoff_longitude) }, navigationUrl: `https://www.google.com/maps/dir/?api=1&destination=${row.dropoff_latitude},${row.dropoff_longitude}&travelmode=driving` } };
+  const baseDeliveryFee = Number(row.delivery_fee);
+  const surgeFee = Number(row.surge_fee || 0);
+  return { id: row.id, subtotal: Number(row.subtotal), taxableSubtotal: Number(row.taxable_subtotal || 0), vatRateBps: Number(row.vat_rate_bps || 0), vatAmount: Number(row.vat_amount || 0), smallOrderFee: Number(row.small_order_fee || 0), minimumOrder: Number(row.minimum_order || DEFAULT_MINIMUM_ORDER), amountToMinimum: Number(row.amount_to_minimum || 0), baseDeliveryFee, deliveryFee: baseDeliveryFee + surgeFee, deliveryBreakdown: { ...(row.delivery_breakdown || {}), surgeFee, finalDeliveryFee: baseDeliveryFee + surgeFee }, serviceFee: Number(row.service_fee), waivedServiceFee: Number(row.waived_service_fee || 0), firstOrderOffer: Boolean(row.first_order_offer), surgeFee, surgeReason: row.demand_snapshot || {}, riderSurgeBonus: Number(row.rider_surge_bonus || 0), discountAmount: Number(row.discount_amount), total: Number(row.total), distanceKm: Number(row.distance_km), durationMin: Number(row.duration_min), surgeMultiplier: Number(row.surge_multiplier), expiresAt: row.expires_at, route: { encodedPolyline: row.route_polyline, destination: { lat: Number(row.dropoff_latitude), lng: Number(row.dropoff_longitude) }, navigationUrl: `https://www.google.com/maps/dir/?api=1&destination=${row.dropoff_latitude},${row.dropoff_longitude}&travelmode=driving` } };
 }
 
 export async function lockedQuote(client, quoteId, userId) {

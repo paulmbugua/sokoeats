@@ -42,14 +42,15 @@ import { getLastNotificationResponse, notificationReceivedListener, notification
 
 WebBrowser.maybeCompleteAuthSession();
 
-type Screen = 'splash' | 'onboarding' | 'home' | 'categories' | 'shopDetail' | 'orders' | 'favourites' | 'accountAccess' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'resolvedTicketDetail';
+type Screen = 'splash' | 'onboarding' | 'home' | 'categories' | 'shopDetail' | 'orders' | 'favourites' | 'accountAccess' | 'checkout' | 'walletHome' | 'walletTopUp' | 'walletWithdraw' | 'scanQr' | 'confirmPayment' | 'paymentSuccessful' | 'transactionHistory' | 'riderHome' | 'activeDelivery' | 'riderOnboardingWelcome' | 'riderPersonal' | 'riderVehicle' | 'riderDocuments' | 'riderApplicationSuccess' | 'riderEarnings' | 'riderPayout' | 'riderLeaderboard' | 'riderProfile' | 'riderIncidentReport' | 'riderIncidentConfirmation' | 'riderHelpCenter' | 'riderLiveChat' | 'riderOrderDetail' | 'riderTraining' | 'riderLesson' | 'riderQuiz' | 'riderQuizResults' | 'referralHome' | 'referralContacts' | 'referralSent' | 'referralShare' | 'referralRewards' | 'supportTicketHistory' | 'newSupportTicket' | 'resolvedTicketDetail';
 type PaymentMethod = 'mpesa' | 'card' | 'paystack';
 type UserRole = 'customer' | 'rider' | 'vendor' | 'merchant' | 'support' | 'admin';
-type AuthUser = { id: string; name: string; email: string; phone?: string | null; role: UserRole; status?: string; applicationReference?: string | null; authProvider?: string; avatarUrl?: string | null; city?: string | null; defaultAddress?: string | null; emailVerified?: boolean; phoneVerified?: boolean; profileComplete?: boolean; termsAccepted?: boolean; termsVersion?: string | null; missingProfileFields?: string[]; profile?: Record<string, unknown> };
+type AuthUser = { id: string; name: string; firstName?: string; lastName?: string; email: string; phone?: string | null; role: UserRole; status?: string; applicationReference?: string | null; authProvider?: string; avatarUrl?: string | null; city?: string | null; defaultAddress?: string | null; emailVerified?: boolean; phoneVerified?: boolean; profileComplete?: boolean; termsAccepted?: boolean; termsVersion?: string | null; missingProfileFields?: string[]; profile?: Record<string, unknown> };
 type AuthSession = { token: string; expiresAt: string; user: AuthUser };
 type CheckoutPayment = { reference: string; method: PaymentMethod; amount: number; status: string; actionUrl?: string; promptMessage?: string; providerMessage?: string | null; providerReference?: string; simulation?: boolean };
 type CheckoutOrderResult = { order: { code: string; total: number; paymentStatus: string } };
-type PricingQuote = { id: string; subtotal: number; taxableSubtotal: number; vatRateBps: number; vatAmount: number; smallOrderFee: number; minimumOrder: number; amountToMinimum: number; deliveryFee: number; deliveryBreakdown: { baseFee?: number; minimumFee?: number; distanceFee?: number; timeFee?: number }; serviceFee: number; waivedServiceFee: number; firstOrderOffer: boolean; surgeFee: number; discountAmount: number; total: number; distanceKm: number; durationMin: number; surgeMultiplier: number; expiresAt: string; route: { encodedPolyline?: string | null; destination: { lat: number; lng: number }; navigationUrl: string } };
+type PricingQuote = { id: string; subtotal: number; taxableSubtotal: number; vatRateBps: number; vatAmount: number; smallOrderFee: number; minimumOrder: number; amountToMinimum: number; baseDeliveryFee?: number; deliveryFee: number; deliveryBreakdown: { baseFee?: number; minimumFee?: number; distanceFee?: number; timeFee?: number; surgeFee?: number; finalDeliveryFee?: number }; serviceFee: number; waivedServiceFee: number; firstOrderOffer: boolean; surgeFee: number; riderSurgeBonus?: number; surgeReason?: Record<string, unknown>; discountAmount: number; total: number; distanceKm: number; durationMin: number; surgeMultiplier: number; expiresAt: string; route: { encodedPolyline?: string | null; destination: { lat: number; lng: number }; navigationUrl: string } };
+type SupportTicket = { id: string; code: string; orderId?: string | null; subject: string; body: string; status: string; priority: string; assignedTeam: string; createdAt: string; updatedAt: string; messages?: Array<{ id: string; senderName: string; body: string; createdAt: string }> };
 type NativeVersionUpdate = { platform: 'android' | 'ios'; currentVersion: string; latestVersion: string; minimumVersion?: string; available: boolean; required: boolean; storeUrl?: string; title?: string; message?: string };
 type NativeVersionResponse = { update?: NativeVersionUpdate };
 type UpdateSheetKind = 'native' | 'ota';
@@ -2534,7 +2535,13 @@ function SokoEatsApp() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('paystack');
   const [riderHome, setRiderHome] = useState<RiderHomePayload | null>(null);
   const [activeDelivery, setActiveDelivery] = useState<ActiveDeliveryPayload | null>(null);
-  const [riderBatch, setRiderBatch] = useState<Record<string, GenericPayload>>({ ...fallbackRiderBatch, sokoeats_wallet: emptyWallet, full_transaction_history: { title: 'Wallet activity', tabs: ['All'], ranges: ['Recent'], transactions: [], footer: '' } });
+  const [supportTickets, setSupportTickets] = useState<SupportTicket[]>([]);
+  const [selectedSupportTicket, setSelectedSupportTicket] = useState<SupportTicket | null>(null);
+  const [riderBatch, setRiderBatch] = useState<Record<string, GenericPayload>>(() => ({
+    ...Object.fromEntries(Object.entries(fallbackRiderBatch).filter(([key]) => !['rider_earnings_dashboard', 'support_ticket_history', 'resolved_ticket_details_inc_82941'].includes(key))),
+    sokoeats_wallet: emptyWallet,
+    full_transaction_history: { title: 'Wallet activity', tabs: ['All'], ranges: ['Recent'], transactions: [], footer: '' },
+  }));
   const [maps, setMaps] = useState<MapsManifest>(fallbackMaps);
   const [selectedShopCategory, setSelectedShopCategory] = useState<ShopCategoryKey>('restaurants');
   const [shopRatings, setShopRatings] = useState<Record<string, number>>({});
@@ -2850,7 +2857,7 @@ function SokoEatsApp() {
       return;
     }
     const authorization = { Authorization: `Bearer ${session.token}` };
-    const [home, delivery, onboarding, earnings, payout, leaderboard, profile, support, referrals, liveMaps] = await Promise.all([
+    const [home, delivery, onboarding, earnings, payout, leaderboard, profile, support, referrals, liveMaps, ticketResult] = await Promise.all([
       sokoeatsApi<{ riderHome: RiderHomePayload }>('/api/rider/home', { headers: authorization }),
       sokoeatsApi<{ delivery: ActiveDeliveryPayload }>('/api/rider/active-delivery', { headers: authorization }),
       sokoeatsApi<{ onboarding: Record<string, GenericPayload> }>('/api/rider/onboarding', { headers: authorization }),
@@ -2861,16 +2868,13 @@ function SokoEatsApp() {
       sokoeatsApi<{ suite: Record<string, GenericPayload> }>('/api/rider/support-training-suite', { headers: authorization }),
       sokoeatsApi<{ referrals: Record<string, GenericPayload> }>('/api/rider/referrals-suite', { headers: authorization }),
       sokoeatsApi<{ maps: MapsManifest }>('/api/maps/manifest'),
+      sokoeatsApi<{ tickets: SupportTicket[] }>('/api/tickets/mine', { headers: authorization }),
     ]);
-    if (!home.riderHome?.request?.id || !/^https:\/\//i.test(home.riderHome.heatmapUrl || '')) {
-      throw new Error('The live rider request or surge map is unavailable. Try again when dispatch data is online.');
-    }
-    const mapLoaded = await Image.prefetch(home.riderHome.heatmapUrl);
-    if (!mapLoaded) throw new Error('The live surge map could not be loaded. Check your connection and retry.');
     if (!liveMaps.maps?.rider?.deliveryRequest?.map) throw new Error('Live rider navigation is unavailable.');
     setRiderHome(home.riderHome);
     setActiveDelivery(delivery.delivery);
     setMaps(liveMaps.maps);
+    setSupportTickets(ticketResult.tickets);
     setRiderBatch((current) => ({
       ...current,
       ...onboarding.onboarding,
@@ -3028,7 +3032,7 @@ function SokoEatsApp() {
         {screen === 'riderVehicle' && <RiderFormScreen data={riderBatch.vehicle_verification} onBack={() => openScreen('riderPersonal')} onNext={() => openScreen('riderDocuments')} />}
         {screen === 'riderDocuments' && <RiderDocumentsScreen data={riderBatch.document_uploads} onBack={() => openScreen('riderVehicle')} onSubmit={() => openScreen('riderApplicationSuccess')} />}
         {screen === 'riderApplicationSuccess' && <RiderSuccessScreen data={riderBatch.application_success} onBack={() => openScreen('riderHome')} />}
-        {screen === 'riderEarnings' && <RiderEarningsScreen data={riderBatch.rider_earnings_dashboard} onBack={() => openScreen('riderHome')} onCashOut={async () => { const next = await sokoeatsApi<{ payout: GenericPayload }>('/api/rider/payouts', { method: 'POST' }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, m_pesa_payout_confirmation: next.payout })); openScreen('riderPayout'); }} />}
+        {screen === 'riderEarnings' && <RiderEarningsScreen data={riderBatch.rider_earnings_dashboard} onBack={() => openScreen('riderHome')} />}
         {screen === 'riderPayout' && <RiderPayoutScreen data={riderBatch.m_pesa_payout_confirmation} onBack={() => openScreen('riderEarnings')} />}
         {screen === 'riderLeaderboard' && <RiderLeaderboardScreen data={riderBatch.rider_leaderboard} onBack={() => openScreen('riderHome')} />}
         {screen === 'riderProfile' && <RiderProfileScreen data={riderBatch.rider_profile_ratings} onBack={() => openScreen('riderHome')} />}
@@ -3040,14 +3044,15 @@ function SokoEatsApp() {
         {screen === 'riderLesson' && <RiderLessonScreen data={riderBatch.customer_service_lesson} onBack={() => openScreen('riderTraining')} onQuiz={() => openScreen('riderQuiz')} />}
         {screen === 'riderQuiz' && <RiderQuizScreen data={riderBatch.rider_training_quiz} onBack={() => openScreen('riderLesson')} onSubmit={async (selectedIndex) => { const next = await sokoeatsApi<{ results: GenericPayload }>('/api/rider/training/quiz/submissions', { method: 'POST', body: JSON.stringify({ selectedIndex }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, quiz_results_feedback: next.results })); openScreen('riderQuizResults'); }} />}
         {screen === 'riderQuizResults' && <RiderQuizResultsScreen data={riderBatch.quiz_results_feedback} onBack={() => openScreen('riderTraining')} />}
-        {screen === 'riderIncidentConfirmation' && <IncidentConfirmationScreen data={riderBatch.incident_confirmation_next_steps} onBack={() => openScreen('riderHome')} onTicket={() => openScreen('resolvedTicketDetail')} />}
+        {screen === 'riderIncidentConfirmation' && <IncidentConfirmationScreen data={riderBatch.incident_confirmation_next_steps} onBack={() => openScreen('riderHome')} onTicket={() => openScreen('supportTicketHistory')} />}
         {screen === 'referralHome' && <ReferralHomeScreen data={riderBatch.invite_friends_earn_rewards} onBack={() => openScreen('riderHome')} onInvite={() => openScreen('referralContacts')} onShare={() => openScreen('referralShare')} onRewards={() => openScreen('referralRewards')} />}
         {screen === 'referralContacts' && <SelectContactsScreen data={riderBatch.select_contacts} onBack={() => openScreen('referralHome')} onSent={async (ids) => { const next = await sokoeatsApi<{ success: GenericPayload }>('/api/rider/referrals/invitations', { method: 'POST', body: JSON.stringify({ contactIds: ids }) }).catch(() => null); if (next) setRiderBatch((prev) => ({ ...prev, invitations_sent_success: next.success })); openScreen('referralSent'); }} />}
         {screen === 'referralSent' && <ReferralSentScreen data={riderBatch.invitations_sent_success} onBack={() => openScreen('referralHome')} />}
         {screen === 'referralShare' && <ReferralShareScreen data={riderBatch.whatsapp_sharing_template} onBack={() => openScreen('referralHome')} />}
         {screen === 'referralRewards' && <ReferralRewardsScreen data={riderBatch.my_referral_rewards} onBack={() => openScreen('referralHome')} />}
-        {screen === 'supportTicketHistory' && <SupportTicketHistoryScreen data={riderBatch.support_ticket_history} onBack={() => openScreen('riderHome')} onTicket={() => openScreen('resolvedTicketDetail')} />}
-        {screen === 'resolvedTicketDetail' && <ResolvedTicketScreen data={riderBatch.resolved_ticket_details_inc_82941} onBack={() => openScreen('supportTicketHistory')} />}
+        {screen === 'supportTicketHistory' && <SupportTicketHistoryScreen tickets={supportTickets} onBack={() => openScreen('riderHome')} onNew={() => openScreen('newSupportTicket')} onTicket={async (ticket) => { const result = await sokoeatsApi<{ ticket: SupportTicket }>(`/api/tickets/mine/${ticket.id}`); setSelectedSupportTicket(result.ticket); openScreen('resolvedTicketDetail'); }} />}
+        {screen === 'newSupportTicket' && <NewSupportTicketScreen onBack={() => openScreen('supportTicketHistory')} onCreated={(ticket) => { setSupportTickets((current) => [ticket, ...current]); setSelectedSupportTicket(ticket); openScreen('resolvedTicketDetail'); }} />}
+        {screen === 'resolvedTicketDetail' && selectedSupportTicket && <SupportTicketDetailScreen ticket={selectedSupportTicket} onBack={() => openScreen('supportTicketHistory')} />}
         {screen === 'checkout' && (
           <CheckoutScreen
             subtotal={subtotal}
@@ -3560,6 +3565,8 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [role, setRole] = useState<UserRole>('customer');
   const [fullName, setFullName] = useState('');
+  const [profileFirstName, setProfileFirstName] = useState('');
+  const [profileLastName, setProfileLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
@@ -3717,6 +3724,9 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   useEffect(() => {
     if (!authSession?.user) return;
     const profile = authSession.user.profile || {};
+    const nameParts = authSession.user.name.trim().split(/\s+/).filter(Boolean);
+    setProfileFirstName(authSession.user.firstName || profileTextValue(profile, 'firstName') || nameParts[0] || '');
+    setProfileLastName(authSession.user.lastName || profileTextValue(profile, 'lastName') || nameParts.slice(1).join(' '));
     setPhone(authSession.user.phone || '');
     setCity(authSession.user.city || profileTextValue(profile, 'city') || 'Nairobi');
     setDefaultAddress(authSession.user.defaultAddress || profileTextValue(profile, 'defaultAddress') || profileTextValue(profile, 'address') || defaultAddress);
@@ -3798,6 +3808,8 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     if (!authSession) return;
     const payload = authPayload();
     const currentRole = authSession.user.role;
+    if (['customer', 'rider'].includes(currentRole) && !profileFirstName.trim()) return void focusField('profileFirstName', 'First name');
+    if (['customer', 'rider'].includes(currentRole) && !profileLastName.trim()) return void focusField('profileLastName', 'Last name');
     if (currentRole !== 'customer' && !authSession.user.termsAccepted && termsAcceptance?.role !== currentRole) return void focusField('termsAcceptance', 'Read and accept the terms of service');
     if (!payload.phone) return void focusField('phone', 'Mobile number');
     if (!payload.city) return void focusField('city', 'City');
@@ -3824,6 +3836,11 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
         preferredLanguage: payload.preferredLanguage,
         marketingOptIn: payload.marketingOptIn,
       };
+      if (['customer', 'rider'].includes(currentRole)) {
+        profilePayload.firstName = profileFirstName.trim();
+        profilePayload.lastName = profileLastName.trim();
+        profilePayload.fullName = `${profileFirstName.trim()} ${profileLastName.trim()}`;
+      }
       if (currentRole === 'customer') profilePayload.defaultAddress = payload.defaultAddress;
       if (currentRole === 'rider') {
         profilePayload.vehicleType = payload.vehicleType;
@@ -3904,6 +3921,10 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
               <Text style={styles.checkoutSubtitle}>Sign-in is complete. Add the details SokoEats needs for your account.</Text>
             </View>
             <ApplicationTracker user={user} request={sokoeatsApi}/>
+            {(['customer', 'rider'] as UserRole[]).includes(signedInRole) && <View style={styles.nameFieldsRow}>
+              <View onLayout={trackField('profileFirstName')} style={[styles.formFieldCard, styles.nameField]}><Text style={styles.upperLabel}>First name</Text><TextInput ref={inputRef('profileFirstName')} style={styles.formFieldInput} value={profileFirstName} onChangeText={setProfileFirstName} autoCapitalize="words" placeholder="First name" placeholderTextColor={colors.outline} /></View>
+              <View onLayout={trackField('profileLastName')} style={[styles.formFieldCard, styles.nameField]}><Text style={styles.upperLabel}>Last name</Text><TextInput ref={inputRef('profileLastName')} style={styles.formFieldInput} value={profileLastName} onChangeText={setProfileLastName} autoCapitalize="words" placeholder="Last name" placeholderTextColor={colors.outline} /></View>
+            </View>}
             <View onLayout={trackField('phone')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Mobile number</Text><TextInput ref={inputRef('phone')} style={styles.formFieldInput} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
             <View onLayout={trackField('city')} style={styles.formFieldCard}><Text style={styles.upperLabel}>City</Text><TextInput ref={inputRef('city')} style={styles.formFieldInput} value={city} onChangeText={setCity} placeholder="Nairobi" placeholderTextColor={colors.outline} /></View>
             {signedInRole === 'customer' && <View onLayout={trackField('defaultAddress')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Delivery address</Text><TextInput ref={inputRef('defaultAddress')} style={styles.formFieldInput} value={defaultAddress} onChangeText={setDefaultAddress} placeholder="Apartment, estate, street" placeholderTextColor={colors.outline} /></View>}
@@ -4182,8 +4203,10 @@ function RiderSuccessScreen({ data, onBack }: { data: GenericPayload; onBack: ()
   return <View style={styles.riderShell}><RiderScreenHeader title="Application Success" onBack={onBack} /><View style={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.illustrationUrl }} style={styles.successImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.upperLabel}>{data.step}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Check Status</Text></TouchableOpacity><Text style={styles.secureText}>{data.footer}</Text></View><SourceLedger /></View>;
 }
 
-function RiderEarningsScreen({ data, onBack, onCashOut }: { data: GenericPayload; onBack: () => void; onCashOut: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title="Earnings" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Text style={styles.checkoutSubtitle}>Habari, {data.riderName}!</Text><Text style={styles.checkoutTitle}>{data.title}</Text><View style={styles.balanceCard}><Text style={styles.upperLabel}>Available Balance</Text><Text style={styles.balanceText}>{data.balance}</Text><Text style={styles.restaurantMeta}>{data.lastPayout}</Text><TouchableOpacity style={styles.primaryButton} onPress={onCashOut}><Text style={styles.primaryButtonText}>Cash Out</Text></TouchableOpacity></View><View style={styles.riderStats}>{data.cards.map((card: GenericPayload) => <View style={styles.riderStat} key={card.label}><Text style={styles.upperLabel}>{card.label}</Text><Text style={styles.riderStatValue}>{card.value}</Text></View>)}</View><View style={styles.deliveryRequestCard}><Text style={styles.vendorName}>{data.chart.title}</Text><Text style={styles.restaurantMeta}>Total: {data.chart.total}</Text><View style={styles.mobileChart}>{data.chart.days.map((day: GenericPayload) => <View style={styles.mobileChartBar} key={day.day + day.value}><View style={[styles.mobileChartFill, { height: String(day.value) + '%' as any }]} /><Text style={styles.categoryLabel}>{day.day}</Text></View>)}</View></View>{data.transactions.map((tx: GenericPayload) => <View style={styles.priceLine} key={tx.label}><View><Text style={styles.vendorName}>{tx.label}</Text><Text style={styles.restaurantMeta}>{tx.time}</Text></View><Text style={[styles.priceValue, tx.tone === 'credit' && styles.discountText]}>{tx.amount}</Text></View>)}<ImageBackground source={{ uri: data.mapImageUrl }} style={styles.riderMiniMap} imageStyle={styles.riderMapImage}><Text style={styles.surgeText}>{data.activity}</Text><Text style={styles.secureText}>{data.location}</Text></ImageBackground></ScrollView><BottomNav active="Earnings" variant="rider" /><SourceLedger /></View>;
+function RiderEarningsScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
+  const formatTime = (value?: string) => value ? new Date(value).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' }) : 'No payout yet';
+  const cards = [{ label: 'Today', value: money(data.cards.today) }, { label: 'This week', value: money(data.cards.week) }, { label: 'Deliveries', value: String(data.cards.deliveries) }];
+  return <View style={styles.riderShell}><RiderScreenHeader title="Earnings" onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><Text style={styles.checkoutSubtitle}>Habari, {data.riderName}!</Text><Text style={styles.checkoutTitle}>Earnings dashboard</Text><View style={styles.balanceCard}><Text style={styles.upperLabel}>Available balance</Text><Text style={styles.balanceText}>{money(data.balance)}</Text><Text style={styles.restaurantMeta}>Last payout: {formatTime(data.lastPayoutAt)}</Text><View style={styles.payoutSchedulePill}><AppIcon name="cash" size={17} color={colors.secondary} /><Text style={styles.payoutScheduleText}>Verified earnings are paid on your payout schedule</Text></View></View><View style={styles.riderStats}>{cards.map((card) => <View style={styles.riderStat} key={card.label}><Text style={styles.upperLabel}>{card.label}</Text><Text style={styles.riderStatValue}>{card.value}</Text></View>)}</View><View style={styles.earningsChartCard}><Text style={styles.vendorName}>Activity - last 7 days</Text><Text style={styles.restaurantMeta}>Total: {money(data.chart.total)}</Text><View style={styles.mobileChart}>{data.chart.days.map((day: GenericPayload) => <View style={styles.mobileChartBar} key={day.day}><View style={[styles.mobileChartFill, { height: `${Math.max(4, day.percentage)}%` as any }]} /><Text style={styles.categoryLabel}>{day.day}</Text></View>)}</View></View><Text style={styles.checkoutSectionTitle}>Recent activity</Text>{data.transactions.length ? data.transactions.map((tx: GenericPayload) => <View style={styles.earningsTransaction} key={tx.id}><View style={{ flex: 1 }}><Text style={styles.vendorName}>{tx.label}</Text><Text style={styles.restaurantMeta}>{formatTime(tx.time)}{tx.status ? ` - ${tx.status}` : ''}</Text>{tx.surgeBonus > 0 && <Text style={styles.surgeBonusText}>Includes {money(tx.surgeBonus)} surge bonus</Text>}</View><Text style={[styles.priceValue, tx.tone === 'credit' && styles.discountText]}>{tx.amount > 0 ? '+' : '-'}{money(Math.abs(tx.amount))}</Text></View>) : <View style={styles.emptyState}><AppIcon name="cash" size={30} color={colors.outline} /><Text style={styles.smsBody}>Completed delivery earnings will appear here.</Text></View>}<View style={styles.surgePanel}><View style={styles.sectionHeadingRow}><View><Text style={styles.vendorName}>Live surge zones</Text><Text style={styles.restaurantMeta}>{data.surge.active ? `${data.surge.zones.length} active area${data.surge.zones.length === 1 ? '' : 's'}` : 'No surge is active nearby'}</Text></View><View style={styles.liveDataPill}><Text style={styles.liveDataText}>LIVE</Text></View></View>{data.surge.map?.center ? <NativeMapPreview map={data.surge.map} style={styles.surgeMap} /> : <View style={styles.emptyMapState}><AppIcon name="pin" size={28} color={colors.outline} /><Text style={styles.smsBody}>Share rider location to view nearby surge zones.</Text></View>}<Text style={styles.secureText}>{data.surge.source}. The customer delivery price includes surge and 70% of the surge fee is credited to the assigned rider.</Text></View></ScrollView><BottomNav active="Earnings" variant="rider" /><SourceLedger /></View>;
 }
 
 function RiderPayoutScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
@@ -4266,12 +4289,33 @@ function IncidentConfirmationScreen({ data, onBack, onTicket }: { data: GenericP
   return <View style={styles.riderShell}><RiderScreenHeader title="Incident Reporting" onBack={onBack} /><ScrollView contentContainerStyle={[styles.riderContent, styles.centerPanel]}><Image source={{ uri: data.imageUrl }} style={styles.successImage} /><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.checkoutSubtitle}>{data.body}</Text><Text style={styles.totalAmount}>Ref ID: {data.refId}</Text><Text style={styles.checkoutSectionTitle}>Next Steps</Text>{data.steps.map((step: string, index: number) => <View style={styles.uploadCard} key={step}><Text style={styles.totalAmount}>{index + 1}</Text><Text style={[styles.smsBody, { flex: 1 }]}>{step}</Text></View>)}<View style={styles.smsCard}><Text style={styles.vendorName}>Safety First</Text><Text style={styles.smsBody}>{data.tip}</Text></View><TouchableOpacity style={styles.primaryButton}><Text style={styles.primaryButtonText}>Call Dispatch Now</Text></TouchableOpacity><TouchableOpacity style={styles.placeOrderButton} onPress={onTicket}><Text style={styles.placeOrderText}>View Ticket Status</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
 }
 
-function SupportTicketHistoryScreen({ data, onBack, onTicket }: { data: GenericPayload; onBack: () => void; onTicket: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title={data.title} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.tabsRow}>{data.tabs.map((tab: string, index: number) => <Text style={index === 0 ? styles.tabPillActive : styles.tabPill} key={tab}>{tab}</Text>)}</View>{data.tickets.map((ticket: GenericPayload) => <TouchableOpacity style={styles.deliveryRequestCard} key={ticket.code} onPress={ticket.code === '#INC-82941' ? onTicket : undefined}><View style={styles.sectionHeadingRow}><Text style={styles.upperLabel}>{ticket.category}</Text><Text style={ticket.status === 'RESOLVED' ? styles.discountText : styles.countdownText}>{ticket.status}</Text></View><Text style={styles.vendorName}>{ticket.title}</Text><Text style={styles.restaurantMeta}>{ticket.code} - {ticket.updated}</Text><Text style={styles.smsBody}>{ticket.body}</Text></TouchableOpacity>)}<View style={styles.smsCard}><Text style={styles.vendorName}>Still need help?</Text><Text style={styles.smsBody}>{data.support}</Text><Text style={styles.changeText}>START NEW TICKET</Text></View></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
+function SupportTicketHistoryScreen({ tickets, onBack, onTicket, onNew }: { tickets: SupportTicket[]; onBack: () => void; onTicket: (ticket: SupportTicket) => void; onNew: () => void }) {
+  const [filter, setFilter] = useState<'all' | 'open' | 'resolved'>('all');
+  const shown = tickets.filter((ticket) => filter === 'all' || (filter === 'resolved' ? ['resolved', 'closed'].includes(ticket.status) : !['resolved', 'closed'].includes(ticket.status)));
+  return <View style={styles.riderShell}><RiderScreenHeader title="Alerts & support" onBack={onBack} /><ScrollView contentContainerStyle={styles.ticketListContent}><View style={styles.ticketIntro}><Text style={styles.checkoutTitle}>Your support tickets</Text><Text style={styles.checkoutSubtitle}>Track updates from dispatch, payments, safety and account support.</Text></View><View style={styles.tabsRow}>{(['all', 'open', 'resolved'] as const).map((tab) => <TouchableOpacity key={tab} style={filter === tab ? styles.tabPillActive : styles.tabPill} onPress={() => setFilter(tab)}><Text style={filter === tab ? styles.authPillActiveText : styles.authPillText}>{tab[0].toUpperCase() + tab.slice(1)}</Text></TouchableOpacity>)}</View>{shown.length ? shown.map((ticket) => <TouchableOpacity style={styles.ticketCard} key={ticket.id} onPress={() => onTicket(ticket)} activeOpacity={0.9}><View style={styles.sectionHeadingRow}><Text style={styles.ticketTeam}>{ticket.assignedTeam.replace('-', ' ')}</Text><View style={[styles.ticketStatusPill, ['resolved', 'closed'].includes(ticket.status) && styles.ticketStatusResolved]}><Text style={[styles.ticketStatusText, ['resolved', 'closed'].includes(ticket.status) && styles.ticketStatusResolvedText]}>{ticket.status.toUpperCase()}</Text></View></View><Text style={styles.ticketTitle}>{ticket.subject}</Text><Text style={styles.ticketMeta}>{ticket.code} - Updated {new Date(ticket.updatedAt).toLocaleDateString('en-KE', { dateStyle: 'medium' })}</Text><Text style={styles.ticketBody} numberOfLines={3}>{ticket.body}</Text><View style={styles.ticketOpenRow}><Text style={styles.changeText}>View conversation</Text><AppIcon name="chevron" size={16} color={colors.primary} /></View></TouchableOpacity>) : <View style={styles.emptyState}><AppIcon name="receipt" size={32} color={colors.outline} /><Text style={styles.vendorName}>No {filter === 'all' ? '' : filter} tickets</Text><Text style={styles.smsBody}>When you contact support, updates will appear here.</Text></View>}<View style={styles.supportCta}><View style={{ flex: 1 }}><Text style={styles.vendorName}>Need help on the road?</Text><Text style={styles.smsBody}>Send the support team the details and priority. You can follow every reply here.</Text></View><TouchableOpacity style={styles.newTicketButton} onPress={onNew}><AppIcon name="plus" size={18} color={colors.onPrimary} /><Text style={styles.placeOrderText}>Start new ticket</Text></TouchableOpacity></View></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
 }
 
-function ResolvedTicketScreen({ data, onBack }: { data: GenericPayload; onBack: () => void }) {
-  return <View style={styles.riderShell}><RiderScreenHeader title={'Ticket #' + data.code} onBack={onBack} /><ScrollView contentContainerStyle={styles.riderContent}><View style={styles.profileHero}><Image source={{ uri: data.images[0] }} style={styles.profileAvatar} /><Text style={styles.discountText}>{data.status}</Text><Text style={styles.checkoutTitle}>{data.title}</Text><Text style={styles.restaurantMeta}>{data.resolvedAt}</Text></View><View style={styles.deliveryRequestCard}><Text style={styles.upperLabel}>{data.agent.label}</Text><Text style={styles.restaurantMeta}>{data.agent.time}</Text><Text style={styles.smsBody}>{data.message}</Text></View><Text style={styles.checkoutSectionTitle}>How was your experience?</Text><View style={styles.ratingStars}>{[0, 1, 2, 3, 4].map((star) => <AppIcon key={star} name="star" size={25} color={colors.tertiary} />)}</View><View style={styles.smsCard}><Text style={styles.vendorName}>View Original Report</Text><Text style={styles.smsBody}>{data.originalReport}</Text></View><TouchableOpacity style={styles.placeOrderButton} onPress={onBack}><Text style={styles.placeOrderText}>Back to History</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
+function NewSupportTicketScreen({ onBack, onCreated }: { onBack: () => void; onCreated: (ticket: SupportTicket) => void }) {
+  const [category, setCategory] = useState('order_issue');
+  const [priority, setPriority] = useState('normal');
+  const [subject, setSubject] = useState('');
+  const [body, setBody] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const categories = [['order_issue', 'Order'], ['earnings', 'Earnings'], ['safety', 'Safety'], ['account', 'Account'], ['technical', 'Technical'], ['other', 'Other']];
+  const submit = async () => {
+    if (subject.trim().length < 4 || body.trim().length < 8) return setMessage('Add a clear subject and at least a short description.');
+    setBusy(true); setMessage('');
+    try { const result = await sokoeatsApi<{ ticket: SupportTicket }>('/api/tickets', { method: 'POST', body: JSON.stringify({ category, priority, subject: subject.trim(), body: body.trim() }) }); onCreated(result.ticket); }
+    catch (error) { setMessage(error instanceof Error ? error.message : 'The ticket could not be sent.'); }
+    finally { setBusy(false); }
+  };
+  return <View style={styles.riderShell}><RiderScreenHeader title="New support ticket" onBack={onBack} /><ScrollView contentContainerStyle={styles.ticketListContent} keyboardShouldPersistTaps="handled"><Text style={styles.checkoutTitle}>How can we help?</Text><Text style={styles.checkoutSubtitle}>Choose the closest topic so your ticket reaches the right team.</Text><Text style={styles.upperLabel}>Topic</Text><View style={styles.ticketChoiceGrid}>{categories.map(([value, label]) => <TouchableOpacity key={value} style={[styles.ticketChoice, category === value && styles.ticketChoiceActive]} onPress={() => setCategory(value)}><Text style={category === value ? styles.authPillActiveText : styles.authPillText}>{label}</Text></TouchableOpacity>)}</View><Text style={styles.upperLabel}>Priority</Text><View style={styles.tabsRow}>{['low', 'normal', 'high', 'urgent'].map((value) => <TouchableOpacity key={value} style={priority === value ? styles.tabPillActive : styles.tabPill} onPress={() => setPriority(value)}><Text style={priority === value ? styles.authPillActiveText : styles.authPillText}>{value[0].toUpperCase() + value.slice(1)}</Text></TouchableOpacity>)}</View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>Subject</Text><TextInput style={styles.formFieldInput} value={subject} onChangeText={setSubject} placeholder="Briefly describe the issue" placeholderTextColor={colors.outline} maxLength={120} /></View><View style={styles.formFieldCard}><Text style={styles.upperLabel}>What happened?</Text><TextInput style={[styles.formFieldInput, styles.ticketBodyInput]} value={body} onChangeText={setBody} placeholder="Include order number, location, amount or any useful details" placeholderTextColor={colors.outline} multiline textAlignVertical="top" maxLength={2000} /></View>{!!message && <Text style={styles.authMessage}>{message}</Text>}<TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={submit}><AppIcon name="sms" size={18} color={colors.onPrimary} /><Text style={styles.placeOrderText}>{busy ? 'Sending...' : 'Send ticket'}</Text></TouchableOpacity><Text style={styles.secureText}>Urgent safety issues are routed to dispatch. For immediate danger, contact local emergency services first.</Text></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
+}
+
+function SupportTicketDetailScreen({ ticket, onBack }: { ticket: SupportTicket; onBack: () => void }) {
+  const messages = ticket.messages?.length ? ticket.messages : [{ id: ticket.id, senderName: 'You', body: ticket.body, createdAt: ticket.createdAt }];
+  return <View style={styles.riderShell}><RiderScreenHeader title={ticket.code} onBack={onBack} /><ScrollView contentContainerStyle={styles.ticketListContent}><View style={styles.ticketDetailHero}><View style={[styles.ticketStatusPill, ['resolved', 'closed'].includes(ticket.status) && styles.ticketStatusResolved]}><Text style={[styles.ticketStatusText, ['resolved', 'closed'].includes(ticket.status) && styles.ticketStatusResolvedText]}>{ticket.status.toUpperCase()}</Text></View><Text style={styles.checkoutTitle}>{ticket.subject}</Text><Text style={styles.restaurantMeta}>{ticket.assignedTeam.replace('-', ' ')} team - Opened {new Date(ticket.createdAt).toLocaleDateString('en-KE', { dateStyle: 'medium' })}</Text></View><Text style={styles.checkoutSectionTitle}>Conversation</Text>{messages.map((entry) => <View style={styles.ticketMessage} key={entry.id}><View style={styles.sectionHeadingRow}><Text style={styles.vendorName}>{entry.senderName}</Text><Text style={styles.ticketMeta}>{new Date(entry.createdAt).toLocaleString('en-KE', { dateStyle: 'medium', timeStyle: 'short' })}</Text></View><Text style={styles.smsBody}>{entry.body}</Text></View>)}<TouchableOpacity style={styles.primaryButton} onPress={onBack}><Text style={styles.primaryButtonText}>Back to ticket history</Text></TouchableOpacity></ScrollView><BottomNav active="Alerts" variant="rider" /><SourceLedger /></View>;
 }
 
 function PromoBanner({
@@ -4788,7 +4832,7 @@ function CheckoutScreen({
           ? ` Add ${money(quote.amountToMinimum)} to reach ${money(quote.minimumOrder)} and remove the ${money(quote.smallOrderFee)} small-order fee.`
           : '';
         const offerSummary = quote.firstOrderOffer ? ` First-order service fee saving: ${money(quote.waivedServiceFee)}.` : '';
-        const surgeSummary = quote.surgeFee ? ` Busy-area fee: ${money(quote.surgeFee)}.` : '';
+        const surgeSummary = quote.surgeFee ? ` Delivery includes a ${money(quote.surgeFee)} live-demand adjustment supporting rider availability.` : '';
         setCheckoutStatus(routeSummary + minimumSummary + offerSummary + surgeSummary);
       } })
       .catch((error) => {
@@ -5057,10 +5101,9 @@ function CheckoutScreen({
         <View style={styles.breakdownCard}>
           <PriceLine label="Subtotal" value={money(checkoutSubtotal)} />
           {!!checkoutSmallOrderFee && <PriceLine label="Small order fee" value={money(checkoutSmallOrderFee)} />}
-          <PriceLine label="Delivery fee" value={money(checkoutDeliveryFee)} />
-          {pricingQuote && <Text style={styles.breakdownNote}>Route price: {money(pricingQuote.deliveryBreakdown.baseFee || 0)} base + {money(pricingQuote.deliveryBreakdown.distanceFee || 0)} distance + {money(pricingQuote.deliveryBreakdown.timeFee || 0)} traffic time. Rider minimum: {money(pricingQuote.deliveryBreakdown.minimumFee || 150)}.</Text>}
+          <PriceLine label={pricingQuote?.surgeFee ? `Delivery fee (live demand x${pricingQuote.surgeMultiplier.toFixed(2)})` : 'Delivery fee'} value={money(checkoutDeliveryFee)} />
+          {pricingQuote && <Text style={styles.breakdownNote}>Route price: {money(pricingQuote.deliveryBreakdown.baseFee || 0)} base + {money(pricingQuote.deliveryBreakdown.distanceFee || 0)} distance + {money(pricingQuote.deliveryBreakdown.timeFee || 0)} traffic time{pricingQuote.surgeFee ? ` + ${money(pricingQuote.surgeFee)} live-demand adjustment` : ''}. Rider minimum: {money(pricingQuote.deliveryBreakdown.minimumFee || 150)}.</Text>}
           <PriceLine label="Service fee" value={money(checkoutServiceFee + (pricingQuote?.waivedServiceFee || 0))} />
-          {!!pricingQuote?.surgeFee && <PriceLine label={`Busy area x${pricingQuote.surgeMultiplier.toFixed(2)}`} value={money(pricingQuote.surgeFee)} />}
           {!!pricingQuote?.firstOrderOffer && <PriceLine label="First order: service fee waived" value={`-${money(pricingQuote.waivedServiceFee)}`} discount />}
           {!!checkoutDiscount && <PriceLine label="Promotion" value={`-${money(checkoutDiscount)}`} discount />}
           <PriceLine label={pricingQuote?.vatRateBps ? `VAT (${pricingQuote.vatRateBps / 100}% of ${money(pricingQuote.taxableSubtotal)})` : 'VAT (not applicable)'} value={money(pricingQuote?.vatAmount || 0)} />
@@ -6942,6 +6985,203 @@ const styles = StyleSheet.create({
   riderContent: {
     padding: 18,
     paddingBottom: 150,
+  },
+  nameFieldsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  nameField: {
+    flex: 1,
+    minWidth: 0,
+  },
+  payoutSchedulePill: {
+    marginTop: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceContainerLowest,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  payoutScheduleText: {
+    flex: 1,
+    color: colors.onSurfaceVariant,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+  },
+  earningsChartCard: {
+    marginBottom: 18,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 18,
+  },
+  earningsTransaction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.outlineVariant,
+  },
+  surgeBonusText: {
+    marginTop: 3,
+    color: colors.secondary,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  surgePanel: {
+    marginTop: 20,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 16,
+    gap: 12,
+  },
+  surgeMap: {
+    width: '100%',
+    height: 220,
+    borderRadius: 8,
+    overflow: 'hidden',
+  },
+  liveDataPill: {
+    borderRadius: 999,
+    backgroundColor: '#dcf8e8',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  liveDataText: {
+    color: '#126d3d',
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  emptyMapState: {
+    height: 150,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: colors.surfaceContainer,
+    borderRadius: 8,
+    padding: 20,
+  },
+  ticketListContent: {
+    padding: 18,
+    paddingBottom: 170,
+    gap: 14,
+  },
+  ticketIntro: {
+    marginBottom: 2,
+  },
+  ticketCard: {
+    borderRadius: 8,
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 16,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+  },
+  ticketTeam: {
+    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  ticketStatusPill: {
+    borderRadius: 999,
+    backgroundColor: colors.primaryContainer,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+  },
+  ticketStatusResolved: {
+    backgroundColor: '#dcf8e8',
+  },
+  ticketStatusText: {
+    color: colors.onPrimaryContainer,
+    fontSize: 10,
+    fontWeight: '900',
+  },
+  ticketStatusResolvedText: {
+    color: '#126d3d',
+  },
+  ticketTitle: {
+    color: colors.onSurface,
+    fontSize: 17,
+    lineHeight: 22,
+    fontWeight: '900',
+  },
+  ticketMeta: {
+    color: colors.onSurfaceVariant,
+    fontSize: 11,
+    lineHeight: 15,
+  },
+  ticketBody: {
+    color: colors.onSurfaceVariant,
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  ticketOpenRow: {
+    marginTop: 4,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  supportCta: {
+    marginTop: 4,
+    borderRadius: 8,
+    backgroundColor: colors.secondaryContainer,
+    padding: 18,
+    gap: 14,
+  },
+  newTicketButton: {
+    minHeight: 48,
+    borderRadius: 8,
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingHorizontal: 16,
+  },
+  ticketChoiceGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginBottom: 4,
+  },
+  ticketChoice: {
+    minWidth: '30%',
+    flexGrow: 1,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.outlineVariant,
+    backgroundColor: colors.surfaceContainerLowest,
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+  },
+  ticketChoiceActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primaryContainer,
+  },
+  ticketBodyInput: {
+    minHeight: 150,
+    paddingTop: 12,
+  },
+  ticketDetailHero: {
+    borderRadius: 8,
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 18,
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  ticketMessage: {
+    borderRadius: 8,
+    backgroundColor: colors.surfaceContainerLowest,
+    padding: 16,
+    gap: 8,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.primary,
   },
   riderStats: {
     flexDirection: 'row',

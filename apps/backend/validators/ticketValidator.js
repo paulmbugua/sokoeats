@@ -1,11 +1,9 @@
 import Joi from 'joi';
 export const createTicketSchema = Joi.object({
   orderId: Joi.string().uuid().allow('', null),
-  requesterName: Joi.string().min(2).required(),
-  requesterEmail: Joi.string().email({ tlds: { allow: false } }).allow('', null),
   subject: Joi.string().min(4).required(),
   body: Joi.string().min(8).required(),
+  category: Joi.string().valid('order_issue','earnings','safety','account','technical','other').default('other'),
   priority: Joi.string().valid('low','normal','high','urgent').default('normal'),
-  assignedTeam: Joi.string().valid('support','refunds','vendor-success','delivery').default('support')
-});
+}).unknown(false);
 export const updateTicketSchema = Joi.object({ status: Joi.string().valid('open','pending','resolved','closed'), assignedTeam: Joi.string().valid('support','refunds','vendor-success','delivery'), priority: Joi.string().valid('low','normal','high','urgent') }).min(1);

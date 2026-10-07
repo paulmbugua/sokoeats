@@ -167,9 +167,50 @@ export async function updateRiderOnboardingStep(req, res, next) {
   } catch (err) { next(err); }
 }
 
-export async function riderEarnings(_req, res, next) {
+export async function riderEarnings(req, res, next) {
   try {
-    res.json({ earnings: await getScreenPayload('rider_earnings_dashboard') });
+    const [userResult, summaryResult, dailyResult, settlementsResult, payoutsResult, locationResult, zonesResult] = await Promise.all([
+      pool.query(`SELECT name FROM sokoeats_users WHERE id=$1 AND role IN ('rider','courier') AND deleted_at IS NULL`, [req.auth.sub]),
+      pool.query(`SELECT
+        COALESCE(SUM(rider_entitlement) FILTER (WHERE state IN ('DELIVERY_OTP_CONFIRMED','PAYOUT_ELIGIBLE','SETTLED')),0)::int AS eligible,
+        COALESCE(SUM(rider_entitlement) FILTER (WHERE delivered_at::date=CURRENT_DATE),0)::int AS today,
+        COALESCE(SUM(rider_entitlement) FILTER (WHERE delivered_at >= date_trunc('week',NOW())),0)::int AS week,
+        COUNT(*) FILTER (WHERE delivered_at IS NOT NULL)::int AS deliveries
+        FROM sokoeats_order_settlements WHERE rider_user_id=$1`, [req.auth.sub]),
+      pool.query(`SELECT day::date,COALESCE(SUM(s.rider_entitlement),0)::int AS amount
+        FROM generate_series(CURRENT_DATE-INTERVAL '6 days',CURRENT_DATE,INTERVAL '1 day') day
+        LEFT JOIN sokoeats_order_settlements s ON s.rider_user_id=$1 AND s.delivered_at::date=day::date
+        GROUP BY day ORDER BY day`, [req.auth.sub]),
+      pool.query(`SELECT s.id,s.rider_entitlement AS amount,s.rider_surge_bonus,s.delivered_at,o.code
+        FROM sokoeats_order_settlements s JOIN sokoeats_orders o ON o.id=s.order_id
+        WHERE s.rider_user_id=$1 AND s.delivered_at IS NOT NULL ORDER BY s.delivered_at DESC LIMIT 30`, [req.auth.sub]),
+      pool.query(`SELECT id,reference,amount,status,COALESCE(paid_at,scheduled_for,created_at) AS occurred_at
+        FROM sokoeats_payouts WHERE rider_user_id=$1 ORDER BY created_at DESC LIMIT 30`, [req.auth.sub]),
+      pool.query(`SELECT latitude,longitude,captured_at FROM sokoeats_rider_locations WHERE rider_user_id=$1 ORDER BY captured_at DESC LIMIT 1`, [req.auth.sub]),
+      pool.query(`SELECT id,name,center_latitude,center_longitude,radius_km,multiplier FROM sokoeats_surge_zones WHERE active=true AND (starts_at IS NULL OR starts_at<=NOW()) AND (ends_at IS NULL OR ends_at>=NOW()) ORDER BY multiplier DESC`),
+    ]);
+    if (!userResult.rows[0]) return res.status(404).json({ message: 'Rider profile not found' });
+    const paidOrCommitted = await pool.query(`SELECT COALESCE(SUM(amount),0)::int AS amount,MAX(paid_at) AS last_paid_at FROM sokoeats_payouts WHERE rider_user_id=$1 AND status NOT IN ('failed','cancelled')`, [req.auth.sub]);
+    const summary = summaryResult.rows[0];
+    const available = Math.max(0, Number(summary.eligible) - Number(paidOrCommitted.rows[0].amount));
+    const days = dailyResult.rows.map((row) => ({ day: new Date(row.day).toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }), amount: Number(row.amount) }));
+    const maxDay = Math.max(...days.map((day) => day.amount), 1);
+    const transactions = [
+      ...settlementsResult.rows.map((row) => ({ id: row.id, label: `Delivery ${row.code}`, time: row.delivered_at, amount: Number(row.amount), surgeBonus: Number(row.rider_surge_bonus || 0), tone: 'credit' })),
+      ...payoutsResult.rows.map((row) => ({ id: row.id, label: `Payout ${row.reference}`, time: row.occurred_at, amount: -Number(row.amount), status: row.status, tone: 'debit' })),
+    ].sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 30);
+    const riderPoint = locationResult.rows[0] ? { label: 'Your live location', lat: Number(locationResult.rows[0].latitude), lng: Number(locationResult.rows[0].longitude) } : null;
+    const zoneMarkers = zonesResult.rows.map((zone) => ({ label: `${zone.name} x${Number(zone.multiplier).toFixed(2)}`, lat: Number(zone.center_latitude), lng: Number(zone.center_longitude) }));
+    res.json({ earnings: {
+      riderName: userResult.rows[0].name,
+      balance: available,
+      lastPayoutAt: paidOrCommitted.rows[0].last_paid_at,
+      cards: { today: Number(summary.today), week: Number(summary.week), deliveries: Number(summary.deliveries) },
+      chart: { total: days.reduce((sum, day) => sum + day.amount, 0), days: days.map((day) => ({ ...day, percentage: Math.round((day.amount / maxDay) * 100) })) },
+      transactions,
+      surge: { active: zoneMarkers.length > 0, zones: zonesResult.rows.map((zone) => ({ id: zone.id, name: zone.name, multiplier: Number(zone.multiplier), radiusKm: Number(zone.radius_km) })), map: { center: riderPoint || zoneMarkers[0], markers: [riderPoint, ...zoneMarkers].filter(Boolean) }, source: 'Google Routes live traffic + current order-to-rider supply at checkout' },
+      currency: 'KES',
+    } });
   } catch (err) { next(err); }
 }
 

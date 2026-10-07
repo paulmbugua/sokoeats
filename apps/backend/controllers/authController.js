@@ -61,6 +61,8 @@ function cleanEmail(email) {
 
 function buildProfile(body, role) {
   const base = {
+    firstName: body.firstName || '',
+    lastName: body.lastName || '',
     city: body.city || '',
     preferredLanguage: body.preferredLanguage || 'English',
     source: body.source || 'mobile',
@@ -99,6 +101,9 @@ function valuePresent(value) {
 
 function profileValue(row, key) {
   const profile = row.profile || {};
+  const nameParts = String(row.name || '').trim().split(/\s+/).filter(Boolean);
+  if (key === 'firstName') return profile.firstName || nameParts[0];
+  if (key === 'lastName') return profile.lastName || nameParts.slice(1).join(' ');
   if (key === 'phone') return row.phone;
   if (key === 'city') return row.city || profile.city;
   if (key === 'defaultAddress') return row.default_address || profile.defaultAddress || profile.address;
@@ -106,9 +111,9 @@ function profileValue(row, key) {
 }
 
 function requiredProfileFields(role) {
-  if (role === 'rider') return ['phone', 'city', 'vehicleType', 'registrationNumber'];
+  if (role === 'rider') return ['firstName', 'lastName', 'phone', 'city', 'vehicleType', 'registrationNumber'];
   if (role === 'vendor' || role === 'merchant') return ['phone', 'city', 'businessName', 'storeAddress'];
-  if (role === 'customer') return ['phone', 'city', 'defaultAddress'];
+  if (role === 'customer') return ['firstName', 'lastName', 'phone', 'city', 'defaultAddress'];
   return [];
 }
 
@@ -124,6 +129,8 @@ function publicUser(row) {
   return {
     id: row.id,
     name: row.name,
+    firstName: profileValue(row, 'firstName') || '',
+    lastName: profileValue(row, 'lastName') || '',
     email: row.email,
     phone: row.phone,
     role: row.role === 'courier' ? 'rider' : row.role,
@@ -450,7 +457,7 @@ export async function updateProfile(req, res, next) {
         marketing_opt_in = COALESCE($6, marketing_opt_in),
         profile = profile || $7::jsonb
        WHERE id = $1 RETURNING *`,
-      [payload.sub, req.body.fullName || req.body.name || null, req.body.phone || null, req.body.city || null, req.body.defaultAddress || req.body.address || req.body.storeAddress || null, typeof req.body.marketingOptIn === 'boolean' ? req.body.marketingOptIn : null, JSON.stringify(profile)],
+      [payload.sub, req.body.fullName || req.body.name || [req.body.firstName, req.body.lastName].filter(Boolean).join(' ') || null, req.body.phone || null, req.body.city || null, req.body.defaultAddress || req.body.address || req.body.storeAddress || null, typeof req.body.marketingOptIn === 'boolean' ? req.body.marketingOptIn : null, JSON.stringify(profile)],
     );
     const user = req.body.termsAcceptance ? await recordTermsAcceptance(client, rows[0], req.body.termsAcceptance) : rows[0];
     await ensureVendorForUser(user, client);

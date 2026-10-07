@@ -70,6 +70,7 @@ CREATE TABLE IF NOT EXISTS sokoeats_order_items (
 CREATE TABLE IF NOT EXISTS sokoeats_tickets (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code TEXT UNIQUE NOT NULL,
+  requester_user_id UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL,
   order_id UUID REFERENCES sokoeats_orders(id) ON DELETE SET NULL,
   requester_name TEXT NOT NULL,
   requester_email TEXT,
@@ -93,6 +94,9 @@ CREATE TABLE IF NOT EXISTS sokoeats_ticket_messages (
 
 CREATE INDEX IF NOT EXISTS idx_sokoeats_orders_vendor ON sokoeats_orders(vendor_id, status);
 CREATE INDEX IF NOT EXISTS idx_sokoeats_tickets_status ON sokoeats_tickets(status, priority);
+ALTER TABLE sokoeats_tickets ADD COLUMN IF NOT EXISTS requester_user_id UUID REFERENCES sokoeats_users(id) ON DELETE SET NULL;
+UPDATE sokoeats_tickets t SET requester_user_id=u.id FROM sokoeats_users u WHERE t.requester_user_id IS NULL AND t.requester_email IS NOT NULL AND lower(t.requester_email)=lower(u.email);
+CREATE INDEX IF NOT EXISTS idx_sokoeats_tickets_requester ON sokoeats_tickets(requester_user_id, updated_at DESC);
 
 
 CREATE TABLE IF NOT EXISTS sokoeats_screen_payloads (
