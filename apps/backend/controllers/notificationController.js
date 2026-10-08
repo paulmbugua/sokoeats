@@ -35,10 +35,10 @@ export async function listNotifications(req, res, next) {
        LEFT JOIN sokoeats_notification_reads r ON r.notification_id=n.id AND r.user_id=$1
        LEFT JOIN sokoeats_notification_dismissals d ON d.notification_id=n.id AND d.user_id=$1
        WHERE d.user_id IS NULL AND n.channel IN ('in_app','both') AND (
-         n.audience='all' OR (n.audience='customers' AND $2='customer') OR
+         n.target_user_id=$1 OR (n.target_user_id IS NULL AND (n.audience='all' OR (n.audience='customers' AND $2='customer') OR
          (n.audience='riders' AND $2 IN ('rider','courier')) OR
          (n.audience='partners' AND $2 IN ('vendor','merchant','merchant_admin'))
-       ) ORDER BY n.created_at DESC LIMIT 100`,
+       )) ORDER BY n.created_at DESC LIMIT 100`,
       [req.authUser.id, req.authUser.role],
     );
     res.json({ notifications: rows, unread: rows.filter(row => !row.read).length });

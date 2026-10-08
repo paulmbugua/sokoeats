@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS sokoeats_admin_notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+ALTER TABLE sokoeats_admin_notifications
+  ADD COLUMN IF NOT EXISTS target_user_id UUID REFERENCES sokoeats_users(id) ON DELETE CASCADE;
+
 CREATE TABLE IF NOT EXISTS sokoeats_push_tokens (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES sokoeats_users(id) ON DELETE CASCADE,
@@ -41,4 +44,5 @@ CREATE TABLE IF NOT EXISTS sokoeats_notification_dismissals (
 );
 
 CREATE INDEX IF NOT EXISTS sokoeats_notifications_created_idx ON sokoeats_admin_notifications(created_at DESC);
+CREATE INDEX IF NOT EXISTS sokoeats_notifications_target_idx ON sokoeats_admin_notifications(target_user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS sokoeats_push_tokens_user_idx ON sokoeats_push_tokens(user_id, is_active);

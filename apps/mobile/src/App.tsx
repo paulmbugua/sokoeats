@@ -3575,7 +3575,10 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
   const [businessName, setBusinessName] = useState('');
   const [storeAddress, setStoreAddress] = useState('');
   const [vehicleType, setVehicleType] = useState('Motorbike');
+  const [deliveryMode, setDeliveryMode] = useState<'motorbike' | 'foot'>('motorbike');
   const [registrationNumber, setRegistrationNumber] = useState('');
+  const [partnerDocuments, setPartnerDocuments] = useState({ passportPhotoUrl: '', nationalIdCopyUrl: '', goodConductUrl: '', motorbikePhotoUrl: '' });
+  const [uploadingDocument, setUploadingDocument] = useState('');
   const [nationalId, setNationalId] = useState('');
   const [businessCategory, setBusinessCategory] = useState('Restaurant');
   const [payoutPhone, setPayoutPhone] = useState('');
@@ -3620,6 +3623,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     defaultAddress: defaultAddress.trim(),
     businessName: businessName.trim(),
     storeAddress: storeAddress.trim(),
+    deliveryMode,
     vehicleType: vehicleType.trim() || 'Motorbike',
     registrationNumber: registrationNumber.trim(),
     nationalId: nationalId.trim(),
@@ -3672,8 +3676,8 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     if (mode === 'register' && !payload.phone) return void focusField('phone', 'Mobile number');
     if (mode === 'register' && !payload.city) return void focusField('city', 'City');
     if (mode === 'register' && role === 'customer' && !payload.defaultAddress) return void focusField('defaultAddress', 'Delivery address');
-    if (mode === 'register' && role === 'rider' && !payload.vehicleType) return void focusField('vehicleType', 'Vehicle type');
-    if (mode === 'register' && role === 'rider' && !payload.registrationNumber) return void focusField('registrationNumber', 'Registration number');
+    if (mode === 'register' && role === 'rider' && deliveryMode === 'motorbike' && !payload.vehicleType) return void focusField('vehicleType', 'Vehicle type');
+    if (mode === 'register' && role === 'rider' && deliveryMode === 'motorbike' && !payload.registrationNumber) return void focusField('registrationNumber', 'Registration number');
     if (mode === 'register' && role === 'rider' && !payload.payoutPhone) return void focusField('payoutPhone', 'Payout M-Pesa number');
     if (mode === 'register' && partnerApplication && !payload.businessName) return void focusField('businessName', 'Business name');
     if (mode === 'register' && partnerApplication && !payload.businessCategory) return void focusField('businessCategory', 'Business category');
@@ -3731,13 +3735,33 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     setCity(authSession.user.city || profileTextValue(profile, 'city') || 'Nairobi');
     setDefaultAddress(authSession.user.defaultAddress || profileTextValue(profile, 'defaultAddress') || profileTextValue(profile, 'address') || defaultAddress);
     setVehicleType(profileTextValue(profile, 'vehicleType') || 'Motorbike');
+    setDeliveryMode(profileTextValue(profile, 'deliveryMode') === 'foot' ? 'foot' : 'motorbike');
     setRegistrationNumber(profileTextValue(profile, 'registrationNumber'));
     setNationalId(profileTextValue(profile, 'nationalId'));
     setBusinessName(profileTextValue(profile, 'businessName'));
     setBusinessCategory(profileTextValue(profile, 'businessCategory') || 'Restaurant');
     setStoreAddress(profileTextValue(profile, 'storeAddress'));
     setPayoutPhone(profileTextValue(profile, 'payoutPhone') || authSession.user.phone || '');
+    setPartnerDocuments({ passportPhotoUrl: profileTextValue(profile, 'passportPhotoUrl'), nationalIdCopyUrl: profileTextValue(profile, 'nationalIdCopyUrl'), goodConductUrl: profileTextValue(profile, 'goodConductUrl'), motorbikePhotoUrl: profileTextValue(profile, 'motorbikePhotoUrl') });
   }, [authSession?.user?.id]);
+
+  const pickPartnerDocument = async (field: keyof typeof partnerDocuments, documentType: string) => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) throw new Error('Allow photo access to upload verification documents.');
+    const selection = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsEditing: field === 'passportPhotoUrl', aspect: field === 'passportPhotoUrl' ? [3, 4] : undefined, quality: .88 });
+    if (selection.canceled || !selection.assets[0]) return;
+    const asset = selection.assets[0];
+    const contentType = asset.mimeType || 'image/jpeg';
+    setUploadingDocument(field); setMessage('Uploading document securely...');
+    try {
+      const signed = await sokoeatsApi<{ upload: { uploadUrl: string; key: string; headers: Record<string,string> } }>('/api/rider/application/documents/upload-url', { method: 'POST', body: JSON.stringify({ documentType, filename: asset.fileName || `${documentType}.jpg`, contentType }) });
+      const blob = await fetch(asset.uri).then(response => response.blob());
+      const uploaded = await fetch(signed.upload.uploadUrl, { method: 'PUT', headers: signed.upload.headers, body: blob });
+      if (!uploaded.ok) throw new Error('The document could not be uploaded. Please try again.');
+      setPartnerDocuments(current => ({ ...current, [field]: signed.upload.key }));
+      setMessage('Document ready for verification.');
+    } finally { setUploadingDocument(''); }
+  };
 
   const continueWithGoogle = async () => {
     if (!googleEnabled) {
@@ -3814,9 +3838,13 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
     if (!payload.phone) return void focusField('phone', 'Mobile number');
     if (!payload.city) return void focusField('city', 'City');
     if (currentRole === 'customer' && !payload.defaultAddress) return void focusField('defaultAddress', 'Delivery address');
-    if (currentRole === 'rider' && !payload.vehicleType) return void focusField('vehicleType', 'Vehicle type');
-    if (currentRole === 'rider' && !payload.registrationNumber) return void focusField('registrationNumber', 'Registration number');
+    if (currentRole === 'rider' && deliveryMode === 'motorbike' && !payload.vehicleType) return void focusField('vehicleType', 'Vehicle type');
+    if (currentRole === 'rider' && deliveryMode === 'motorbike' && !payload.registrationNumber) return void focusField('registrationNumber', 'Registration number');
     if (currentRole === 'rider' && !payload.payoutPhone) return void focusField('payoutPhone', 'Payout M-Pesa number');
+    if (currentRole === 'rider' && !partnerDocuments.passportPhotoUrl) return void focusField('partnerDocuments', 'Passport-size photo');
+    if (currentRole === 'rider' && !partnerDocuments.nationalIdCopyUrl) return void focusField('partnerDocuments', 'National ID copy');
+    if (currentRole === 'rider' && !partnerDocuments.goodConductUrl) return void focusField('partnerDocuments', 'Certificate of Good Conduct');
+    if (currentRole === 'rider' && deliveryMode === 'motorbike' && !partnerDocuments.motorbikePhotoUrl) return void focusField('partnerDocuments', 'Motorbike photo');
     if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.businessName) return void focusField('businessName', 'Business name');
     if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.businessCategory) return void focusField('businessCategory', 'Business category');
     if ((currentRole === 'vendor' || currentRole === 'merchant') && !payload.storeAddress) return void focusField('storeAddress', 'Store address');
@@ -3843,8 +3871,9 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
       }
       if (currentRole === 'customer') profilePayload.defaultAddress = payload.defaultAddress;
       if (currentRole === 'rider') {
-        profilePayload.vehicleType = payload.vehicleType;
-        profilePayload.registrationNumber = payload.registrationNumber;
+        profilePayload.deliveryMode = deliveryMode;
+        profilePayload.vehicleType = deliveryMode === 'motorbike' ? payload.vehicleType : '';
+        profilePayload.registrationNumber = deliveryMode === 'motorbike' ? payload.registrationNumber : '';
         profilePayload.nationalId = payload.nationalId || undefined;
         profilePayload.payoutPhone = payload.payoutPhone;
       }
@@ -3858,11 +3887,14 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
         method: 'PATCH',
         body: JSON.stringify(profilePayload),
       });
-      const completedSession = { ...authSession, user: result.user };
+      let completedSession = { ...authSession, user: result.user };
       if (currentRole === 'vendor' || currentRole === 'merchant') await submitBusinessCompliance(completedSession);
       if (currentRole === 'rider' && payload.payoutPhone) {
         await AsyncStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(completedSession));
         await sokoeatsApi('/api/rider/payout-profile', { method: 'PUT', body: JSON.stringify({ method: 'mpesa_wallet', accountNumber: payload.payoutPhone, schedule: 'daily' }) });
+        await sokoeatsApi('/api/rider/application', { method: 'PUT', body: JSON.stringify({ deliveryMode, ...partnerDocuments, vehicleType: deliveryMode === 'motorbike' ? payload.vehicleType : undefined, registrationNumber: deliveryMode === 'motorbike' ? payload.registrationNumber : undefined }) });
+        const refreshed = await sokoeatsApi<{ user: AuthUser }>('/api/auth/me');
+        completedSession = { ...completedSession, user: refreshed.user };
       }
       await finishAuth(completedSession);
     } catch (err) {
@@ -3930,10 +3962,16 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
             {signedInRole === 'customer' && <View onLayout={trackField('defaultAddress')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Delivery address</Text><TextInput ref={inputRef('defaultAddress')} style={styles.formFieldInput} value={defaultAddress} onChangeText={setDefaultAddress} placeholder="Apartment, estate, street" placeholderTextColor={colors.outline} /></View>}
             {signedInRole === 'rider' && (
               <>
-                <View onLayout={trackField('vehicleType')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput ref={inputRef('vehicleType')} style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>
-                <View onLayout={trackField('registrationNumber')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput ref={inputRef('registrationNumber')} style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>
+                <View style={styles.signedInCard}><Text style={styles.vendorName}>How will you deliver?</Text><Text style={styles.smsBody}>Choose Motorbike Rider for regular deliveries or Errand Partner for nearby on-foot parcels and errands.</Text><View style={styles.authModeSwitch}><TouchableOpacity style={deliveryMode === 'motorbike' ? styles.tabPillActive : styles.tabPill} onPress={() => setDeliveryMode('motorbike')}><AppIcon name="bike" size={18} color={colors.primary}/><Text style={deliveryMode === 'motorbike' ? styles.authPillActiveText : styles.authPillText}>Motorbike Rider</Text></TouchableOpacity><TouchableOpacity style={deliveryMode === 'foot' ? styles.tabPillActive : styles.tabPill} onPress={() => setDeliveryMode('foot')}><AppIcon name="person" size={18} color={colors.primary}/><Text style={deliveryMode === 'foot' ? styles.authPillActiveText : styles.authPillText}>Errand Partner</Text></TouchableOpacity></View></View>
+                {deliveryMode === 'motorbike' && <View onLayout={trackField('vehicleType')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput ref={inputRef('vehicleType')} style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>}
+                {deliveryMode === 'motorbike' && <View onLayout={trackField('registrationNumber')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput ref={inputRef('registrationNumber')} style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>}
             <View onLayout={trackField('payoutPhone')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput ref={inputRef('payoutPhone')} style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
-                <View style={styles.formFieldCard}><Text style={styles.upperLabel}>National ID optional</Text><TextInput style={styles.formFieldInput} value={nationalId} onChangeText={setNationalId} keyboardType="number-pad" placeholder="12345678" placeholderTextColor={colors.outline} /></View>
+                <View onLayout={trackField('partnerDocuments')} style={styles.signedInCard}><Text style={styles.vendorName}>Identity and safety documents</Text><Text style={styles.smsBody}>Upload clear images. Only authorised SokoEats review staff can use these for verification.</Text>{([
+                  ['passportPhotoUrl','passport_photo','Passport-size photo'],
+                  ['nationalIdCopyUrl','national_id_copy','National ID copy'],
+                  ['goodConductUrl','good_conduct','Certificate of Good Conduct'],
+                  ...(deliveryMode === 'motorbike' ? [['motorbikePhotoUrl','motorbike_photo','Motorbike and number plate']] : []),
+                ] as Array<[keyof typeof partnerDocuments,string,string]>).map(([field,type,label]) => <TouchableOpacity key={field} style={styles.uploadCard} disabled={!!uploadingDocument} onPress={() => void pickPartnerDocument(field,type).catch(error => setMessage(error instanceof Error ? error.message : 'Upload failed'))}><View style={{ flex: 1 }}><Text style={styles.vendorName}>{label}</Text><Text style={styles.restaurantMeta}>{partnerDocuments[field] ? 'Ready for review' : 'Tap to choose a clear image'}</Text></View><AppIcon name={partnerDocuments[field] ? 'check' : 'image'} size={20} color={partnerDocuments[field] ? colors.secondary : colors.primary}/><Text style={styles.changeText}>{uploadingDocument === field ? 'Uploading' : partnerDocuments[field] ? 'Replace' : 'Upload'}</Text></TouchableOpacity>)}</View>
               </>
             )}
             {(signedInRole === 'vendor' || signedInRole === 'merchant') && (
@@ -3959,7 +3997,7 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
             <View style={styles.profileActions}>
               <TouchableOpacity style={[styles.placeOrderButton, busy && styles.disabledButton]} disabled={busy} onPress={submitProfileCompletion}>
                 <AppIcon name="check" size={18} color={colors.onPrimary} style={styles.inlineIcon} />
-                <Text style={styles.placeOrderText}>{busy ? 'Saving...' : 'Save and continue'}</Text>
+                <Text style={styles.placeOrderText}>{busy ? 'Submitting...' : signedInRole === 'rider' ? 'Submit for verification' : 'Save and continue'}</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.primaryButton} onPress={onSignOut}><Text style={styles.primaryButtonText}>Sign out</Text></TouchableOpacity>
             </View>
@@ -4073,8 +4111,9 @@ function AccountAccessScreen({ authSession, onAuthenticated, onSignOut, onBack, 
         {mode === 'register' && role === 'customer' && <View onLayout={trackField('defaultAddress')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Default delivery address</Text><TextInput ref={inputRef('defaultAddress')} style={styles.formFieldInput} value={defaultAddress} onChangeText={setDefaultAddress} placeholder="Apartment, estate, street" placeholderTextColor={colors.outline} /></View>}
         {mode === 'register' && role === 'rider' && (
           <>
-            <View onLayout={trackField('vehicleType')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput ref={inputRef('vehicleType')} style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>
-            <View onLayout={trackField('registrationNumber')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput ref={inputRef('registrationNumber')} style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>
+            <View style={styles.signedInCard}><Text style={styles.vendorName}>Choose your delivery mode</Text><View style={styles.authModeSwitch}><TouchableOpacity style={deliveryMode === 'motorbike' ? styles.tabPillActive : styles.tabPill} onPress={() => setDeliveryMode('motorbike')}><Text style={deliveryMode === 'motorbike' ? styles.authPillActiveText : styles.authPillText}>Motorbike Rider</Text></TouchableOpacity><TouchableOpacity style={deliveryMode === 'foot' ? styles.tabPillActive : styles.tabPill} onPress={() => setDeliveryMode('foot')}><Text style={deliveryMode === 'foot' ? styles.authPillActiveText : styles.authPillText}>Errand Partner</Text></TouchableOpacity></View><Text style={styles.smsBody}>{deliveryMode === 'foot' ? 'Handle nearby parcels and errands on foot across active Nairobi zones.' : 'Use your motorbike for food, shopping and parcel deliveries.'}</Text></View>
+            {deliveryMode === 'motorbike' && <View onLayout={trackField('vehicleType')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Vehicle type</Text><TextInput ref={inputRef('vehicleType')} style={styles.formFieldInput} value={vehicleType} onChangeText={setVehicleType} placeholder="Motorbike" placeholderTextColor={colors.outline} /></View>}
+            {deliveryMode === 'motorbike' && <View onLayout={trackField('registrationNumber')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Registration number</Text><TextInput ref={inputRef('registrationNumber')} style={styles.formFieldInput} value={registrationNumber} onChangeText={setRegistrationNumber} autoCapitalize="characters" placeholder="KDM 482L" placeholderTextColor={colors.outline} /></View>}
             <View onLayout={trackField('payoutPhone')} style={styles.formFieldCard}><Text style={styles.upperLabel}>Payout M-Pesa number</Text><TextInput ref={inputRef('payoutPhone')} style={styles.formFieldInput} value={payoutPhone} onChangeText={setPayoutPhone} keyboardType="phone-pad" placeholder="+254 712 345 678" placeholderTextColor={colors.outline} /></View>
           </>
         )}

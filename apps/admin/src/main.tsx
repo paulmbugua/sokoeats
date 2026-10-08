@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import {
-  Banknote, Bell, Bike, CheckCircle2, ChevronRight, CircleAlert, Clock3, Headphones,
+  Banknote, Bell, Bike, CheckCircle2, ChevronRight, CircleAlert, Clock3, FileCheck2, Footprints, Headphones,
   Eye, EyeOff, KeyRound, LayoutDashboard, LogOut, Map, Menu, PackageCheck, Search,
   Send, ShieldCheck, Store, TicketCheck, Trash2, UsersRound, WalletCards, X,
 } from 'lucide-react';
@@ -12,7 +12,7 @@ import './password.css';
 import { CustomerCareInbox } from './CustomerCareInbox';
 
 type StaffRole = 'admin' | 'support';
-type View = 'overview' | 'dispatch' | 'tickets' | 'vendors' | 'settlements' | 'coverage' | 'care' | 'notifications';
+type View = 'overview' | 'dispatch' | 'tickets' | 'vendors' | 'deliveryPartners' | 'settlements' | 'coverage' | 'care' | 'notifications';
 type AdminNotification = { id: string; title: string; body: string; audience: string; channel: string; priority: string; actionLabel?: string | null; actionUrl?: string | null; pushAttempted: number; pushSent: number; pushFailed: number; createdAt: string };
 type ComplianceSubmission = { vendorId: string; vendorName: string; applicationReference?: string; ownerName?: string; ownerEmail?: string; legalBusinessName: string; registrationNumber: string; kraPinMasked: string; directorName: string; directorNationalIdMasked: string; settlementMethod: string; settlementAccountMasked: string; commissionRateBps: number; verificationStatus: string; payoutStatus: string; riskTier: string };
 type FinancePayout = { reference: string; beneficiary_type: string; vendor_name?: string; rider_name?: string; amount: number; status: string; scheduled_for: string; failure_reason?: string };
@@ -21,6 +21,8 @@ type CoverageCity = { id: string; name: string; county: string; status: 'coming_
 type MapPoint = { label: string; lat: number; lng: number };
 type MapViewport = { center?: MapPoint; markers?: MapPoint[]; path?: MapPoint[] };
 type MapsManifest = Record<string, any>;
+type DeclineReason = { code: string; label: string };
+type DeliveryPartnerApplication = { id: string; userId: string; name: string; email: string; phone?: string; city?: string; applicationReference?: string; deliveryMode: 'motorbike' | 'foot'; status: 'submitted' | 'under_review' | 'approved' | 'declined'; passportPhotoUrl: string; nationalIdCopyUrl: string; goodConductUrl: string; motorbikePhotoUrl?: string | null; vehicleType?: string | null; registrationNumber?: string | null; declineReasonCode?: string | null; reviewNote?: string | null; submittedAt?: string; reviewedAt?: string };
 
 const money = (value: number) => `KES ${Number(value || 0).toLocaleString('en-KE')}`;
 
@@ -59,6 +61,7 @@ const navItems: Array<{ id: View; label: string; icon: typeof LayoutDashboard; a
   { id: 'tickets', label: 'Ticket desk', icon: Headphones },
   { id: 'care', label: 'Customer care', icon: Headphones },
   { id: 'vendors', label: 'Vendor review', icon: Store },
+  { id: 'deliveryPartners', label: 'Delivery partners', icon: Footprints },
   { id: 'settlements', label: 'Settlements', icon: WalletCards, adminOnly: true },
   { id: 'coverage', label: 'Coverage map', icon: Map },
   { id: 'notifications', label: 'Notifications', icon: Bell, adminOnly: true },
@@ -113,6 +116,9 @@ function App() {
   const [maps, setMaps] = useState<MapsManifest | null>(null);
   const [coverage, setCoverage] = useState<CoverageCity[]>([]);
   const [notifications, setNotifications] = useState<AdminNotification[]>([]);
+  const [deliveryPartners, setDeliveryPartners] = useState<DeliveryPartnerApplication[]>([]);
+  const [declineReasons, setDeclineReasons] = useState<DeclineReason[]>([]);
+  const [reviewDrafts, setReviewDrafts] = useState<Record<string, { reasonCode: string; note: string }>>({});
   const [notificationDraft, setNotificationDraft] = useState({ title: '', body: '', audience: 'all', channel: 'both', priority: 'normal', actionLabel: '', actionUrl: '' });
   const [notice, setNotice] = useState('');
   const [passwordOpen, setPasswordOpen] = useState(false);
@@ -137,7 +143,7 @@ function App() {
     const results = await Promise.allSettled([
       api<{ metrics: DashboardMetric[] }>('/api/admin/overview'), api<{ orders: Order[] }>('/api/orders'),
       api<{ tickets: Ticket[] }>('/api/tickets'), api<{ vendors: Vendor[] }>('/api/vendors'),
-      api<FinanceDashboard>('/api/admin/finance'), api<{ maps: MapsManifest }>('/api/maps/manifest'), api<{ cities: CoverageCity[] }>('/api/coverage'), api<{ notifications: AdminNotification[] }>('/api/admin/notifications'),
+      api<FinanceDashboard>('/api/admin/finance'), api<{ maps: MapsManifest }>('/api/maps/manifest'), api<{ cities: CoverageCity[] }>('/api/coverage'), api<{ notifications: AdminNotification[] }>('/api/admin/notifications'), api<{ applications: DeliveryPartnerApplication[]; declineReasons: DeclineReason[] }>('/api/admin/delivery-partners'),
     ]);
     if (results[0].status === 'fulfilled') setMetrics(results[0].value.metrics);
     if (results[1].status === 'fulfilled') setOrders(results[1].value.orders);
@@ -147,6 +153,7 @@ function App() {
     if (results[5].status === 'fulfilled') setMaps(results[5].value.maps);
     if (results[6].status === 'fulfilled') setCoverage(results[6].value.cities);
     if (results[7].status === 'fulfilled') setNotifications(results[7].value.notifications);
+    if (results[8].status === 'fulfilled') { setDeliveryPartners(results[8].value.applications); setDeclineReasons(results[8].value.declineReasons); }
   };
   useEffect(() => { void load(); }, [session?.user.id]);
   useEffect(() => { if (session?.user.profile?.mustChangePassword === true) setPasswordOpen(true); }, [session?.user.id, session?.user.profile?.mustChangePassword]);
@@ -156,6 +163,16 @@ function App() {
   const filteredVendors = useMemo(() => vendors.filter((item) => `${item.name} ${item.cuisine} ${item.status}`.toLowerCase().includes(query.toLowerCase())), [vendors, query]);
   const ticketAction = async (id: string, status: 'pending' | 'resolved') => { setNotice('Updating ticket...'); try { await api(`/api/tickets/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }); await load(); setNotice(`Ticket marked ${status}.`); } catch (e) { setNotice(e instanceof Error ? e.message : 'Ticket update failed'); } };
   const reviewVendor = async (vendorId: string, status: 'verified' | 'under_review' | 'rejected' | 'suspended', riskTier?: 'new' | 'standard' | 'trusted' | 'restricted') => { setNotice('Saving review...'); try { const result = await api<{ emailNotification?: { status: string } }>(`/api/admin/vendors/${vendorId}/compliance`, { method: 'PATCH', body: JSON.stringify({ status, riskTier, note: 'Reviewed in the SokoEats staff portal.' }) }); await load(); setNotice(status === 'verified' ? result.emailNotification?.status === 'sent' ? 'Partner approved and notification email sent.' : result.emailNotification?.status === 'queued' ? 'Partner approved. The notification email is queued for automatic retry.' : 'Partner approval saved.' : 'Vendor review saved.'); } catch (e) { setNotice(e instanceof Error ? e.message : 'Review failed'); } };
+  const reviewDeliveryPartner = async (application: DeliveryPartnerApplication, decision: 'approved' | 'declined' | 'under_review') => {
+    const draft = reviewDrafts[application.id] || { reasonCode: '', note: '' };
+    if (decision === 'declined' && !draft.reasonCode) return setNotice('Select a clear decline reason before sending the decision.');
+    setNotice('Saving delivery partner review...');
+    try {
+      const result = await api<{ message: string }>(`/api/admin/delivery-partners/${application.id}/review`, { method: 'PATCH', body: JSON.stringify({ decision, reasonCode: decision === 'declined' ? draft.reasonCode : undefined, note: draft.note || undefined }) });
+      await load();
+      setNotice(`${result.message} The applicant was notified in-app and by device push where available.`);
+    } catch (error) { setNotice(error instanceof Error ? error.message : 'Delivery partner review failed.'); }
+  };
   const processDue = async () => { setNotice('Creating eligible payouts...'); try { const result = await api<{ created: number }>('/api/finance/process-due', { method: 'POST' }); await load(); setNotice(`${result.created} payout instruction(s) created.`); } catch (e) { setNotice(e instanceof Error ? e.message : 'Payout processing failed'); } };
   const executePayout = async (reference: string) => { setNotice('Submitting payout...'); try { await api(`/api/finance/payouts/${reference}/execute`, { method: 'POST' }); await load(); setNotice('Payout submitted to the provider.'); } catch (e) { setNotice(e instanceof Error ? e.message : 'Payout failed'); } };
   const setCityStatus = async (city: CoverageCity, status: CoverageCity['status']) => { setNotice(`Updating ${city.name}...`); try { await api(`/api/admin/coverage/cities/${city.id}`, { method: 'PATCH', body: JSON.stringify({ status, deliveryMode: city.delivery_mode }) }); await load(); setNotice(`${city.name} is now ${status.replaceAll('_', ' ')}.`); } catch (e) { setNotice(e instanceof Error ? e.message : 'Coverage update failed'); } };
@@ -191,6 +208,25 @@ function App() {
       {view === 'tickets' && <section className="panel full"><div className="panelHeader"><div><p>Ticket desk</p><h2>Customer and delivery cases</h2></div><Status tone={filteredTickets.some((item) => item.priority === 'urgent') ? 'danger' : 'good'}>{filteredTickets.filter((item) => item.status !== 'resolved').length} open</Status></div><div className="dataTable"><div className="tableHead"><span>Case</span><span>Issue</span><span>Queue</span><span>Status</span><span>Action</span></div>{filteredTickets.map((ticket) => <div className="tableRow" key={ticket.id}><b>{ticket.code}</b><div><strong>{ticket.subject}</strong><small>{ticket.priority} priority</small></div><span>{ticket.assignedTeam}</span><Status tone={ticket.status === 'resolved' ? 'good' : ticket.priority === 'urgent' ? 'danger' : 'warn'}>{ticket.status}</Status><div className="rowActions"><button onClick={() => ticketAction(ticket.id, 'pending')}>Pending</button><button className="positive" onClick={() => ticketAction(ticket.id, 'resolved')}><CheckCircle2 size={15}/>Resolve</button></div></div>)}</div></section>}
 
       {view === 'vendors' && <section className="panel full"><div className="panelHeader"><div><p>Vendor compliance</p><h2>Identity, tax and settlement review</h2></div><Status>{finance?.vendorSubmissions.length || 0} submissions</Status></div>{finance?.vendorSubmissions.filter(entry => `${entry.applicationReference || ''} ${entry.vendorName} ${entry.ownerEmail || ''}`.toLowerCase().includes(query.toLowerCase())).map((entry) => <div className="vendorReview" key={entry.vendorId}><div className="vendorIdentity"><div className="vendorAvatar"><Store/></div><div><h3>{entry.vendorName}</h3><p>{entry.legalBusinessName} · {entry.registrationNumber}</p><p>{entry.applicationReference}</p><span>{entry.ownerName} · {entry.ownerEmail}</span></div></div><dl><div><dt>KRA PIN</dt><dd>{entry.kraPinMasked}</dd></div><div><dt>Settlement</dt><dd>{entry.settlementMethod} {entry.settlementAccountMasked}</dd></div><div><dt>Commission</dt><dd>{entry.commissionRateBps / 100}%</dd></div><div><dt>Risk tier</dt><dd>{entry.riskTier}</dd></div></dl><div className="reviewActions"><Status tone={entry.verificationStatus === 'verified' ? 'good' : 'warn'}>{entry.verificationStatus}</Status><button onClick={() => reviewVendor(entry.vendorId, 'under_review')}>Request review</button><button className="positive" onClick={() => reviewVendor(entry.vendorId, 'verified', 'standard')}>Verify</button>{role === 'admin' && <button className="danger" onClick={() => reviewVendor(entry.vendorId, 'suspended', 'restricted')}>Freeze</button>}</div></div>)}{!finance?.vendorSubmissions.length && <Empty icon={UsersRound} title="No compliance submissions" body="New vendor applications will appear here for review."/>}</section>}
+
+      {view === 'deliveryPartners' && <section className="panel full partnerReviewPanel">
+        <div className="panelHeader"><div><p>Trust and safety</p><h2>Rider and Errand Partner verification</h2></div><Status>{deliveryPartners.filter(item => ['submitted','under_review'].includes(item.status)).length} awaiting review</Status></div>
+        <div className="partnerReviewList">{deliveryPartners.filter(item => `${item.name} ${item.email} ${item.applicationReference || ''} ${item.deliveryMode}`.toLowerCase().includes(query.toLowerCase())).map(application => {
+          const draft = reviewDrafts[application.id] || { reasonCode: '', note: '' };
+          return <article className="partnerReviewCard" key={application.id}>
+            <div className="partnerReviewHeader"><div className={`partnerModeIcon ${application.deliveryMode}`}>{application.deliveryMode === 'foot' ? <Footprints/> : <Bike/>}</div><div><p>{application.deliveryMode === 'foot' ? 'Errand Partner' : 'Motorbike Rider'}</p><h3>{application.name}</h3><span>{application.applicationReference || 'Application'} · {application.city || 'City not set'}</span><small>{application.email}{application.phone ? ` · ${application.phone}` : ''}</small></div><Status tone={application.status === 'approved' ? 'good' : application.status === 'declined' ? 'danger' : 'warn'}>{application.status.replace('_',' ')}</Status></div>
+            <div className="documentGrid">
+              <a href={application.passportPhotoUrl} target="_blank" rel="noreferrer"><img src={application.passportPhotoUrl} alt="Applicant passport-size portrait"/><span>Passport photo</span></a>
+              <a href={application.nationalIdCopyUrl} target="_blank" rel="noreferrer"><img src={application.nationalIdCopyUrl} alt="National ID copy"/><span>National ID copy</span></a>
+              <a href={application.goodConductUrl} target="_blank" rel="noreferrer"><img src={application.goodConductUrl} alt="Certificate of Good Conduct"/><span>Good Conduct</span></a>
+              {application.deliveryMode === 'motorbike' && application.motorbikePhotoUrl && <a href={application.motorbikePhotoUrl} target="_blank" rel="noreferrer"><img src={application.motorbikePhotoUrl} alt="Applicant motorbike"/><span>Motorbike · {application.registrationNumber}</span></a>}
+            </div>
+            <div className="partnerDecision"><label>Decline reason<select value={draft.reasonCode} onChange={event => setReviewDrafts(current => ({ ...current, [application.id]: { ...draft, reasonCode: event.target.value } }))}><option value="">Select only when declining</option>{declineReasons.filter(reason => application.deliveryMode === 'motorbike' || !['motorbike_photo_missing','vehicle_details_mismatch'].includes(reason.code)).map(reason => <option key={reason.code} value={reason.code}>{reason.label}</option>)}</select></label><label>Reviewer note<input value={draft.note} maxLength={500} onChange={event => setReviewDrafts(current => ({ ...current, [application.id]: { ...draft, note: event.target.value } }))} placeholder="Optional context for the applicant"/></label></div>
+            <div className="reviewActions"><button onClick={() => reviewDeliveryPartner(application, 'under_review')}><FileCheck2 size={15}/>Start review</button><button className="positive" onClick={() => reviewDeliveryPartner(application, 'approved')}><CheckCircle2 size={15}/>Approve partner</button><button className="danger" onClick={() => reviewDeliveryPartner(application, 'declined')}><X size={15}/>Decline with reason</button></div>
+          </article>;
+        })}</div>
+        {!deliveryPartners.length && <Empty icon={Footprints} title="No delivery applications" body="New Rider and Errand Partner submissions will appear here with their verification documents."/>}
+      </section>}
 
       {view === 'settlements' && role === 'admin' && <div className="settlementGrid"><section className="panel full"><div className="panelHeader"><div><p>Settlement engine</p><h2>Lifecycle exposure</h2></div><button className="filled" onClick={processDue}><Banknote size={17}/>Create daily batches</button></div><div className="lifecycle">{finance?.settlementSummary.map((entry) => <article key={entry.state}><span>{entry.state.replaceAll('_', ' ')}</span><strong>{entry.count}</strong><small>{money(entry.exposure)}</small></article>)}</div></section><section className="panel full"><div className="panelHeader"><div><p>Paystack transfer queue</p><h2>Daily vendor and rider batches</h2></div></div><div className="dataTable"><div className="tableHead payout"><span>Reference</span><span>Beneficiary</span><span>Amount</span><span>Scheduled</span><span>Action</span></div>{finance?.payoutBatches.map((item) => <div className="tableRow payout" key={item.reference}><b>{item.reference}</b><div><strong>{item.vendor_name || item.rider_name || item.beneficiary_type}</strong><small>{item.payout_method} · est. fee {money(item.estimated_provider_fee)}</small></div><strong>{money(item.amount)}</strong><span>{new Date(item.scheduled_for).toLocaleString()}</span>{['scheduled','failed'].includes(item.status) ? <button className="positive" onClick={() => executePayout(item.reference)}>Pay batch</button> : <Status tone={item.status === 'paid' ? 'good' : 'warn'}>{item.status}</Status>}</div>)}</div></section></div>}
 

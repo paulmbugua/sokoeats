@@ -68,12 +68,18 @@ function buildProfile(body, role) {
     source: body.source || 'mobile',
   };
   if (role === 'rider') {
+    const deliveryMode = body.deliveryMode === 'foot' ? 'foot' : 'motorbike';
     return {
       ...base,
-      vehicleType: body.vehicleType || '',
-      registrationNumber: body.registrationNumber || body.vehicleRegistration || '',
+      deliveryMode,
+      vehicleType: deliveryMode === 'motorbike' ? body.vehicleType || 'Motorbike' : '',
+      registrationNumber: deliveryMode === 'motorbike' ? body.registrationNumber || body.vehicleRegistration || '' : '',
       nationalId: body.nationalId || '',
-      onboardingStatus: body.registrationNumber || body.vehicleRegistration ? 'details_submitted' : 'started',
+      passportPhotoUrl: body.passportPhotoUrl || '',
+      nationalIdCopyUrl: body.nationalIdCopyUrl || '',
+      goodConductUrl: body.goodConductUrl || '',
+      motorbikePhotoUrl: deliveryMode === 'motorbike' ? body.motorbikePhotoUrl || '' : '',
+      onboardingStatus: body.goodConductUrl ? 'submitted' : 'started',
       payoutMethod: 'M-Pesa',
       payoutPhone: body.payoutPhone || body.phone || '',
     };
@@ -111,7 +117,7 @@ function profileValue(row, key) {
 }
 
 function requiredProfileFields(role) {
-  if (role === 'rider') return ['firstName', 'lastName', 'phone', 'city', 'vehicleType', 'registrationNumber'];
+  if (role === 'rider') return ['firstName', 'lastName', 'phone', 'city', 'deliveryMode', 'passportPhotoUrl', 'nationalIdCopyUrl', 'goodConductUrl'];
   if (role === 'vendor' || role === 'merchant') return ['phone', 'city', 'businessName', 'storeAddress'];
   if (role === 'customer') return ['firstName', 'lastName', 'phone', 'city', 'defaultAddress'];
   return [];
@@ -120,6 +126,10 @@ function requiredProfileFields(role) {
 function profileCompletion(row) {
   const role = row.role === 'courier' ? 'rider' : row.role;
   const missing = requiredProfileFields(role).filter((field) => !valuePresent(profileValue(row, field)));
+  if (role === 'rider' && profileValue(row, 'deliveryMode') === 'motorbike') {
+    for (const field of ['vehicleType', 'registrationNumber', 'motorbikePhotoUrl']) if (!valuePresent(profileValue(row, field))) missing.push(field);
+  }
+  if (role === 'rider' && profileValue(row, 'onboardingStatus') !== 'approved') missing.push('adminApproval');
   if (!hasCurrentTerms(row)) missing.push('termsAcceptance');
   return { profileComplete: missing.length === 0, missingProfileFields: missing };
 }
@@ -343,7 +353,7 @@ export async function register(req, res, next) {
         (name, email, phone, role, password_hash, status, auth_provider, city, default_address, email_verified, phone_verified, marketing_opt_in, terms_accepted_at, profile)
        VALUES ($1,$2,$3,$4,$5,$6,'password',$7,$8,false,false,$9,NULL,$10::jsonb)
        RETURNING *`,
-      [name, email, req.body.phone || null, role, passwordHash, role === 'vendor' || role === 'merchant' ? 'review' : 'active', req.body.city || 'Nairobi', req.body.defaultAddress || req.body.address || null, req.body.marketingOptIn !== false, JSON.stringify(profile)],
+      [name, email, req.body.phone || null, role, passwordHash, ['vendor', 'merchant', 'rider'].includes(role) ? 'review' : 'active', req.body.city || 'Nairobi', req.body.defaultAddress || req.body.address || null, req.body.marketingOptIn !== false, JSON.stringify(profile)],
     );
     const acceptedUser = await recordTermsAcceptance(client, rows[0], req.body.termsAcceptance);
     await ensureVendorForUser(acceptedUser, client);
@@ -415,7 +425,7 @@ export async function googleAuth(req, res, next) {
           (name, email, phone, role, password_hash, status, auth_provider, google_sub, avatar_url, city, default_address, email_verified, phone_verified, marketing_opt_in, terms_accepted_at, last_login_at, profile)
          VALUES ($1,$2,$3,$4,NULL,$5,'google',$6,$7,$8,$9,true,false,$10,NULL,NOW(),$11::jsonb)
          RETURNING *`,
-        [googleProfile.name, googleProfile.email, req.body.phone || null, role, role === 'vendor' || role === 'merchant' ? 'review' : 'active', googleProfile.sub, googleProfile.avatarUrl, req.body.city || null, req.body.defaultAddress || req.body.address || req.body.storeAddress || null, req.body.marketingOptIn !== false, JSON.stringify(profile)],
+        [googleProfile.name, googleProfile.email, req.body.phone || null, role, ['vendor', 'merchant', 'rider'].includes(role) ? 'review' : 'active', googleProfile.sub, googleProfile.avatarUrl, req.body.city || null, req.body.defaultAddress || req.body.address || req.body.storeAddress || null, req.body.marketingOptIn !== false, JSON.stringify(profile)],
       );
       userRow = rows[0];
     }

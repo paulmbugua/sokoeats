@@ -4,12 +4,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { DeliveryBoard } from './DeliveryBoard';
 import {
   ArrowLeft,
+  Bike,
   Check,
   ChevronRight,
   Clock3,
   Download,
   Eye,
   EyeOff,
+  Footprints,
   Headphones,
   LockKeyhole,
   LogIn,
@@ -39,6 +41,7 @@ import type { MenuItem, Vendor } from '@sokoeats/shared/types';
 import { PartnerPortal } from './PartnerPortal';
 import { PartnerTerms, type TermsConsent } from './PartnerTerms';
 import { CustomerCareChat } from './CustomerCareChat';
+import './DeliveryPartner.css';
 
 type Session = ReturnType<typeof readAuthSession>;
 type Line = { item: MenuItem; quantity: number };
@@ -142,6 +145,9 @@ export default function SokoEatsApp() {
   const [legal, setLegal] = useState<'terms' | 'privacy' | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleteForm, setDeleteForm] = useState({ confirmation: '', password: '', reason: '' });
+  const [partnerDocuments, setPartnerDocuments] = useState({ passportPhotoUrl: '', nationalIdCopyUrl: '', goodConductUrl: '', motorbikePhotoUrl: '' });
+  const [partnerApplicationStatus, setPartnerApplicationStatus] = useState('');
+  const [uploadingDocument, setUploadingDocument] = useState('');
   const [form, setForm] = useState({
     fullName: '',
     email: '',
@@ -150,6 +156,7 @@ export default function SokoEatsApp() {
     phone: '',
     city: 'Nairobi',
     defaultAddress: '',
+    deliveryMode: 'motorbike' as 'motorbike' | 'foot',
     vehicleType: 'Motorbike',
     registrationNumber: '',
     payoutPhone: '',
@@ -254,12 +261,20 @@ export default function SokoEatsApp() {
       defaultAddress:
         session.user.defaultAddress ||
         String(session.user.profile?.defaultAddress || current.defaultAddress),
+      deliveryMode: session.user.profile?.deliveryMode === 'foot' ? 'foot' : 'motorbike',
       vehicleType: String(session.user.profile?.vehicleType || current.vehicleType),
       registrationNumber: String(
         session.user.profile?.registrationNumber || current.registrationNumber
       ),
       payoutPhone: String(session.user.profile?.payoutPhone || current.payoutPhone),
     }));
+    setPartnerDocuments({
+      passportPhotoUrl: String(session.user.profile?.passportPhotoUrl || ''),
+      nationalIdCopyUrl: String(session.user.profile?.nationalIdCopyUrl || ''),
+      goodConductUrl: String(session.user.profile?.goodConductUrl || ''),
+      motorbikePhotoUrl: String(session.user.profile?.motorbikePhotoUrl || ''),
+    });
+    if (session.user.role === 'rider') void api<{ application: { status?: string; documentRefs?: typeof partnerDocuments } | null }>('/api/rider/application').then(result => { setPartnerApplicationStatus(result.application?.status || ''); if (result.application?.documentRefs) setPartnerDocuments(result.application.documentRefs); }).catch(() => {});
   }, [session?.user.id]);
 
   useEffect(() => {
@@ -414,8 +429,8 @@ export default function SokoEatsApp() {
       if (authMode === 'register' && !form.phone.trim()) return void focusAuthField('phone', 'Mobile number is required.');
       if (authMode === 'register' && !form.city.trim()) return void focusAuthField('city', 'City is required.');
       if (authMode === 'register' && authRole === 'customer' && !form.defaultAddress.trim()) return void focusAuthField('defaultAddress', 'Delivery address is required.');
-      if (authMode === 'register' && authRole === 'rider' && !form.vehicleType.trim()) return void focusAuthField('vehicleType', 'Vehicle type is required.');
-      if (authMode === 'register' && authRole === 'rider' && !form.registrationNumber.trim()) return void focusAuthField('registrationNumber', 'Registration number is required.');
+      if (authMode === 'register' && authRole === 'rider' && form.deliveryMode === 'motorbike' && !form.vehicleType.trim()) return void focusAuthField('vehicleType', 'Vehicle type is required.');
+      if (authMode === 'register' && authRole === 'rider' && form.deliveryMode === 'motorbike' && !form.registrationNumber.trim()) return void focusAuthField('registrationNumber', 'Registration number is required.');
       if (authMode === 'register' && authRole === 'rider' && !form.payoutPhone.trim()) return void focusAuthField('payoutPhone', 'Payout M-Pesa number is required.');
       if (authMode === 'register' && isPartner && !form.businessName.trim()) return void focusAuthField('businessName', 'Legal business name is required.');
       if (authMode === 'register' && isPartner && !form.businessCategory.trim()) return void focusAuthField('businessCategory', 'Business category is required.');
@@ -439,8 +454,9 @@ export default function SokoEatsApp() {
               phone: form.phone,
               city: form.city,
               defaultAddress: authRole === 'customer' ? form.defaultAddress : undefined,
-              vehicleType: authRole === 'rider' ? form.vehicleType : undefined,
-              registrationNumber: authRole === 'rider' ? form.registrationNumber : undefined,
+              deliveryMode: authRole === 'rider' ? form.deliveryMode : undefined,
+              vehicleType: authRole === 'rider' && form.deliveryMode === 'motorbike' ? form.vehicleType : undefined,
+              registrationNumber: authRole === 'rider' && form.deliveryMode === 'motorbike' ? form.registrationNumber : undefined,
               payoutPhone:
                 authRole === 'rider'
                   ? form.payoutPhone
@@ -515,8 +531,9 @@ export default function SokoEatsApp() {
     if (!session) return;
     if (!form.phone.trim() || !form.city.trim()) throw new Error('Mobile number and city are required.');
     if (session.user.role === 'customer' && !form.defaultAddress.trim()) throw new Error('Add a delivery address.');
-    if (session.user.role === 'rider' && (!form.vehicleType.trim() || !form.registrationNumber.trim() || !form.payoutPhone.trim())) throw new Error('Vehicle, registration, and payout details are required.');
-    const result = await api<{ user: NonNullable<Session>['user'] }>('/api/auth/profile', {
+    if (session.user.role === 'rider' && form.deliveryMode === 'motorbike' && (!form.vehicleType.trim() || !form.registrationNumber.trim())) throw new Error('Motorbike type and registration are required.');
+    if (session.user.role === 'rider' && !form.payoutPhone.trim()) throw new Error('Add the M-Pesa number used for payouts.');
+    let result = await api<{ user: NonNullable<Session>['user'] }>('/api/auth/profile', {
       method: 'PATCH',
       body: JSON.stringify({
         name: form.fullName,
@@ -524,6 +541,7 @@ export default function SokoEatsApp() {
         phone: form.phone,
         city: form.city,
         defaultAddress: session?.user.role === 'customer' ? form.defaultAddress : undefined,
+        deliveryMode: session?.user.role === 'rider' ? form.deliveryMode : undefined,
         vehicleType: session?.user.role === 'rider' ? form.vehicleType : undefined,
         registrationNumber: session?.user.role === 'rider' ? form.registrationNumber : undefined,
         payoutPhone: session?.user.role === 'rider' ? form.payoutPhone : undefined,
@@ -531,11 +549,30 @@ export default function SokoEatsApp() {
     });
     if (session.user.role === 'rider') {
       await api('/api/rider/payout-profile', { method: 'PUT', body: JSON.stringify({ method: 'mpesa_wallet', accountNumber: form.payoutPhone, schedule: 'daily' }) });
+      const required = [partnerDocuments.passportPhotoUrl, partnerDocuments.nationalIdCopyUrl, partnerDocuments.goodConductUrl, ...(form.deliveryMode === 'motorbike' ? [partnerDocuments.motorbikePhotoUrl] : [])];
+      if (required.some(value => !value)) throw new Error('Upload every required verification document before submitting.');
+      const submitted = await api<{ application: { status: string }; message: string }>('/api/rider/application', { method: 'PUT', body: JSON.stringify({ deliveryMode: form.deliveryMode, ...partnerDocuments, vehicleType: form.deliveryMode === 'motorbike' ? form.vehicleType : undefined, registrationNumber: form.deliveryMode === 'motorbike' ? form.registrationNumber : undefined }) });
+      setPartnerApplicationStatus(submitted.application.status);
+      result = await api<{ user: NonNullable<Session>['user'] }>('/api/auth/me');
     }
     const next = { ...session, user: result.user };
     saveAuthSession(next);
     setSession(next);
-    setStatus('Profile saved.');
+    setStatus(session.user.role === 'rider' ? 'Application submitted. We will notify you after review.' : 'Profile saved.');
+  };
+
+  const uploadPartnerDocument = async (documentType: keyof typeof partnerDocuments, file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) throw new Error('Upload a clear JPEG, PNG, WebP, or AVIF image.');
+    setUploadingDocument(documentType); setStatus('');
+    try {
+      const key = ({ passportPhotoUrl: 'passport_photo', nationalIdCopyUrl: 'national_id_copy', goodConductUrl: 'good_conduct', motorbikePhotoUrl: 'motorbike_photo' } as const)[documentType];
+      const signed = await api<{ upload: { uploadUrl: string; key: string; headers: Record<string,string> } }>('/api/rider/application/documents/upload-url', { method: 'POST', body: JSON.stringify({ documentType: key, filename: file.name, contentType: file.type }) });
+      const uploaded = await fetch(signed.upload.uploadUrl, { method: 'PUT', headers: signed.upload.headers, body: file });
+      if (!uploaded.ok) throw new Error('Document upload failed. Please try again.');
+      setPartnerDocuments(current => ({ ...current, [documentType]: signed.upload.key }));
+      setStatus('Document uploaded securely.');
+    } finally { setUploadingDocument(''); }
   };
   const createQuote = async () => {
     if (!vendor || !session) throw new Error('Choose a shop and sign in before checkout.');
@@ -1114,11 +1151,15 @@ export default function SokoEatsApp() {
             </header>
             {session.user.role === 'rider' ? (
               <section className="profileForm">
-                <h2>Rider workspace</h2>
+                <h2>Delivery partner application</h2>
                 <p>
-                  Complete your rider profile, then use the app for live requests, surge navigation,
-                  proof of delivery, earnings, and safety tools.
+                  Choose how you deliver, complete the safety checks, then submit for admin approval.
                 </p>
+                {!!partnerApplicationStatus && <div className={`applicationStatus ${partnerApplicationStatus}`}><ShieldCheck/><div><strong>{partnerApplicationStatus.replace('_',' ')}</strong><span>{partnerApplicationStatus === 'approved' ? 'Your delivery workspace is active.' : partnerApplicationStatus === 'declined' ? 'Review the notification from our team, replace the requested document and resubmit.' : 'Your documents are with the SokoEats verification team.'}</span></div></div>}
+                <div className="deliveryModePicker">
+                  <button className={form.deliveryMode === 'motorbike' ? 'selected' : ''} onClick={() => setForm({ ...form, deliveryMode: 'motorbike' })} type="button"><Bike/><span><strong>Motorbike Rider</strong><small>Food, shopping and parcel delivery</small></span></button>
+                  <button className={form.deliveryMode === 'foot' ? 'selected' : ''} onClick={() => setForm({ ...form, deliveryMode: 'foot' })} type="button"><Footprints/><span><strong>Errand Partner</strong><small>On-foot errands and nearby parcels</small></span></button>
+                </div>
                 <label>
                   Full name
                   <input
@@ -1140,20 +1181,20 @@ export default function SokoEatsApp() {
                     onChange={(e) => setForm({ ...form, city: e.target.value })}
                   />
                 </label>
-                <label>
+                {form.deliveryMode === 'motorbike' && <label>
                   Vehicle type
                   <input
                     value={form.vehicleType}
                     onChange={(e) => setForm({ ...form, vehicleType: e.target.value })}
                   />
-                </label>
-                <label>
+                </label>}
+                {form.deliveryMode === 'motorbike' && <label>
                   Registration number
                   <input
                     value={form.registrationNumber}
                     onChange={(e) => setForm({ ...form, registrationNumber: e.target.value })}
                   />
-                </label>
+                </label>}
                 <label>
                   Payout M-Pesa number
                   <input
@@ -1161,9 +1202,18 @@ export default function SokoEatsApp() {
                     onChange={(e) => setForm({ ...form, payoutPhone: e.target.value })}
                   />
                 </label>
+                <div className="verificationDocuments">
+                  <div><h3>Verification documents</h3><p>Use clear, uncropped images. Your details are shown only to authorised review staff.</p></div>
+                  {([
+                    ['passportPhotoUrl','Passport-size photo','A recent front-facing portrait'],
+                    ['nationalIdCopyUrl','National ID copy','A clear image of your Kenyan ID'],
+                    ['goodConductUrl','Certificate of Good Conduct','Upload the complete valid certificate'],
+                    ...(form.deliveryMode === 'motorbike' ? [['motorbikePhotoUrl','Motorbike photo','Show the full motorbike and number plate']] : []),
+                  ] as Array<[keyof typeof partnerDocuments,string,string]>).map(([key,label,help]) => <label className={`documentUpload ${partnerDocuments[key] ? 'complete' : ''}`} key={key}><div><strong>{label}</strong><span>{partnerDocuments[key] ? 'Ready for review' : help}</span></div><span className="uploadAction">{uploadingDocument === key ? 'Uploading...' : partnerDocuments[key] ? 'Replace' : 'Choose image'}</span><input type="file" accept="image/jpeg,image/png,image/webp,image/avif" disabled={!!uploadingDocument} onChange={event => void uploadPartnerDocument(key,event.target.files?.[0]).catch(error => setStatus(error instanceof Error ? error.message : 'Upload failed.'))}/></label>)}
+                </div>
                 <PartnerTerms role={session.user.role} value={termsAcceptance} onChange={setTermsAcceptance} accepted={session.user.termsAccepted} />
                 <button className="primary" onClick={() => void saveProfile().catch((error) => setStatus(error instanceof Error ? error.message : 'Profile could not be saved.'))}>
-                  Save rider profile
+                  Submit for verification
                 </button>
                 <a className="primary" href={APP_URL}>
                   <Download /> Open rider app
@@ -1384,7 +1434,11 @@ export default function SokoEatsApp() {
                 )}
                 {authRole === 'rider' && (
                   <>
-                    <div className="formPair">
+                    <div className="deliveryModePicker compact">
+                      <button className={form.deliveryMode === 'motorbike' ? 'selected' : ''} type="button" onClick={() => setForm({ ...form, deliveryMode: 'motorbike' })}><Bike/><span><strong>Motorbike Rider</strong><small>Regular deliveries</small></span></button>
+                      <button className={form.deliveryMode === 'foot' ? 'selected' : ''} type="button" onClick={() => setForm({ ...form, deliveryMode: 'foot' })}><Footprints/><span><strong>Errand Partner</strong><small>Nearby on-foot errands</small></span></button>
+                    </div>
+                    {form.deliveryMode === 'motorbike' && <div className="formPair">
                       <input
                         data-auth-field="vehicleType"
                         placeholder="Vehicle type"
@@ -1397,7 +1451,7 @@ export default function SokoEatsApp() {
                         value={form.registrationNumber}
                         onChange={(e) => setForm({ ...form, registrationNumber: e.target.value })}
                       />
-                    </div>
+                    </div>}
                     <input
                       data-auth-field="payoutPhone"
                       placeholder="Rider payout M-Pesa number"

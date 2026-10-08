@@ -54,13 +54,21 @@ export function requireRole(...roles) {
     if (!req.auth) return next(Object.assign(new Error('Sign in to continue'), { status: 401 }));
     if (!roles.map(canonicalRole).includes(canonicalRole(req.auth.role))) return next(Object.assign(new Error('This account cannot perform that action'), { status: 403 }));
     try {
-      const supportRequest = /^\/api\/rider\/(live-chat\/messages|incidents)$/.test(req.originalUrl?.split('?')[0] || '');
+      const supportRequest = /^\/api\/rider\/(live-chat\/messages|incidents|application(?:\/documents\/upload-url)?)$/.test(req.originalUrl?.split('?')[0] || '');
       if (needsPartnerTerms(req.auth.role) && !supportRequest && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
         if (!hasCurrentTerms(req.authUser)) throw Object.assign(new Error('Open and accept the current terms of service for your account type before continuing.'), { status: 403 });
       }
       next();
     } catch (error) { next(error); }
   };
+}
+
+export async function requireApprovedDeliveryPartner(req, _res, next) {
+  try {
+    const { rows } = await pool.query('SELECT status FROM sokoeats_delivery_partner_applications WHERE user_id=$1', [req.authUser.id]);
+    if (rows[0]?.status !== 'approved') throw Object.assign(new Error('Your delivery partner application must be approved before accepting or updating deliveries'), { status: 403 });
+    next();
+  } catch (error) { next(error); }
 }
 
 export async function requireVerifiedVendor(req, _res, next) {

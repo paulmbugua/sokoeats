@@ -6,11 +6,11 @@ export async function pushNotification(notification) {
        FROM sokoeats_push_tokens t
        JOIN sokoeats_users u ON u.id=t.user_id
       WHERE t.is_active=TRUE AND (
-        $1='all' OR ($1='customers' AND u.role='customer') OR
+        ($2::uuid IS NOT NULL AND u.id=$2::uuid) OR ($2::uuid IS NULL AND ($1='all' OR ($1='customers' AND u.role='customer') OR
         ($1='riders' AND u.role IN ('rider','courier')) OR
         ($1='partners' AND u.role IN ('vendor','merchant','merchant_admin'))
-      )`,
-    [notification.audience],
+      )))`,
+    [notification.audience, notification.target_user_id || null],
   );
   const tokens = rows.map(row => row.token).filter(token => /^ExponentPushToken\[[^\]]+\]$/.test(token));
   let sent = 0;
