@@ -22,8 +22,8 @@ function privateDocumentConfig() {
   const endpoint = process.env.R2_ENDPOINT || (accountId ? `https://${accountId}.r2.cloudflarestorage.com` : null);
   const accessKeyId = process.env.R2_ACCESS_KEY_ID;
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  const bucket = process.env.R2_BUCKET_DOCUMENTS;
-  if (!endpoint || !accessKeyId || !secretAccessKey || !bucket) throw Object.assign(new Error('Private R2 document storage is not configured. Set R2_BUCKET_DOCUMENTS to a non-public bucket.'), { status: 503 });
+  const bucket = process.env.R2_BUCKET_DOCS || process.env.R2_BUCKET_DOCUMENTS;
+  if (!endpoint || !accessKeyId || !secretAccessKey || !bucket) throw Object.assign(new Error('Private R2 document storage is not configured. Set R2_BUCKET_DOCS to the name of a non-public bucket.'), { status: 503 });
   return { endpoint, accessKeyId, secretAccessKey, bucket };
 }
 
