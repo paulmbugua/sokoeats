@@ -75,7 +75,7 @@ corepack yarn install --immutable && corepack yarn workspace @sokoeats/backend b
 Start command:
 
 ```text
-corepack yarn workspace @sokoeats/backend start
+corepack yarn workspace @sokoeats/backend db:setup && corepack yarn workspace @sokoeats/backend start
 ```
 
 Railway must provide at least `PORT`, `DATABASE_URL`, `JWT_SECRET`, `CORS_ORIGINS`, and the production payment, Google, Firebase, email, SMS, R2, and Maps variables already documented in `apps/backend/.env.example`. The Express server reads Railway's assigned `PORT`; do not hard-code port 4000 in production.
