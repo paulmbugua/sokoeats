@@ -1849,7 +1849,8 @@ async function sokoeatsApi<T>(path: string, init: RequestInit = {}): Promise<T> 
   const res = await fetch(`${API_BASE}${path}`, { ...init, headers });
   if (!res.ok) {
     const error = await res.json().catch(() => null);
-    throw new Error(error?.message || 'Sokoeats mobile API request failed');
+    const details = Array.isArray(error?.details) ? error.details.filter(Boolean).join('. ') : '';
+    throw new Error(details || error?.message || 'Sokoeats mobile API request failed');
   }
   return res.json() as Promise<T>;
 }

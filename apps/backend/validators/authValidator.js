@@ -2,6 +2,7 @@ import Joi from 'joi';
 
 const role = Joi.string().valid('normal','user','customer','rider','courier','vendor','merchant','merchant_admin','support','admin').default('customer');
 const phone = Joi.string().min(7).max(30).allow('', null);
+const deliveryMode = Joi.string().valid('motorbike', 'foot');
 const termsAcceptance = Joi.object({
   accepted: Joi.boolean().strict().valid(true).required(),
   role: Joi.string().valid('rider', 'vendor', 'merchant').required(),
@@ -25,6 +26,7 @@ export const registerSchema = Joi.object({
   businessName: Joi.string().max(140).allow('', null),
   storeName: Joi.string().max(140).allow('', null),
   storeAddress: Joi.string().max(220).allow('', null),
+  deliveryMode,
   vehicleType: Joi.string().max(80).allow('', null),
   registrationNumber: Joi.string().max(40).allow('', null),
   vehicleRegistration: Joi.string().max(40).allow('', null),
@@ -73,6 +75,7 @@ export const googleAuthSchema = Joi.object({
   businessName: Joi.string().max(140).allow('', null),
   storeName: Joi.string().max(140).allow('', null),
   storeAddress: Joi.string().max(220).allow('', null),
+  deliveryMode,
   vehicleType: Joi.string().max(80).allow('', null),
   registrationNumber: Joi.string().max(40).allow('', null),
   vehicleRegistration: Joi.string().max(40).allow('', null),
@@ -105,6 +108,7 @@ export const updateProfileSchema = Joi.object({
   businessName: Joi.string().max(140).allow('', null),
   storeName: Joi.string().max(140).allow('', null),
   storeAddress: Joi.string().max(220).allow('', null),
+  deliveryMode,
   vehicleType: Joi.string().max(80).allow('', null),
   registrationNumber: Joi.string().max(40).allow('', null),
   vehicleRegistration: Joi.string().max(40).allow('', null),
