@@ -1,0 +1,7 @@
+FROM postgres:18-alpine
+RUN apk add --no-cache age aws-cli bash coreutils
+COPY deploy/hostpinnacle/scripts/backup.sh /usr/local/bin/sokoeats-backup
+COPY deploy/hostpinnacle/scripts/restore-encrypted.sh /usr/local/bin/sokoeats-restore
+RUN chmod 0755 /usr/local/bin/sokoeats-backup /usr/local/bin/sokoeats-restore
+ENTRYPOINT ["sokoeats-backup"]
+CMD ["daemon"]

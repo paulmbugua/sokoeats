@@ -1,0 +1,191 @@
+name: sokoeats
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: "5"
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks: [data]
+    logging: *default-logging
+
+  migrate:
+    build:
+      context: ../..
+      dockerfile: deploy/hostpinnacle/Dockerfile.backend
+    image: sokoeats/backend:${IMAGE_TAG:-local}
+    restart: "no"
+    env_file: [./secrets/backend.env]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PGSSL: disable
+    command: ["node", "apps/backend/scripts/setupDatabase.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [data]
+    logging: *default-logging
+
+  backend:
+    image: sokoeats/backend:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    env_file: [./secrets/backend.env]
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      PGSSL: disable
+      API_PUBLIC_URL: https://server.sokoeats.co.ke
+      WEB_APP_URL: https://sokoeats.co.ke
+      APP_BUILD: ${IMAGE_TAG:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/readyz').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    networks: [edge, data]
+    logging: *default-logging
+
+  web:
+    build:
+      context: ../..
+      dockerfile: deploy/hostpinnacle/Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: https://server.sokoeats.co.ke
+        NEXT_PUBLIC_BACKEND_URL: https://server.sokoeats.co.ke
+        NEXT_PUBLIC_SITE_URL: https://sokoeats.co.ke
+        NEXT_PUBLIC_ANDROID_APP_URL: ${NEXT_PUBLIC_ANDROID_APP_URL}
+    image: sokoeats/web:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 8s
+      retries: 12
+      start_period: 35s
+    networks: [edge]
+    logging: *default-logging
+
+  admin:
+    build:
+      context: ../..
+      dockerfile: deploy/hostpinnacle/Dockerfile.spa
+      args:
+        APP_WORKSPACE: "@sokoeats/admin"
+        APP_DIRECTORY: apps/admin
+        VITE_API_URL: https://server.sokoeats.co.ke
+        VITE_BACKEND_URL: https://server.sokoeats.co.ke
+        VITE_SITE_URL: https://sokoeats.co.ke
+        VITE_IMAGES_BASE_URL: https://images.sokoeats.co.ke
+    image: sokoeats/admin:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+    networks: [edge]
+    logging: *default-logging
+
+  operations:
+    build:
+      context: ../..
+      dockerfile: deploy/hostpinnacle/Dockerfile.spa
+      args:
+        APP_WORKSPACE: "@sokoeats/admin-operations"
+        APP_DIRECTORY: apps/admin-operations
+        VITE_API_URL: https://server.sokoeats.co.ke
+        VITE_BACKEND_URL: https://server.sokoeats.co.ke
+        VITE_SITE_URL: https://sokoeats.co.ke
+        VITE_IMAGES_BASE_URL: https://images.sokoeats.co.ke
+    image: sokoeats/operations:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+    networks: [edge]
+    logging: *default-logging
+
+  backup:
+    build:
+      context: ../..
+      dockerfile: deploy/hostpinnacle/Dockerfile.backup
+    image: sokoeats/backup:${IMAGE_TAG:-local}
+    restart: unless-stopped
+    env_file: [./secrets/backup.env]
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB}
+      PGUSER: ${POSTGRES_USER}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      BACKUP_SCHEDULE_UTC: ${BACKUP_SCHEDULE_UTC:-02:30}
+      BACKUP_LOCAL_RETENTION_DAYS: ${BACKUP_LOCAL_RETENTION_DAYS:-14}
+    volumes:
+      - encrypted_backups:/backups
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [edge, data]
+    logging: *default-logging
+
+  cloudflared:
+    image: cloudflare/cloudflared:2026.10.0
+    profiles: [cutover]
+    restart: unless-stopped
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run", "${CLOUDFLARE_TUNNEL_ID}"]
+    volumes:
+      - ./secrets/cloudflared:/etc/cloudflared:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+      admin:
+        condition: service_healthy
+      operations:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "cloudflared", "--version"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    networks: [edge]
+    logging: *default-logging
+
+networks:
+  edge:
+  data:
+    internal: true
+
+volumes:
+  postgres_data:
+  encrypted_backups:

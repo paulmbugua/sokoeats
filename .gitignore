@@ -79,6 +79,7 @@ packages/**/.env.*
 !apps/**/.env.example
 !apps/**/.env.cloudflare.example
 !packages/**/.env.example
+!deploy/**/.env.example
 
 # --------------------------------
 # Secrets / credentials (DO NOT COMMIT)
@@ -108,6 +109,9 @@ apps/backend/secrets/**
 # If you ever store secrets at repo root
 secrets/
 secrets/**
+!deploy/hostpinnacle/secrets/
+deploy/hostpinnacle/secrets/*
+!deploy/hostpinnacle/secrets/*.example
 
 # --------------------------------
 # User uploads / generated media (DO NOT COMMIT)
@@ -127,6 +131,7 @@ apps/mobile/GoogleService-Info
 # packages/**/exports/
 
 .yarn/install-state.gz
+.migration/
 # Google / Firebase generated credentials
 google-services.json
 GoogleService-Info.plist

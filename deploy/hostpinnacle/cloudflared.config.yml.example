@@ -1,0 +1,15 @@
+tunnel: replace-with-dedicated-tunnel-id
+credentials-file: /etc/cloudflared/replace-with-dedicated-tunnel-id.json
+
+ingress:
+  - hostname: sokoeats.co.ke
+    service: http://web:3000
+  - hostname: www.sokoeats.co.ke
+    service: http://web:3000
+  - hostname: server.sokoeats.co.ke
+    service: http://backend:4000
+  - hostname: admin.sokoeats.co.ke
+    service: http://admin:8080
+  - hostname: admin-operations.sokoeats.co.ke
+    service: http://operations:8080
+  - service: http_status:404

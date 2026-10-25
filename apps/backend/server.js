@@ -40,6 +40,15 @@ app.use(cors({
 app.use(morgan('dev'));
 app.use(express.json({ limit: '2mb', verify: (req, _res, buffer) => { req.rawBody = Buffer.from(buffer); } }));
 app.get('/healthz', (_req, res) => res.json({ ok: true, app: 'sokoeats' }));
+app.get('/readyz', async (_req, res) => {
+  try {
+    await pool.query('SELECT 1');
+    res.json({ ok: true, app: 'sokoeats', database: 'ready' });
+  } catch (error) {
+    console.error('[SokoEats][Readiness] database-unavailable', { message: error.message });
+    res.status(503).json({ ok: false, app: 'sokoeats', database: 'unavailable' });
+  }
+});
 app.use('/api', authRoutes);
 app.use('/api', customerCareRoutes);
 app.use('/api', notificationRoutes);
